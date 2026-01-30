@@ -123,3 +123,43 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================
+   Harvey Custom Styles
+   ============================================ */
+
+/* Aurora gradient background effect for signin page */
+.aurora-bg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
+  height: 600px;
+  filter: blur(80px);
+  z-index: 0;
+  opacity: 0.6;
+  background: linear-gradient(
+    135deg,
+    rgba(66, 95, 240, 0.4) 0%,
+    rgba(168, 85, 247, 0.4) 25%,
+    rgba(236, 72, 153, 0.4) 50%,
+    rgba(59, 130, 246, 0.4) 75%
+  );
+  border-radius: 50%;
+}
+
+/* Glass-morphism card effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+/* Dark mode support for glass-card (future) */
+.dark .glass-card {
+  background: rgba(16, 19, 34, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
