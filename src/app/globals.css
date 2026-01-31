@@ -163,3 +163,66 @@
   background: rgba(16, 19, 34, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* Loading Page - Siri-style Rainbow Animation */
+@keyframes color-shift {
+  0% {
+    background: radial-gradient(circle, #A855F7 0%, #EC4899 50%, #F59E0B 100%);
+  }
+  20% {
+    background: radial-gradient(circle, #EC4899 0%, #F59E0B 50%, #10B981 100%);
+  }
+  40% {
+    background: radial-gradient(circle, #F59E0B 0%, #10B981 50%, #3B82F6 100%);
+  }
+  60% {
+    background: radial-gradient(circle, #10B981 0%, #3B82F6 50%, #A855F7 100%);
+  }
+  80% {
+    background: radial-gradient(circle, #3B82F6 0%, #A855F7 50%, #EC4899 100%);
+  }
+  100% {
+    background: radial-gradient(circle, #A855F7 0%, #EC4899 50%, #F59E0B 100%);
+  }
+}
+
+@keyframes wave-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes wave-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+/* Dashboard - Glass Sidebar */
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Task Status Borders */
+.status-border-grey { 
+  border-left: 4px solid #94a3b8; 
+}
+
+.status-border-green { 
+  border-left: 4px solid #22c55e; 
+}
+
+.status-border-red { 
+  border-left: 4px solid #ef4444; 
+}
+
+.status-border-purple { 
+  border-left: 4px solid #895af6; 
+}

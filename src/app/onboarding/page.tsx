@@ -66,7 +66,7 @@ export default function OnboardingPage() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-10 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-start px-4 py-10 overflow-y-auto">
         <div className="w-full max-w-[700px] flex flex-col gap-6">
           
           {/* Headline Text */}
