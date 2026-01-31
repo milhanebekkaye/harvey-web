@@ -16,6 +16,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { signOut } from '@/lib/auth/auth-service'
 
 // Fake task data
 const TASKS = {
@@ -140,9 +142,19 @@ const HOURS = Array.from({ length: 17 }, (_, i) => i + 7) // 7am to 11pm
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(2)
   const [view, setView] = useState<'timeline' | 'calendar'>('timeline')
   const [modalTask, setModalTask] = useState<any>(null)
+
+  const handleSignOut = async () => {
+    const result = await signOut()
+    if (result.success) {
+      router.push('/signin')
+    } else {
+      alert('Sign out failed: ' + result.error?.message)
+    }
+  }
 
   const toggleTaskExpansion = (taskId: number) => {
     setExpandedTaskId(expandedTaskId === taskId ? null : taskId)
@@ -218,9 +230,16 @@ export default function DashboardPage() {
             <h1 className="text-xl font-bold tracking-tight">Harvey</h1>
             <p className="text-sm text-[#62499c] font-medium opacity-80">AI Project Coach</p>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <button className="bg-primary/10 hover:bg-primary/20 text-[#895af6] p-2 rounded-lg transition-colors">
               <span className="material-symbols-outlined">settings</span>
+            </button>
+            <button
+              onClick={handleSignOut}
+              className="bg-red-100 hover:bg-red-200 text-red-600 p-2 rounded-lg transition-colors"
+              title="Sign Out (Testing)"
+            >
+              <span className="material-symbols-outlined">logout</span>
             </button>
           </div>
         </div>
