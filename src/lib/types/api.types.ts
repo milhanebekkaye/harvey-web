@@ -97,3 +97,161 @@ export interface StoredMessage {
    */
   timestamp: string
 }
+
+// ============================================
+// Schedule Generation Types
+// ============================================
+
+/**
+ * Generate Schedule API Request Body
+ *
+ * Sent by loading page to trigger schedule generation.
+ */
+export interface GenerateScheduleRequest {
+  /**
+   * Project ID to generate schedule for
+   */
+  projectId: string
+}
+
+/**
+ * Generate Schedule API Response Body
+ *
+ * Returned by POST /api/generate-schedule
+ */
+export interface GenerateScheduleResponse {
+  /**
+   * Whether generation succeeded
+   */
+  success: boolean
+
+  /**
+   * Number of tasks created (on success)
+   */
+  taskCount?: number
+
+  /**
+   * Milestones text from Claude (on success)
+   */
+  milestones?: string
+
+  /**
+   * Error message (on failure)
+   */
+  error?: string
+
+  /**
+   * Error code for frontend handling (on failure)
+   */
+  code?: string
+}
+
+/**
+ * Time Block
+ *
+ * Represents a block of time (blocked or available).
+ */
+export interface TimeBlock {
+  day: string // monday, tuesday, etc. (lowercase)
+  start: string // 24-hour format: "08:00", "17:30"
+  end: string // 24-hour format: "08:00", "17:30"
+  label?: string // e.g., "Classes", "Work", "Class break"
+}
+
+/**
+ * User Preferences
+ *
+ * Scheduling preferences extracted from conversation.
+ */
+export interface UserPreferences {
+  gym?: string // e.g., "1 hour daily, flexible timing"
+  energy_peak?: string // e.g., "evenings", "mornings"
+  skill_level?: string // e.g., "beginner", "intermediate", "advanced"
+  break_preference?: string // e.g., "self-managed", "pomodoro"
+}
+
+/**
+ * Extracted Constraints
+ *
+ * Structured constraints extracted from onboarding conversation.
+ * Stored in Project.contextData.
+ */
+export interface ExtractedConstraints {
+  /**
+   * How many weeks to plan the schedule for
+   * Default: 2 weeks
+   */
+  schedule_duration_weeks: number
+
+  /**
+   * Time blocks when user is UNAVAILABLE
+   * e.g., work, classes, sleep
+   */
+  blocked_time: TimeBlock[]
+
+  /**
+   * Time blocks when user CAN work on project
+   */
+  available_time: TimeBlock[]
+
+  /**
+   * User preferences for scheduling
+   */
+  preferences: UserPreferences
+
+  /**
+   * Features user explicitly doesn't want
+   * e.g., ["messaging", "payment integration"]
+   */
+  exclusions?: string[]
+}
+
+/**
+ * Parsed Task
+ *
+ * A task parsed from Claude's task generation response.
+ * Before being saved to database.
+ */
+export interface ParsedTask {
+  /**
+   * Task title (specific, actionable)
+   */
+  title: string
+
+  /**
+   * Detailed description with bullet points
+   */
+  description: string
+
+  /**
+   * Observable, testable success criteria
+   */
+  success: string
+
+  /**
+   * Estimated hours to complete
+   */
+  hours: number
+
+  /**
+   * Task priority
+   */
+  priority: 'high' | 'medium' | 'low'
+}
+
+/**
+ * Parse Result
+ *
+ * Result of parsing Claude's task generation response.
+ */
+export interface ParseResult {
+  /**
+   * Array of parsed tasks
+   */
+  tasks: ParsedTask[]
+
+  /**
+   * Milestones text (if schedule < full project)
+   */
+  milestones: string | null
+}

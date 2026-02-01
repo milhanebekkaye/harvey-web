@@ -104,26 +104,33 @@ export default function OnboardingPage() {
   /**
    * Progress percentage for the progress bar
    *
-   * Rough estimate based on message count:
-   * - 1-2 messages: 25% (project info)
-   * - 3-4 messages: 50% (schedule info)
-   * - 5-6 messages: 75% (preferences)
-   * - 7+ messages or complete: 100%
+   * Logic:
+   * - Start at 0% (before first user message)
+   * - Increase ~10% per message exchange (user + Harvey)
+   * - Cap at 90% before completion (even if conversation is long)
+   * - Jump to 100% when isComplete is true
+   *
+   * We count user messages (excluding Harvey's initial greeting)
+   * Each user message = one exchange = 10% progress
    */
-  const progressPercentage = isComplete
-    ? 100
-    : Math.min(90, Math.max(10, messages.length * 12))
+  const calculateProgress = (): number => {
+    if (isComplete) {
+      return 100
+    }
 
-  /**
-   * Current step label based on progress
-   */
-  const currentStep = isComplete
-    ? 'Onboarding Complete'
-    : messages.length <= 2
-      ? 'Project Details'
-      : messages.length <= 4
-        ? 'Schedule & Availability'
-        : 'Preferences'
+    // Count only user messages (Harvey's greeting doesn't count as progress)
+    const userMessageCount = messages.filter((m) => m.role === 'user').length
+
+    if (userMessageCount === 0) {
+      return 0 // No progress until user sends first message
+    }
+
+    // 10% per user message, capped at 90%
+    // This ensures we don't hit 100% until isComplete is true
+    return Math.min(90, userMessageCount * 10)
+  }
+
+  const progressPercentage = calculateProgress()
 
   // ===== EFFECTS =====
 
@@ -248,7 +255,6 @@ export default function OnboardingPage() {
       */}
       <OnboardingProgress
         percentage={progressPercentage}
-        currentStep={currentStep}
         isComplete={isComplete}
       />
 

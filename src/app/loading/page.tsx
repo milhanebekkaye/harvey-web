@@ -1,60 +1,125 @@
 /**
  * Loading Page
  *
- * Shows Apple Intelligence-style animated loading state while "generating" schedule.
+ * Shows Apple Intelligence-style animated loading state while generating schedule.
  * Features flowing gradient waves (Siri-style) that pulse and move organically.
  *
  * Flow:
  * - User arrives from onboarding after clicking "Build my schedule"
- * - Animation plays for 10 seconds with progress bar
- * - Auto-redirects to /dashboard
+ * - projectId is extracted from URL search params
+ * - Calls POST /api/generate-schedule with projectId
+ * - Shows animated progress while waiting for API response
+ * - On success: redirects to /dashboard
+ * - On error: shows error message with retry button
  */
 
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState, useCallback, Suspense } from 'react'
+import type { GenerateScheduleResponse } from '@/lib/types/api.types'
 
-export default function LoadingPage() {
+/**
+ * Loading states for the page
+ */
+type LoadingState = 'loading' | 'success' | 'error'
+
+/**
+ * Inner component that uses useSearchParams (must be wrapped in Suspense)
+ */
+function LoadingContent() {
   const router = useRouter()
-  const [progress, setProgress] = useState(0)
+  const searchParams = useSearchParams()
+
+  // Get projectId from URL params (passed from onboarding page)
+  const projectId = searchParams.get('projectId')
+
+  // State management
+  const [state, setState] = useState<LoadingState>('loading')
+  const [errorMessage, setErrorMessage] = useState<string>('')
+  const [taskCount, setTaskCount] = useState<number>(0)
 
   /**
-   * Progress bar animation - updates every 100ms for 10 seconds
+   * Call the generate-schedule API
+   *
+   * Extracts constraints from conversation and generates tasks.
+   * On success, redirects to dashboard.
    */
-  useEffect(() => {
-    const duration = 10000 // 10 seconds
-    const interval = 100 // Update every 100ms
-    const increment = 100 / (duration / interval)
+  const generateSchedule = useCallback(async () => {
+    // Reset state for retry
+    setState('loading')
+    setErrorMessage('')
 
-    const progressTimer = setInterval(() => {
-      setProgress(prev => {
-        const next = prev + increment
-        if (next >= 100) {
-          clearInterval(progressTimer)
-          return 100
-        }
-        return next
+    // Validate projectId
+    if (!projectId) {
+      console.error('[LoadingPage] No projectId provided')
+      setState('error')
+      setErrorMessage('No project found. Please start from the beginning.')
+      return
+    }
+
+    console.log('[LoadingPage] Starting schedule generation for project:', projectId)
+
+    try {
+      const response = await fetch('/api/generate-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
       })
-    }, interval)
 
-    return () => clearInterval(progressTimer)
-  }, [])
+      const data: GenerateScheduleResponse = await response.json()
+
+      if (!response.ok || !data.success) {
+        console.error('[LoadingPage] API error:', data.error)
+        setState('error')
+        setErrorMessage(data.error || 'Failed to generate schedule')
+        return
+      }
+
+      console.log('[LoadingPage] Schedule generated successfully!')
+      console.log('[LoadingPage] Task count:', data.taskCount)
+      if (data.milestones) {
+        console.log('[LoadingPage] Milestones:', data.milestones)
+      }
+
+      // Success! Update state and redirect
+      setState('success')
+      setTaskCount(data.taskCount || 0)
+
+      // Short delay to show success state before redirect
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 1500)
+    } catch (error) {
+      console.error('[LoadingPage] Network error:', error)
+      setState('error')
+      setErrorMessage('Network error. Please check your connection and try again.')
+    }
+  }, [projectId, router])
 
   /**
-   * Auto-redirect to dashboard after 10 seconds
+   * Start schedule generation on mount
    */
   useEffect(() => {
-    const timer = setTimeout(() => {
-      router.push('/dashboard')
-    }, 10000)
+    generateSchedule()
+  }, [generateSchedule])
 
-    return () => clearTimeout(timer)
-  }, [router])
+  /**
+   * Handle retry button click
+   */
+  const handleRetry = () => {
+    generateSchedule()
+  }
+
+  /**
+   * Handle go back button click
+   */
+  const handleGoBack = () => {
+    router.push('/onboarding')
+  }
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#FAF9F6]">
-
       {/* Apple Intelligence style animation CSS */}
       <style>{`
         @keyframes blob-morph {
@@ -96,6 +161,30 @@ export default function LoadingPage() {
           }
         }
 
+        @keyframes indeterminate {
+          0% {
+            left: -40%;
+            width: 40%;
+          }
+          50% {
+            left: 30%;
+            width: 40%;
+          }
+          100% {
+            left: 100%;
+            width: 40%;
+          }
+        }
+
+        @keyframes pulse-glow {
+          0%, 100% {
+            opacity: 0.6;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+
         .siri-blob {
           animation: blob-morph 8s ease-in-out infinite, blob-pulse 4s ease-in-out infinite;
         }
@@ -106,6 +195,14 @@ export default function LoadingPage() {
 
         .color-animate {
           animation: color-shift 6s ease-in-out infinite;
+        }
+
+        .indeterminate-bar {
+          animation: indeterminate 1.5s ease-in-out infinite;
+        }
+
+        .pulse-text {
+          animation: pulse-glow 2s ease-in-out infinite;
         }
       `}</style>
 
@@ -129,17 +226,15 @@ export default function LoadingPage() {
 
       {/* Main Loading Content */}
       <main className="flex-1 flex flex-col items-center justify-center p-0 -mt-8">
-
         {/* Siri-style flowing gradient waves container */}
         <div className="relative w-[640px] h-[640px] -mb-16 flex items-center justify-center">
-
           {/* Main purple base blob */}
           <div
             className="absolute w-[400px] h-[400px] siri-blob"
             style={{
               background: 'linear-gradient(135deg, #A855F7 0%, #8B5CF6 50%, #7C3AED 100%)',
               filter: 'blur(70px)',
-              opacity: 0.95,
+              opacity: state === 'error' ? 0.5 : 0.95,
             }}
           />
 
@@ -147,7 +242,12 @@ export default function LoadingPage() {
           <div
             className="absolute w-[380px] h-[380px] siri-blob-reverse"
             style={{
-              background: 'linear-gradient(180deg, #A855F7 0%, #D946EF 40%, #F472B6 70%, #FB923C 100%)',
+              background:
+                state === 'error'
+                  ? 'linear-gradient(180deg, #EF4444 0%, #F97316 50%, #FB923C 100%)'
+                  : state === 'success'
+                    ? 'linear-gradient(180deg, #22C55E 0%, #10B981 50%, #059669 100%)'
+                    : 'linear-gradient(180deg, #A855F7 0%, #D946EF 40%, #F472B6 70%, #FB923C 100%)',
               filter: 'blur(65px)',
               opacity: 0.75,
               animationDelay: '0.3s',
@@ -160,7 +260,7 @@ export default function LoadingPage() {
             style={{
               background: 'linear-gradient(225deg, #8B5CF6 0%, #A855F7 50%, #818CF8 100%)',
               filter: 'blur(60px)',
-              opacity: 0.7,
+              opacity: state === 'error' ? 0.4 : 0.7,
               animationDelay: '0.8s',
             }}
           />
@@ -171,7 +271,7 @@ export default function LoadingPage() {
             style={{
               background: 'linear-gradient(45deg, #A855F7 0%, #E879F9 50%, #FB923C 100%)',
               filter: 'blur(55px)',
-              opacity: 0.6,
+              opacity: state === 'error' ? 0.3 : 0.6,
               animationDelay: '1.2s',
             }}
           />
@@ -180,7 +280,10 @@ export default function LoadingPage() {
           <div
             className="absolute w-[180px] h-[180px] siri-blob"
             style={{
-              background: 'linear-gradient(135deg, #C084FC 0%, #A855F7 100%)',
+              background:
+                state === 'success'
+                  ? 'linear-gradient(135deg, #86EFAC 0%, #22C55E 100%)'
+                  : 'linear-gradient(135deg, #C084FC 0%, #A855F7 100%)',
               filter: 'blur(50px)',
               opacity: 0.85,
               animationDelay: '1.5s',
@@ -191,32 +294,108 @@ export default function LoadingPage() {
           <div className="absolute size-24 rounded-full bg-white/50 blur-2xl" />
         </div>
 
-        {/* Typography */}
+        {/* Typography - changes based on state */}
         <div className="max-w-md w-full text-center space-y-1">
-          <h2 className="text-[#110d1c] tracking-tight text-2xl font-bold leading-tight">
-            Building your schedule...
-          </h2>
-          <p className="text-[#110d1c]/70 text-base font-normal leading-normal px-8">
-            Harvey is analyzing your tasks and priorities to create the perfect workflow.
-          </p>
+          {state === 'loading' && (
+            <>
+              <h2 className="text-[#110d1c] tracking-tight text-2xl font-bold leading-tight">
+                Building your schedule...
+              </h2>
+              <p className="text-[#110d1c]/70 text-base font-normal leading-normal px-8">
+                Harvey is analyzing your tasks and priorities to create the perfect workflow.
+              </p>
+            </>
+          )}
+
+          {state === 'success' && (
+            <>
+              <h2 className="text-[#110d1c] tracking-tight text-2xl font-bold leading-tight">
+                Schedule ready!
+              </h2>
+              <p className="text-[#110d1c]/70 text-base font-normal leading-normal px-8">
+                Created {taskCount} tasks for your project. Redirecting to dashboard...
+              </p>
+            </>
+          )}
+
+          {state === 'error' && (
+            <>
+              <h2 className="text-[#110d1c] tracking-tight text-2xl font-bold leading-tight">
+                Something went wrong
+              </h2>
+              <p className="text-red-500/80 text-base font-normal leading-normal px-8">
+                {errorMessage}
+              </p>
+            </>
+          )}
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress Bar / Actions based on state */}
         <div className="mt-6 w-full max-w-[340px] flex flex-col gap-2">
-          <div className="flex justify-between items-end">
-            <p className="text-[#895af6] font-medium text-sm tracking-wide uppercase">Processing</p>
-            <p className="text-[#110d1c]/50 text-sm font-medium">{Math.round(progress)}%</p>
-          </div>
-          <div className="h-2 w-full bg-[#895af6]/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[#895af6] rounded-full shimmer-bar relative transition-all duration-100 ease-linear"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-center gap-2 mt-1">
-            <span className="material-symbols-outlined text-[#895af6] text-sm">bolt</span>
-            <p className="text-[#110d1c]/60 text-xs font-medium italic">Optimizing for deep work phases</p>
-          </div>
+          {state === 'loading' && (
+            <>
+              {/* Indeterminate progress bar */}
+              <div className="flex justify-between items-end">
+                <p className="text-[#895af6] font-medium text-sm tracking-wide uppercase pulse-text">
+                  Processing
+                </p>
+              </div>
+              <div className="h-2 w-full bg-[#895af6]/10 rounded-full overflow-hidden relative">
+                <div className="h-full bg-[#895af6] rounded-full absolute indeterminate-bar" />
+              </div>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <span className="material-symbols-outlined text-[#895af6] text-sm">bolt</span>
+                <p className="text-[#110d1c]/60 text-xs font-medium italic">
+                  Optimizing for deep work phases
+                </p>
+              </div>
+            </>
+          )}
+
+          {state === 'success' && (
+            <>
+              {/* Full progress bar */}
+              <div className="flex justify-between items-end">
+                <p className="text-green-500 font-medium text-sm tracking-wide uppercase">
+                  Complete
+                </p>
+                <p className="text-[#110d1c]/50 text-sm font-medium">100%</p>
+              </div>
+              <div className="h-2 w-full bg-green-500/10 rounded-full overflow-hidden">
+                <div className="h-full bg-green-500 rounded-full w-full transition-all duration-500" />
+              </div>
+              <div className="flex items-center justify-center gap-2 mt-1">
+                <span className="material-symbols-outlined text-green-500 text-sm">
+                  check_circle
+                </span>
+                <p className="text-[#110d1c]/60 text-xs font-medium italic">
+                  {taskCount} tasks created
+                </p>
+              </div>
+            </>
+          )}
+
+          {state === 'error' && (
+            <>
+              {/* Error actions */}
+              <div className="flex flex-col gap-3 mt-4">
+                <button
+                  onClick={handleRetry}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-[#895af6] text-white font-semibold rounded-xl hover:bg-[#7c4ee0] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-lg">refresh</span>
+                  Try again
+                </button>
+                <button
+                  onClick={handleGoBack}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-transparent text-[#110d1c]/60 font-medium rounded-xl hover:bg-black/5 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-lg">arrow_back</span>
+                  Go back to onboarding
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </main>
 
@@ -224,7 +403,9 @@ export default function LoadingPage() {
       <footer className="py-4 px-6 flex justify-center">
         <div className="flex items-center gap-2 opacity-30 select-none">
           <span className="material-symbols-outlined text-sm">security</span>
-          <p className="text-[10px] uppercase tracking-[0.2em] font-bold">End-to-End Encrypted Data Analysis</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] font-bold">
+            End-to-End Encrypted Data Analysis
+          </p>
         </div>
       </footer>
 
@@ -232,5 +413,24 @@ export default function LoadingPage() {
       <div className="absolute bottom-[-10%] right-[-5%] w-[400px] h-[400px] bg-[#895af6]/5 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute top-[-10%] left-[-5%] w-[400px] h-[400px] bg-yellow-400/5 rounded-full blur-[100px] pointer-events-none" />
     </div>
+  )
+}
+
+/**
+ * Loading Page Component
+ *
+ * Wrapped in Suspense because useSearchParams requires it in Next.js 14.
+ */
+export default function LoadingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-[#FAF9F6]">
+          <div className="text-[#895af6]">Loading...</div>
+        </div>
+      }
+    >
+      <LoadingContent />
+    </Suspense>
   )
 }

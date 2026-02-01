@@ -20,27 +20,14 @@ interface OnboardingProgressProps {
   percentage: number
 
   /**
-   * Current step label (e.g., "Project Details", "Availability")
-   */
-  currentStep: string
-
-  /**
    * Whether onboarding is complete
    */
   isComplete?: boolean
-
-  /**
-   * Optional status text to show below progress bar
-   * Defaults based on isComplete state
-   */
-  statusText?: string
 }
 
 export function OnboardingProgress({
   percentage,
-  currentStep,
   isComplete = false,
-  statusText,
 }: OnboardingProgressProps) {
   // Clamp percentage between 0 and 100
   const clampedPercentage = Math.min(100, Math.max(0, percentage))
@@ -48,33 +35,23 @@ export function OnboardingProgress({
   // Determine the icon based on completion state
   const icon = isComplete ? 'check_circle' : 'pending'
 
-  // Default status text based on state
-  const defaultStatusText = isComplete
-    ? 'Setup Finished • Harvey is ready'
-    : `Step in progress • ${currentStep}`
+  // Label text
+  const labelText = isComplete ? 'Onboarding Complete' : 'Setting up your project'
 
   return (
     <div className="w-full flex justify-center pt-8 px-4">
       <div className="w-full max-w-[700px] flex flex-col gap-3">
-        {/* Progress Title and Percentage */}
-        <div className="flex gap-6 justify-between items-end">
-          {/* Left: Icon + Step Name */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`material-symbols-outlined text-[#8B5CF6] text-xl ${
-                !isComplete ? 'animate-pulse' : ''
-              }`}
-            >
-              {icon}
-            </span>
-            <p className="text-[#110d1c] text-base font-semibold leading-normal">
-              {isComplete ? 'Onboarding Complete' : currentStep}
-            </p>
-          </div>
-
-          {/* Right: Percentage */}
-          <p className="text-[#8B5CF6] text-sm font-bold leading-normal">
-            {clampedPercentage}%
+        {/* Progress Title */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`material-symbols-outlined text-[#8B5CF6] text-xl ${
+              !isComplete ? 'animate-pulse' : ''
+            }`}
+          >
+            {icon}
+          </span>
+          <p className="text-[#110d1c] text-base font-semibold leading-normal">
+            {labelText}
           </p>
         </div>
 
@@ -85,11 +62,6 @@ export function OnboardingProgress({
             style={{ width: `${clampedPercentage}%` }}
           />
         </div>
-
-        {/* Status Text */}
-        <p className="text-[#8B5CF6] text-xs font-medium uppercase tracking-wider">
-          {statusText || defaultStatusText}
-        </p>
       </div>
     </div>
   )
