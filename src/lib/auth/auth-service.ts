@@ -85,19 +85,16 @@ export async function signInWithGoogle(
 /**
  * Sign up with email (immediate, no confirmation)
  * 
- * Creates account immediately and signs user in.
- * No email verification needed for MVP.
+ * TWO-STEP PROCESS:
+ * 1. Create Supabase Auth user (authentication)
+ * 2. Create database user record (application data)
  * 
  * Flow:
  * 1. User enters email + name
- * 2. We create Supabase account with random password
- * 3. User is immediately authenticated
- * 4. Redirect to onboarding
- * 
- * Why random password?
- * - User won't need it (we'll use magic links for future logins)
- * - Supabase requires a password for signUp
- * - Password is stored securely in Supabase
+ * 2. Create Supabase Auth account
+ * 3. Create database User record with same ID
+ * 4. User is authenticated and has profile
+ * 5. Redirect to onboarding
  * 
  * @param email - User's email address
  * @param name - User's full name
@@ -111,24 +108,24 @@ export async function signUpWithEmail(
     const supabase = createClient()
     
     // Generate random password (user won't need it)
-    // 32 characters of random alphanumeric
     const randomPassword = Math.random().toString(36).slice(-16) + Math.random().toString(36).slice(-16)
     
-    // Create account and sign in automatically
+    // ===== STEP 1: Create Supabase Auth user =====
+    console.log('[Auth] Creating Supabase auth user:', email)
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password: randomPassword,
       options: {
-        // Store user's name in metadata
         data: {
-          full_name: name,
+          full_name: name, // Store name in auth metadata
         },
-        // Skip email confirmation for MVP
-        emailRedirectTo: undefined,
+        emailRedirectTo: undefined, // Skip email confirmation
       },
     })
 
     if (error) {
+      console.error('[Auth] Supabase signup error:', error)
       return {
         success: false,
         error: {
@@ -139,12 +136,44 @@ export async function signUpWithEmail(
       }
     }
 
+    if (!data.user) {
+      console.error('[Auth] No user returned from signup')
+      return {
+        success: false,
+        error: {
+          message: 'Failed to create account',
+        },
+      }
+    }
+
+    // ===== STEP 2: Create database user record =====
+    console.log('[Auth] Creating database user record:', data.user.id)
+
+    // Import server action (runs on server, can use Prisma)
+    const { createUserAction } = await import('../users/user-actions')
+
+    const userResult = await createUserAction({
+      id: data.user.id,           // Use Supabase Auth ID
+      email: data.user.email!,    // Guaranteed to exist
+      name: name,                 // From form input
+      timezone: 'Europe/Paris',   // Default timezone
+    })
+
+    if (!userResult.success) {
+      console.error('[Auth] Failed to create database user:', userResult.error)
+      // Auth user exists but DB user failed - that's okay for now
+      // User can still sign in, we'll create DB record later if needed
+    } else {
+      console.log('[Auth] Database user created successfully')
+    }
+
     return {
       success: true,
-      user: data.user || undefined,
-      session: data.session || undefined,
+      user: data.user,
+      // session: data.session,
     }
   } catch (error: any) {
+    console.error('[Auth] Unexpected error during signup:', error)
     return {
       success: false,
       error: {

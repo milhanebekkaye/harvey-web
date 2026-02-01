@@ -1,16 +1,17 @@
 /**
  * Signin Page - Main Entry Point
- * 
+ *
  * This page is THIN - it only handles:
  * - State management (which component to show)
  * - Error display
  * - Layout/styling
- * 
+ *
  * All business logic lives in components and services.
- * 
+ *
  * States:
- * 1. Initial: Show AuthButtons (Google + Email options)
- * 2. Email Form: Show EmailSignupForm (collect email + name)
+ * 1. 'buttons': Show AuthButtons (Google + Email options + Login link)
+ * 2. 'signup': Show EmailSignupForm (collect email + name for new users)
+ * 3. 'login': Show EmailLoginForm (magic link login for existing users)
  */
 
 'use client'
@@ -18,17 +19,27 @@
 import { useState } from 'react'
 import { AuthButtons } from '@/components/auth/AuthButtons'
 import { EmailSignupForm } from '@/components/auth/EmailSignupForm'
+import { EmailLoginForm } from '@/components/auth/EmailLoginForm'
+
+/**
+ * View states for the signin page
+ * - 'buttons': Initial state with auth options
+ * - 'signup': Email signup form for new users
+ * - 'login': Email login form for existing users (magic link)
+ */
+type AuthView = 'buttons' | 'signup' | 'login'
 
 export default function SigninPage() {
   // ===== STATE MANAGEMENT =====
-  
+
   /**
-   * showEmailForm: Controls which component to display
-   * - false: Show AuthButtons (initial state)
-   * - true: Show EmailSignupForm
+   * currentView: Controls which component to display
+   * - 'buttons': Show AuthButtons (initial state)
+   * - 'signup': Show EmailSignupForm (for new users)
+   * - 'login': Show EmailLoginForm (for existing users)
    */
-  const [showEmailForm, setShowEmailForm] = useState(false)
-  
+  const [currentView, setCurrentView] = useState<AuthView>('buttons')
+
   /**
    * error: Stores error messages from auth attempts
    * Displayed above the active component
@@ -38,20 +49,29 @@ export default function SigninPage() {
   // ===== EVENT HANDLERS =====
 
   /**
-   * Switch to email form view
+   * Switch to email signup form
    * Called when user clicks "Continue with Email" button
    */
-  const handleShowEmailForm = () => {
-    setShowEmailForm(true)
+  const handleShowSignupForm = () => {
+    setCurrentView('signup')
+    setError(null) // Clear any previous errors
+  }
+
+  /**
+   * Switch to email login form
+   * Called when user clicks "Log in" link
+   */
+  const handleShowLoginForm = () => {
+    setCurrentView('login')
     setError(null) // Clear any previous errors
   }
 
   /**
    * Return to initial auth buttons
-   * Called when user clicks back button in email form
+   * Called when user clicks back button in any form
    */
   const handleBackToButtons = () => {
-    setShowEmailForm(false)
+    setCurrentView('buttons')
     setError(null)
   }
 
@@ -62,6 +82,33 @@ export default function SigninPage() {
   const handleError = (errorMessage: string) => {
     setError(errorMessage)
   }
+
+  /**
+   * Get the header text based on current view
+   * Different headers for signup vs login vs initial
+   */
+  const getHeaderText = () => {
+    switch (currentView) {
+      case 'signup':
+        return {
+          title: 'Create Your Account',
+          subtitle: 'Enter your details to get started with Harvey',
+        }
+      case 'login':
+        return {
+          title: 'Welcome Back',
+          subtitle: 'Enter your email to receive a login link',
+        }
+      default:
+        return {
+          title: 'Skyrocket Your Productivity',
+          subtitle:
+            'Meet Harvey, your AI-powered project coach designed to transform how you work.',
+        }
+    }
+  }
+
+  const headerText = getHeaderText()
 
   // ===== RENDER =====
 
@@ -89,16 +136,13 @@ export default function SigninPage() {
             </div>
           </div>
 
-          {/* Header Text - Changes based on state */}
+          {/* Header Text - Changes based on current view */}
           <div className="text-center mb-10">
             <h1 className="text-[#0d101b] tracking-tight text-3xl font-bold leading-tight pb-3">
-              {showEmailForm ? 'Create Your Account' : 'Skyrocket Your Productivity'}
+              {headerText.title}
             </h1>
             <p className="text-slate-600 text-base font-normal leading-relaxed px-4">
-              {showEmailForm 
-                ? "Enter your details to get started with Harvey"
-                : "Meet Harvey, your AI-powered project coach designed to transform how you work."
-              }
+              {headerText.subtitle}
             </p>
           </div>
 
@@ -121,19 +165,30 @@ export default function SigninPage() {
             </div>
           )}
 
-          {/* 
-            CONDITIONAL RENDER: Show either AuthButtons OR EmailSignupForm
+          {/*
+            CONDITIONAL RENDER: Show AuthButtons, EmailSignupForm, or EmailLoginForm
             This is the main switching logic - same page, different content
           */}
-          {!showEmailForm ? (
-            // Initial state: Show auth options
-            <AuthButtons 
-              onEmailClick={handleShowEmailForm}
+          {currentView === 'buttons' && (
+            // Initial state: Show auth options (Google, Email signup, Login link)
+            <AuthButtons
+              onEmailClick={handleShowSignupForm}
+              onLoginClick={handleShowLoginForm}
               onError={handleError}
             />
-          ) : (
-            // Email form state: Show signup form
-            <EmailSignupForm 
+          )}
+
+          {currentView === 'signup' && (
+            // Signup form: Collect email + name for new users
+            <EmailSignupForm
+              onBack={handleBackToButtons}
+              onError={handleError}
+            />
+          )}
+
+          {currentView === 'login' && (
+            // Login form: Magic link login for existing users
+            <EmailLoginForm
               onBack={handleBackToButtons}
               onError={handleError}
             />

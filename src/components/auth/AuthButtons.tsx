@@ -16,11 +16,17 @@ import { signInWithGoogle } from '@/lib/auth/auth-service'
 
 interface AuthButtonsProps {
   /**
-   * Callback when email button is clicked
-   * Parent component uses this to switch to email form
+   * Callback when email signup button is clicked
+   * Parent component uses this to switch to email signup form
    */
   onEmailClick: () => void
-  
+
+  /**
+   * Callback when login link is clicked
+   * Parent component uses this to switch to email login form
+   */
+  onLoginClick: () => void
+
   /**
    * Callback for error handling
    * Passes errors up to parent for display
@@ -28,7 +34,7 @@ interface AuthButtonsProps {
   onError: (error: string) => void
 }
 
-export function AuthButtons({ onEmailClick, onError }: AuthButtonsProps) {
+export function AuthButtons({ onEmailClick, onLoginClick, onError }: AuthButtonsProps) {
   // Loading states for each button (prevents multiple simultaneous requests)
   const [loadingGoogle, setLoadingGoogle] = useState(false)
 
@@ -87,8 +93,8 @@ export function AuthButtons({ onEmailClick, onError }: AuthButtonsProps) {
         <div className="h-px bg-slate-200 flex-1" />
       </div>
 
-      {/* Email Button - Triggers form display in parent component */}
-      <button 
+      {/* Email Button - Triggers signup form display in parent component */}
+      <button
         onClick={onEmailClick}
         disabled={loadingGoogle}
         className="flex items-center justify-center gap-3 w-full h-12 px-5 bg-[#425ff0] hover:bg-[#425ff0]/90 text-white rounded-lg transition-all duration-200 font-bold text-base shadow-lg shadow-[#425ff0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -96,6 +102,19 @@ export function AuthButtons({ onEmailClick, onError }: AuthButtonsProps) {
         <span className="material-symbols-outlined text-xl">mail</span>
         Continue with Email
       </button>
+
+      {/* Login Link - For existing users who want to log back in */}
+      <p className="text-center text-sm text-slate-600 mt-2">
+        Already have an account?{' '}
+        <button
+          type="button"
+          onClick={onLoginClick}
+          disabled={loadingGoogle}
+          className="text-[#425ff0] font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Log in
+        </button>
+      </p>
     </div>
   )
 }
