@@ -164,6 +164,7 @@ export interface TimeBlock {
  * Scheduling preferences extracted from conversation.
  */
 export interface UserPreferences {
+  start_preference?: string // e.g., "tomorrow", "next_monday", "2024-02-05"
   gym?: string // e.g., "1 hour daily, flexible timing"
   energy_peak?: string // e.g., "evenings", "mornings"
   skill_level?: string // e.g., "beginner", "intermediate", "advanced"

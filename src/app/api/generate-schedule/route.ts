@@ -16,8 +16,9 @@
  * 6. Generate tasks using Claude
  * 7. Parse tasks
  * 8. Save constraints to Project.contextData
- * 9. Create Task records in database
- * 10. Return success with task count
+ * 9. Schedule tasks to specific dates/times using algorithm
+ * 10. Create Task records in database with scheduled dates
+ * 11. Return success with task count
  *
  * Request Body:
  * - projectId: string (required) - Project to generate schedule for
@@ -38,6 +39,11 @@ import {
   generateTasks,
   parseTasks,
 } from '@/lib/schedule/schedule-generation'
+import {
+  assignTasksToSchedule,
+  calculateStartDate,
+  getTaskScheduleData,
+} from '@/lib/schedule/task-scheduler'
 import type {
   GenerateScheduleRequest,
   GenerateScheduleResponse,
@@ -115,6 +121,27 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] Discussion found:', discussion.id)
 
+    // ===== STEP 3.5: Check if tasks already exist for this project =====
+    // This prevents duplicate task creation from double API calls (React Strict Mode, network retries)
+    const existingTasks = await prisma.task.findMany({
+      where: { projectId: projectId },
+      select: { id: true },
+    })
+
+    if (existingTasks.length > 0) {
+      console.log(`[GenerateScheduleAPI] ⚠️ Tasks already exist for project (${existingTasks.length} tasks). Skipping generation.`)
+      return NextResponse.json(
+        {
+          success: true,
+          taskCount: existingTasks.length,
+          message: 'Schedule already generated',
+        },
+        { status: 200 }
+      )
+    }
+
+    console.log('[GenerateScheduleAPI] No existing tasks found, proceeding with generation')
+
     // ===== STEP 4: Convert Messages to Conversation Text =====
     console.log('[GenerateScheduleAPI] Step 4: Converting messages to text')
 
@@ -175,8 +202,27 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] ✅ Saved constraints to Project.contextData')
 
-    // ===== STEP 9: Create Task Records in Database =====
-    console.log('[GenerateScheduleAPI] Step 9: Creating task records')
+    // ===== STEP 9: Schedule Tasks =====
+    console.log('[GenerateScheduleAPI] Step 9: 📅 Scheduling tasks to specific dates/times...')
+
+    // Calculate start date based on user preference (or default to tomorrow/next Monday)
+    const startDate = calculateStartDate(constraints)
+    const durationWeeks = constraints.schedule_duration_weeks || 2
+
+    console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)
+    console.log(`[GenerateScheduleAPI] Duration: ${durationWeeks} weeks`)
+
+    // Run the scheduling algorithm to assign tasks to available time slots
+    const scheduleResult = assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)
+
+    console.log(`[GenerateScheduleAPI] ✅ Scheduled ${scheduleResult.scheduledTasks.length} task blocks`)
+    console.log(`[GenerateScheduleAPI]   Total hours scheduled: ${scheduleResult.totalHoursScheduled.toFixed(1)}`)
+    if (scheduleResult.unscheduledTaskIndices.length > 0) {
+      console.log(`[GenerateScheduleAPI]   ⚠️ ${scheduleResult.unscheduledTaskIndices.length} tasks couldn't fit in available time`)
+    }
+
+    // ===== STEP 10: Create Task Records in Database =====
+    console.log('[GenerateScheduleAPI] Step 10: Creating task records')
 
     // Map priority string to integer (high=1, medium=3, low=5)
     const priorityMap: Record<string, number> = {
@@ -185,27 +231,48 @@ export async function POST(request: NextRequest) {
       low: 5,
     }
 
-    // Prepare task records for bulk creation
-    const taskRecords = tasks.map((task) => ({
-      userId: user.id,
-      projectId: projectId,
-      title: task.title,
-      description: task.description,
-      successCriteria: task.success,
-      estimatedDuration: Math.round(task.hours * 60), // Convert hours to minutes
-      priority: priorityMap[task.priority] || 3,
-      type: 'project',
-      status: 'pending',
-      // scheduledDate, scheduledStartTime, scheduledEndTime remain null for now
-    }))
+    // Prepare task records with scheduled dates from the algorithm
+    const taskRecords = tasks.map((task, index) => {
+      // Get scheduled date/time for this task (first block if split)
+      const scheduleData = getTaskScheduleData(index, scheduleResult.scheduledTasks)
+
+      return {
+        userId: user.id,
+        projectId: projectId,
+        title: task.title,
+        description: task.description,
+        successCriteria: task.success,
+        estimatedDuration: Math.round(task.hours * 60), // Convert hours to minutes
+        priority: priorityMap[task.priority] || 3,
+        type: 'project',
+        status: 'pending',
+        // Assigned from scheduling algorithm
+        scheduledDate: scheduleData?.scheduledDate || null,
+        scheduledStartTime: scheduleData?.scheduledStartTime || null,
+        scheduledEndTime: scheduleData?.scheduledEndTime || null,
+      }
+    })
+
+    // Log scheduled tasks for debugging
+    console.log('\n[GenerateScheduleAPI] 📅 SCHEDULED TASKS:')
+    taskRecords.forEach((record, index) => {
+      if (record.scheduledDate) {
+        const date = record.scheduledDate.toISOString().split('T')[0]
+        const start = record.scheduledStartTime?.toTimeString().substring(0, 5) || '??:??'
+        const end = record.scheduledEndTime?.toTimeString().substring(0, 5) || '??:??'
+        console.log(`  Task ${index + 1}: ${date} ${start}-${end} - ${record.title}`)
+      } else {
+        console.log(`  Task ${index + 1}: UNSCHEDULED - ${record.title}`)
+      }
+    })
 
     // Bulk create tasks
     await prisma.task.createMany({ data: taskRecords })
 
     console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database`)
 
-    // ===== STEP 10: Return Success Response =====
-    console.log('[GenerateScheduleAPI] Step 10: Preparing response')
+    // ===== STEP 11: Return Success Response =====
+    console.log('[GenerateScheduleAPI] Step 11: Preparing response')
     console.log('[GenerateScheduleAPI] ========== Schedule generation complete ==========')
 
     const response: GenerateScheduleResponse = {

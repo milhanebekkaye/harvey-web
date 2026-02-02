@@ -29,8 +29,9 @@ Read this conversation and extract:
 1. Blocked time (work, classes, sleep) - when person is UNAVAILABLE
 2. Available time - when person CAN work on project
 3. Schedule duration requested (1 week? 2 weeks? 3 weeks? Full project timeline?)
-4. Other preferences (gym timing, break preferences, energy levels, skill level)
-5. Feature exclusions - things user explicitly said NO to or doesn't want
+4. Start date preference (when they want to begin - tomorrow, next Monday, specific date)
+5. Other preferences (gym timing, break preferences, energy levels, skill level)
+6. Feature exclusions - things user explicitly said NO to or doesn't want
 
 CRITICAL: Avoid overlapping time blocks! If someone says "I have classes 8-5" and "I workout 11-12", the workout is DURING classes, not in addition. Don't create overlapping blocked times.
 
@@ -47,6 +48,7 @@ Output ONLY valid JSON, no other text:
     {"day": "tuesday", "start": "17:00", "end": "22:00"}
   ],
   "preferences": {
+    "start_preference": "tomorrow",
     "gym": "1 hour daily, flexible timing",
     "energy_peak": "evenings",
     "skill_level": "beginner",
@@ -59,6 +61,7 @@ RULES:
 - Use lowercase day names: monday, tuesday, etc.
 - Use 24-hour time format: "08:00", "17:30"
 - Schedule duration: Look for phrases like "2 weeks", "two weeks", "14 days", "next 2 weeks", "for 2 weeks". If explicitly mentioned, use that number. If not mentioned, default to 2 weeks.
+- Start preference: Look for when they want to START working. Values: "tomorrow", "next_monday", or a specific date like "2024-02-05". If they say "ASAP" or "immediately", use "tomorrow". If not mentioned, default to "tomorrow".
 - If available time not specified, infer from blocked time (opposite of work/sleep)
 - Weekend days: If not mentioned, assume available 09:00-18:00
 - Be conservative: If unclear, mark as blocked rather than available

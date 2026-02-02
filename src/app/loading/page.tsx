@@ -16,7 +16,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import { useEffect, useState, useCallback, Suspense, useRef } from 'react'
 import type { GenerateScheduleResponse } from '@/lib/types/api.types'
 
 /**
@@ -38,6 +38,9 @@ function LoadingContent() {
   const [state, setState] = useState<LoadingState>('loading')
   const [errorMessage, setErrorMessage] = useState<string>('')
   const [taskCount, setTaskCount] = useState<number>(0)
+
+  // Ref to prevent double API calls from React Strict Mode
+  const hasStartedRef = useRef(false)
 
   /**
    * Call the generate-schedule API
@@ -99,15 +102,23 @@ function LoadingContent() {
 
   /**
    * Start schedule generation on mount
+   * Uses ref guard to prevent double calls from React Strict Mode
    */
   useEffect(() => {
+    if (hasStartedRef.current) {
+      console.log('[LoadingPage] Skipping duplicate call (React Strict Mode)')
+      return
+    }
+    hasStartedRef.current = true
     generateSchedule()
   }, [generateSchedule])
 
   /**
    * Handle retry button click
+   * Resets the ref guard to allow the API call
    */
   const handleRetry = () => {
+    hasStartedRef.current = false
     generateSchedule()
   }
 
