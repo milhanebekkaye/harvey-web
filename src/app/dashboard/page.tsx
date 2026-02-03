@@ -4,7 +4,7 @@
  * Main app interface with chat sidebar (40%) and timeline/calendar view (60%).
  * Fetches real data from API endpoints.
  *
- * Timeline View: Tasks organized by TODAY, TOMORROW, THIS WEEK
+ * Timeline View: Tasks organized by TODAY, TOMORROW,..., NEXT WEEK,
  * Calendar View: Coming soon placeholder
  *
  * Features:
@@ -306,43 +306,94 @@ export default function DashboardPage() {
   }
 
   /**
-   * Handle checklist item toggle
-   * Updates local state immediately for responsive UI
-   */
-  const handleChecklistToggle = (taskId: string, itemId: string, done: boolean) => {
-    console.log('[Dashboard] Checklist toggle:', { taskId, itemId, done })
+ * Helper: Find task by ID across all groups
+ */
+function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask | null {
+  if (!tasks) return null
+  
+  const allTasks = [
+    ...tasks.overdue,
+    ...tasks.today,
+    ...tasks.tomorrow,
+    ...tasks.weekDays.flatMap(d => d.tasks),
+    ...tasks.nextWeek,
+    ...tasks.later,
+    ...tasks.unscheduled,
+  ]
+  
+  return allTasks.find(t => t.id === taskId) || null
+}
 
-    // Update the tasks state with the new checklist item status
-    setTasks((prevTasks) => {
-      if (!prevTasks) return prevTasks
+/**
+ * Handle checklist item toggle
+ * Updates local state immediately + persists to database
+ */
+const handleChecklistToggle = async (taskId: string, itemId: string, done: boolean) => {
+  console.log('[Dashboard] Checklist toggle:', { taskId, itemId, done })
 
-      // Helper to update a task's checklist
-      const updateTask = (task: DashboardTask): DashboardTask => {
-        if (task.id !== taskId) return task
-        return {
-          ...task,
-          checklist: task.checklist.map((item) =>
-            item.id === itemId ? { ...item, done } : item
-          ),
-        }
-      }
-
-      // Update tasks in all groups
-      return {
-        ...prevTasks,
-        overdue: prevTasks.overdue.map(updateTask),
-        today: prevTasks.today.map(updateTask),
-        tomorrow: prevTasks.tomorrow.map(updateTask),
-        weekDays: prevTasks.weekDays.map((daySection) => ({
-          ...daySection,
-          tasks: daySection.tasks.map(updateTask),
-        })),
-        nextWeek: prevTasks.nextWeek.map(updateTask),
-        later: prevTasks.later.map(updateTask),
-        unscheduled: prevTasks.unscheduled.map(updateTask),
-      }
-    })
+  // Find the task to get full checklist
+  const task = findTaskById(tasks, taskId)
+  if (!task) {
+    console.error('[Dashboard] Task not found:', taskId)
+    return
   }
+
+  // Create updated checklist
+  const updatedChecklist = task.checklist.map((item) =>
+    item.id === itemId ? { ...item, done } : item
+  )
+
+  // Update local state immediately (optimistic update)
+  setTasks((prevTasks) => {
+    if (!prevTasks) return prevTasks
+
+    const updateTask = (t: DashboardTask): DashboardTask => {
+      if (t.id !== taskId) return t
+      return {
+        ...t,
+        checklist: updatedChecklist,
+      }
+    }
+
+    return {
+      ...prevTasks,
+      overdue: prevTasks.overdue.map(updateTask),
+      today: prevTasks.today.map(updateTask),
+      tomorrow: prevTasks.tomorrow.map(updateTask),
+      weekDays: prevTasks.weekDays.map((daySection) => ({
+        ...daySection,
+        tasks: daySection.tasks.map(updateTask),
+      })),
+      nextWeek: prevTasks.nextWeek.map(updateTask),
+      later: prevTasks.later.map(updateTask),
+      unscheduled: prevTasks.unscheduled.map(updateTask),
+    }
+  })
+
+  // Persist to database
+  try {
+    const response = await fetch(`/api/tasks/${taskId}/checklist`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checklist: updatedChecklist }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('[Dashboard] Failed to save checklist:', errorData.error)
+      
+      // Revert optimistic update on failure
+      await fetchTasks()
+    } else {
+      console.log('[Dashboard] Checklist saved successfully')
+    }
+  } catch (error) {
+    console.error('[Dashboard] Error saving checklist:', error)
+    
+    // Revert optimistic update on error
+    await fetchTasks()
+  }
+}
 
   // ===== RENDER =====
 

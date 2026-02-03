@@ -38,6 +38,7 @@ import {
   extractConstraints,
   generateTasks,
   parseTasks,
+  convertSuccessCriteriaToJson,
 } from '@/lib/schedule/schedule-generation'
 import {
   assignTasksToSchedule,
@@ -50,7 +51,6 @@ import type {
   StoredMessage,
   ExtractedConstraints,
 } from '@/types/api.types'
-import type { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   console.log('[GenerateScheduleAPI] ========== New schedule generation request ==========')
@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     await prisma.project.update({
       where: { id: projectId },
       data: {
-        contextData: constraints as unknown as Prisma.InputJsonValue,
+        contextData: constraints as unknown as Record<string, unknown>,
         updatedAt: new Date(),
       },
     })
@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
         projectId: projectId,
         title: task.title,
         description: task.description,
-        successCriteria: task.success,
+        successCriteria: convertSuccessCriteriaToJson(task.success),
         estimatedDuration: Math.round(task.hours * 60), // Convert hours to minutes
         priority: priorityMap[task.priority] || 3,
         type: 'project',

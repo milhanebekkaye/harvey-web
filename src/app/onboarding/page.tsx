@@ -41,7 +41,7 @@ import type { ChatResponse } from '@/types/api.types'
  * client-side for instant feedback.
  */
 const INITIAL_GREETING =
-  "Hey! I'm Harvey, your AI project coach. I'm here to turn \"I want to build something\" into \"Here's exactly what to do today.\" Let's start with the basics - what project are you working on?"
+  "Hey! I'm Harvey, your AI project coach. I'm here to turn \"I want to build something\" into \"Here's exactly what to do today.\" Let's start with the basics - what project are you working on? Be as precise as you can so I can help you best!"
 
 /**
  * User information for displaying in chat

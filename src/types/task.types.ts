@@ -128,40 +128,54 @@ export interface ChecklistItem {
 }
 
 /**
- * Parse success criteria string into checklist items
+ * Parse success criteria into checklist items
  *
- * The successCriteria field can contain:
- * - Bullet points (- item)
- * - Numbered items (1. item)
- * - Plain text (single item)
+ * Handles two formats:
+ * 1. JSON array (new format): Array<{id, text, done}>
+ * 2. String (legacy format): Newline-separated text
  *
- * @param successCriteria - Raw success criteria string from database
+ * @param successCriteria - Success criteria (JSON or string)
  * @returns Array of checklist items
  */
-export function parseSuccessCriteria(successCriteria: string | null | undefined): ChecklistItem[] {
+export function parseSuccessCriteria(
+  successCriteria: unknown
+): ChecklistItem[] {
   if (!successCriteria) {
     return []
   }
 
-  // Split by newlines and filter empty lines
-  const lines = successCriteria
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
+  // NEW FORMAT: JSON array of {id, text, done}
+  if (Array.isArray(successCriteria)) {
+    return successCriteria.map((item, index) => ({
+      id: item.id || `checklist-${index}`,
+      text: item.text || '',
+      done: item.done || false,
+    }))
+  }
 
-  return lines.map((line, index) => {
-    // Remove bullet points or numbers at the start
-    const cleanedText = line
-      .replace(/^[-•*]\s*/, '') // Remove bullet points
-      .replace(/^\d+\.\s*/, '') // Remove numbered list markers
-      .trim()
+  // LEGACY FORMAT: String parsing
+  if (typeof successCriteria === 'string') {
+    const lines = successCriteria
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
 
-    return {
-      id: `checklist-${index}`,
-      text: cleanedText,
-      done: false, // Default to not done (will be tracked separately)
-    }
-  })
+    return lines.map((line, index) => {
+      const cleanedText = line
+        .replace(/^[-•*]\s*/, '')
+        .replace(/^\d+\.\s*/, '')
+        .trim()
+
+      return {
+        id: `checklist-${index}`,
+        text: cleanedText,
+        done: false,
+      }
+    })
+  }
+
+  // Unknown format, return empty
+  return []
 }
 
 // ============================================

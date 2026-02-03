@@ -501,3 +501,42 @@ function parseTaskBlock(block: string): ParsedTask {
 
   return task
 }
+
+/**
+ * Convert success criteria string to JSON format for database
+ *
+ * Takes a string like "- Do thing 1\n- Do thing 2"
+ * Returns JSON: [{ id: "1", text: "Do thing 1", done: false }, ...]
+ *
+ * @param successString - Success criteria as string
+ * @returns JSON array for database
+ */
+export function convertSuccessCriteriaToJson(successString: string): Array<{
+  id: string
+  text: string
+  done: boolean
+}> {
+  if (!successString) {
+    return []
+  }
+
+  // Split by newlines and filter empty
+  const lines = successString
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  return lines.map((line, index) => {
+    // Remove bullet points or numbers at the start
+    const cleanedText = line
+      .replace(/^[-•*]\s*/, '') // Remove bullet points
+      .replace(/^\d+\.\s*/, '') // Remove numbered list markers
+      .trim()
+
+    return {
+      id: `item-${index + 1}`,
+      text: cleanedText,
+      done: false,
+    }
+  })
+}

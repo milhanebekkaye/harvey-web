@@ -13,7 +13,7 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { Task, Project } from '@prisma/client'
+import type { Task, Project } from '.prisma/client'
 import type { DashboardTask, TaskGroups, TaskCategory, DatabaseTaskStatus, DaySection } from '../../types/task.types'
 import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria } from '../../types/task.types'
 
@@ -177,7 +177,7 @@ export function transformToDashboardTask(dbTask: Task): DashboardTask {
     duration: formatDuration(dbTask.estimatedDuration),
     category: 'Other' as TaskCategory, // We don't have categories in DB yet
     status: mapToUIStatus(dbTask.status as DatabaseTaskStatus, dbTask.priority),
-    checklist: parseSuccessCriteria(dbTask.successCriteria),
+    checklist: parseSuccessCriteria((dbTask as any).successCriteria ?? ''),
     harveyTip: undefined, // Could generate on-demand in the future
     day: dbTask.scheduledDate ? getDayAbbreviation(dbTask.scheduledDate) : '',
     startTime,
@@ -539,6 +539,67 @@ export async function getTaskById(
       success: false,
       error: {
         message: error instanceof Error ? error.message : 'Failed to get task',
+        details: error,
+      },
+    }
+  }
+}
+
+/**
+ * Update task checklist (success criteria progress)
+ *
+ * @param taskId - Task UUID
+ * @param userId - User ID for ownership validation
+ * @param checklist - Array of {id, text, done}
+ * @returns Updated task or error
+ */
+export async function updateTaskChecklist(
+  taskId: string,
+  userId: string,
+  checklist: Array<{ id: string; text: string; done: boolean }>
+): Promise<TaskServiceResponse<Task>> {
+  try {
+    console.log('[TaskService] Updating checklist for task:', taskId)
+
+    // Verify ownership
+    const existing = await prisma.task.findFirst({
+      where: {
+        id: taskId,
+        userId: userId,
+      },
+    })
+
+    if (!existing) {
+      return {
+        success: false,
+        error: {
+          message: 'Task not found',
+          code: 'TASK_NOT_FOUND',
+        },
+      }
+    }
+
+    // Update successCriteria with new checklist state
+    const task = await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        successCriteria: checklist, // Now stored as JSON
+        updatedAt: new Date(),
+      },
+    })
+
+    console.log('[TaskService] Checklist updated successfully')
+
+    return {
+      success: true,
+      data: task,
+    }
+  } catch (error: unknown) {
+    console.error('[TaskService] Error updating checklist:', error)
+    return {
+      success: false,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to update checklist',
         details: error,
       },
     }
