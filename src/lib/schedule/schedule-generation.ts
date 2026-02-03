@@ -13,7 +13,7 @@ import type {
   ParsedTask,
   ParseResult,
   TimeBlock,
-} from '../types/api.types'
+} from '../../types/api.types'
 
 // ============================================
 // System Prompts (from Telegram bot)

@@ -13,7 +13,7 @@
 
 'use client'
 
-import type { ChatMessage } from '@/lib/types/chat.types'
+import type { ChatMessage } from '@/types/chat.types'
 
 /**
  * Props for ChatSidebar component

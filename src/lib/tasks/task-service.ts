@@ -14,8 +14,8 @@
 
 import { prisma } from '../db/prisma'
 import type { Task, Project } from '@prisma/client'
-import type { DashboardTask, TaskGroups, TaskCategory, DatabaseTaskStatus, DaySection } from '../types/task.types'
-import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria } from '../types/task.types'
+import type { DashboardTask, TaskGroups, TaskCategory, DatabaseTaskStatus, DaySection } from '../../types/task.types'
+import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria } from '../../types/task.types'
 
 // ============================================
 // Types

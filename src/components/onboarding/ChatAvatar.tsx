@@ -9,7 +9,7 @@
  * - 'user': Gradient background with user's initial
  */
 
-import type { MessageRole } from '@/lib/types/chat.types'
+import type { MessageRole } from '@/types/chat.types'
 
 interface ChatAvatarProps {
   /**

@@ -23,7 +23,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { updateTask, transformToDashboardTask } from '@/lib/tasks/task-service'
-import type { DashboardTask } from '@/lib/types/task.types'
+import type { DashboardTask } from '@/types/task.types'
 
 /**
  * Request body for PATCH /api/tasks/[taskId]

@@ -40,7 +40,7 @@ import {
   cleanResponse,
 } from '@/lib/ai/claude-client'
 import { ONBOARDING_SYSTEM_PROMPT } from '@/lib/ai/prompts'
-import type { ChatRequest, ChatResponse, StoredMessage } from '@/lib/types/api.types'
+import type { ChatRequest, ChatResponse, StoredMessage } from '@/types/api.types'
 
 export async function POST(request: NextRequest) {
   console.log('[ChatAPI] ========== New chat request ==========')

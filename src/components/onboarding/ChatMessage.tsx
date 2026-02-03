@@ -16,7 +16,7 @@
 
 'use client'
 
-import type { ChatMessage as ChatMessageType } from '@/lib/types/chat.types'
+import type { ChatMessage as ChatMessageType } from '@/types/chat.types'
 import { ChatAvatar } from './ChatAvatar'
 
 interface ChatMessageProps {

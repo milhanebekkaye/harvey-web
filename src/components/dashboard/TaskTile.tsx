@@ -13,8 +13,8 @@
 
 'use client'
 
-import type { DashboardTask, TaskStatus } from '@/lib/types/task.types'
-import { STATUS_COLORS } from '@/lib/types/task.types'
+import type { DashboardTask, TaskStatus } from '@/types/task.types'
+import { STATUS_COLORS } from '@/types/task.types'
 
 /**
  * Props for TaskTile component

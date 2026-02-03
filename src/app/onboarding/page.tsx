@@ -29,9 +29,9 @@ import {
 } from '@/components/onboarding'
 
 // Import types and helper functions for messages
-import type { ChatMessage } from '@/lib/types/chat.types'
-import { harveyMessage, userMessage } from '@/lib/types/chat.types'
-import type { ChatResponse } from '@/lib/types/api.types'
+import type { ChatMessage } from '@/types/chat.types'
+import { harveyMessage, userMessage } from '@/types/chat.types'
+import type { ChatResponse } from '@/types/api.types'
 
 /**
  * Harvey's initial greeting message

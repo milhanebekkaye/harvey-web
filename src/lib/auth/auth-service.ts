@@ -21,7 +21,7 @@ import type {
   AuthResponse, 
   OAuthOptions, 
   MagicLinkOptions,
-} from '../types/auth.types'
+} from '../../types/auth.types'
 
 /**
  * Sign in with Google OAuth

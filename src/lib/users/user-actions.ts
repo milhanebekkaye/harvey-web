@@ -13,7 +13,7 @@
  */
 
 import { createUser as createUserInDb, userExists as checkUserExists } from './user-service'
-import type { CreateUserData, UserServiceResponse } from '../types/user.types'
+import type { CreateUserData, UserServiceResponse } from '../../types/user.types'
 
 /**
  * Server Action: Create user in database

@@ -17,7 +17,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react'
-import type { GenerateScheduleResponse } from '@/lib/types/api.types'
+import type { GenerateScheduleResponse } from '@/types/api.types'
 
 /**
  * Loading states for the page

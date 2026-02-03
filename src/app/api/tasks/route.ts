@@ -19,7 +19,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getGroupedTasks } from '@/lib/tasks/task-service'
-import type { TaskGroups } from '@/lib/types/task.types'
+import type { TaskGroups } from '@/types/task.types'
 
 /**
  * Response type for GET /api/tasks

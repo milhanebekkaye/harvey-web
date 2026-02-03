@@ -18,8 +18,8 @@
 
 'use client'
 
-import type { TaskCategory } from '@/lib/types/task.types'
-import { CATEGORY_COLORS } from '@/lib/types/task.types'
+import type { TaskCategory } from '@/types/task.types'
+import { CATEGORY_COLORS } from '@/types/task.types'
 
 /**
  * Props for TaskCategoryBadge component

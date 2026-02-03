@@ -16,7 +16,7 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { CreateUserData, UpdateUserData, UserServiceResponse, User } from '../types/user.types'
+import type { CreateUserData, UpdateUserData, UserServiceResponse, User } from '../../types/user.types'
 
 /**
  * Create a new user in the database

@@ -18,8 +18,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getDiscussionByProjectId } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
-import type { ChatMessage } from '@/lib/types/chat.types'
-import type { StoredMessage } from '@/lib/types/api.types'
+import type { ChatMessage } from '@/types/chat.types'
+import type { StoredMessage } from '@/types/api.types'
 
 /**
  * Response type for GET /api/discussions/[projectId]

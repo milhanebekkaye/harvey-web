@@ -15,7 +15,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
-import type { DashboardTask } from '@/lib/types/task.types'
+import type { DashboardTask } from '@/types/task.types'
 import { TaskDetails } from './TaskDetails'
 import { TaskCategoryBadge } from './TaskCategoryBadge'
 import { TaskStatusBadge } from './TaskStatusBadge'

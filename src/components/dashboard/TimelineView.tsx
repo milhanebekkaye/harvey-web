@@ -19,7 +19,7 @@
 
 'use client'
 
-import type { DashboardTask, TaskGroups } from '@/lib/types/task.types'
+import type { DashboardTask, TaskGroups } from '@/types/task.types'
 import { TaskTile } from './TaskTile'
 import { TaskDetails } from './TaskDetails'
 

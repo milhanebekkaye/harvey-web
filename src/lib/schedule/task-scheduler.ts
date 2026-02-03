@@ -17,7 +17,7 @@
  * 4. Return scheduled tasks with dates/times
  */
 
-import type { ExtractedConstraints, ParsedTask, TimeBlock } from '../types/api.types'
+import type { ExtractedConstraints, ParsedTask, TimeBlock } from '../../types/api.types'
 
 // ============================================
 // Types

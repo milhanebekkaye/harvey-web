@@ -7,7 +7,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import type { StoredMessage } from '../types/api.types'
+import type { StoredMessage } from '../../types/api.types'
 import { COMPLETION_MARKER } from './prompts'
 
 /**

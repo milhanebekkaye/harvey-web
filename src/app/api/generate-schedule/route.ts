@@ -49,7 +49,7 @@ import type {
   GenerateScheduleResponse,
   StoredMessage,
   ExtractedConstraints,
-} from '@/lib/types/api.types'
+} from '@/types/api.types'
 import type { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {

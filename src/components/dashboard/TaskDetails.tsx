@@ -12,7 +12,7 @@
 
 'use client'
 
-import type { DashboardTask } from '@/lib/types/task.types'
+import type { DashboardTask } from '@/types/task.types'
 import { TaskChecklist } from './TaskChecklistItem'
 import { TaskStatusBadge } from './TaskStatusBadge'
 

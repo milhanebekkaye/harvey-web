@@ -11,7 +11,7 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { StoredMessage } from '../types/api.types'
+import type { StoredMessage } from '../../types/api.types'
 import type { Prisma } from '@prisma/client'
 
 /**

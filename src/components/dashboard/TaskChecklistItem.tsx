@@ -13,7 +13,7 @@
 
 'use client'
 
-import type { ChecklistItem } from '@/lib/types/task.types'
+import type { ChecklistItem } from '@/types/task.types'
 
 /**
  * Props for TaskChecklistItem component

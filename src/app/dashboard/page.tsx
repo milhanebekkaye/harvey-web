@@ -37,8 +37,8 @@ import {
 import type { ViewMode } from '@/components/dashboard'
 
 // Import types
-import type { TaskGroups, DashboardTask } from '@/lib/types/task.types'
-import type { ChatMessage } from '@/lib/types/chat.types'
+import type { TaskGroups, DashboardTask } from '@/types/task.types'
+import type { ChatMessage } from '@/types/chat.types'
 
 // ============================================
 // API Response Types

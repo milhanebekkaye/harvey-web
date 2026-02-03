@@ -15,8 +15,8 @@
 
 'use client'
 
-import type { TaskStatus } from '@/lib/types/task.types'
-import { STATUS_COLORS, getStatusLabel } from '@/lib/types/task.types'
+import type { TaskStatus } from '@/types/task.types'
+import { STATUS_COLORS, getStatusLabel } from '@/types/task.types'
 
 /**
  * Props for TaskStatusBadge component
