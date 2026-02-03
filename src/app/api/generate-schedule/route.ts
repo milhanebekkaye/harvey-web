@@ -206,7 +206,17 @@ export async function POST(request: NextRequest) {
     console.log('[GenerateScheduleAPI] Step 9: 📅 Scheduling tasks to specific dates/times...')
 
     // Calculate start date based on user preference (or default to tomorrow/next Monday)
-    const startDate = calculateStartDate(constraints)
+    // Get user's timezone from database
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { timezone: true },
+    })
+
+    const userTimezone = dbUser?.timezone || 'UTC'
+    console.log(`[GenerateScheduleAPI] User timezone: ${userTimezone}`)
+
+    // Calculate start date in user's timezone
+    const startDate = calculateStartDate(constraints, userTimezone)
     const durationWeeks = constraints.schedule_duration_weeks || 2
 
     console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)

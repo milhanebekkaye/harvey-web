@@ -199,6 +199,10 @@ function createDateTime(date: Date, hours: number): Date {
 /**
  * Build availability map from constraints
  * Groups available time by day of week
+ * 
+ * Handles overnight slots (e.g., 21:00-02:00) by splitting them:
+ * - Day 1: 21:00-24:00 (until midnight)
+ * - Day 2: 00:00-02:00 (after midnight)
  *
  * @param constraints - Extracted constraints
  * @returns Map of day → array of time slots
@@ -206,19 +210,60 @@ function createDateTime(date: Date, hours: number): Date {
 function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, TimeSlot[]> {
   const availability = new Map<string, TimeSlot[]>()
 
+  // Day name mapping for calculating next day
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  const dayToIndex = new Map(dayNames.map((name, i) => [name, i]))
+
   for (const block of constraints.available_time || []) {
     const day = block.day.toLowerCase()
+    const startHours = parseTimeToHours(block.start)
+    const endHours = parseTimeToHours(block.end)
 
     if (!availability.has(day)) {
       availability.set(day, [])
     }
 
-    availability.get(day)!.push({
-      day,
-      startHours: parseTimeToHours(block.start),
-      endHours: parseTimeToHours(block.end),
-      label: block.label,
-    })
+    // Check if slot crosses midnight (end time < start time)
+    if (endHours < startHours) {
+      console.log(`[TaskScheduler] Detected overnight slot: ${day} ${block.start}-${block.end}`)
+      
+      // Split into two slots:
+      // 1. Current day from start to midnight (24:00)
+      availability.get(day)!.push({
+        day,
+        startHours: startHours,
+        endHours: 24.0,
+        label: block.label ? `${block.label} (Part 1)` : undefined,
+      })
+
+      console.log(`  → Split part 1: ${day} ${formatHoursToTime(startHours)}-24:00`)
+
+      // 2. Next day from midnight (00:00) to end
+      const dayIndex = dayToIndex.get(day) ?? 0
+      const nextDayIndex = (dayIndex + 1) % 7
+      const nextDay = dayNames[nextDayIndex]
+
+      if (!availability.has(nextDay)) {
+        availability.set(nextDay, [])
+      }
+
+      availability.get(nextDay)!.push({
+        day: nextDay,
+        startHours: 0.0,
+        endHours: endHours,
+        label: block.label ? `${block.label} (Part 2)` : undefined,
+      })
+
+      console.log(`  → Split part 2: ${nextDay} 00:00-${formatHoursToTime(endHours)}`)
+    } else {
+      // Normal slot within same day
+      availability.get(day)!.push({
+        day,
+        startHours: startHours,
+        endHours: endHours,
+        label: block.label,
+      })
+    }
   }
 
   // Sort each day's slots by start time
@@ -231,16 +276,24 @@ function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, Ti
 }
 
 /**
- * Calculate start date based on user preference
+ * Calculate start date based on user preference IN USER'S TIMEZONE
  *
  * @param constraints - Extracted constraints with preferences
- * @returns Start date for scheduling
+ * @param userTimezone - User's timezone (e.g., "Europe/Paris", "America/New_York")
+ * @returns Start date for scheduling (normalized to midnight in user's timezone)
  */
-export function calculateStartDate(constraints: ExtractedConstraints): Date {
+export function calculateStartDate(
+  constraints: ExtractedConstraints,
+  userTimezone: string = 'UTC'
+): Date {
   const preference = (constraints.preferences as Record<string, unknown>)?.start_preference as
     | string
     | undefined
-  const today = new Date()
+
+  // Get "today" in user's timezone
+  const now = new Date()
+  const userNow = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }))
+  const today = new Date(userNow)
   today.setHours(0, 0, 0, 0)
 
   if (!preference) {
@@ -258,6 +311,10 @@ export function calculateStartDate(constraints: ExtractedConstraints): Date {
 
   if (pref === 'tomorrow') {
     return addDays(today, 1)
+  }
+  
+  if (pref === 'today') {
+    return today
   }
 
   if (pref === 'next_monday' || pref === 'monday') {

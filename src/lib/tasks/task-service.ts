@@ -202,8 +202,9 @@ export function transformToDashboardTask(dbTask: Task): DashboardTask {
  * - unscheduled: Tasks without a scheduled date
  */
 function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
+  // Get today's date (date-only, no time component)
   const now = new Date()
-  const todayStart = startOfDay(now)
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const tomorrowStart = addDays(todayStart, 1)
   const tomorrowEnd = endOfDay(tomorrowStart)
   const weekEnd = getEndOfWeek(now)
@@ -242,7 +243,9 @@ function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
       continue
     }
 
-    const taskDate = new Date(task.scheduledDate)
+    // Parse scheduledDate as date-only (ignore time component)
+    const taskDateObj = new Date(task.scheduledDate)
+    const taskDate = new Date(taskDateObj.getFullYear(), taskDateObj.getMonth(), taskDateObj.getDate())
     const taskDateStr = toISODateString(taskDate)
 
     // Check if task is overdue (before today and not completed/skipped)
