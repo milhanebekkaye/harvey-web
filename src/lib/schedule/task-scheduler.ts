@@ -183,16 +183,31 @@ export function addDays(date: Date, days: number): Date {
 
 /**
  * Create a full datetime from a date and decimal hours
+ * 
+ * Handles overnight times (hours >= 24) by adding days to the date.
+ * Example: date=Saturday, hours=26.0 → Sunday 02:00
  *
  * @param date - Date (day)
- * @param hours - Decimal hours (e.g., 9.5)
+ * @param hours - Decimal hours (e.g., 9.5, or 26.0 for 2 AM next day)
  * @returns Full datetime
  */
 function createDateTime(date: Date, hours: number): Date {
   const result = new Date(date)
-  const h = Math.floor(hours)
-  const m = Math.round((hours % 1) * 60)
-  result.setHours(h, m, 0, 0)
+  
+  // Handle overnight: hours >= 24 means next day
+  if (hours >= 24) {
+    const daysToAdd = Math.floor(hours / 24)
+    const remainingHours = hours % 24
+    const h = Math.floor(remainingHours)
+    const m = Math.round((remainingHours % 1) * 60)
+    result.setDate(result.getDate() + daysToAdd)
+    result.setHours(h, m, 0, 0)
+  } else {
+    const h = Math.floor(hours)
+    const m = Math.round((hours % 1) * 60)
+    result.setHours(h, m, 0, 0)
+  }
+  
   return result
 }
 
@@ -227,34 +242,18 @@ function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, Ti
     if (endHours < startHours) {
       console.log(`[TaskScheduler] Detected overnight slot: ${day} ${block.start}-${block.end}`)
       
-      // Split into two slots:
-      // 1. Current day from start to midnight (24:00)
+      // Keep as ONE continuous slot using hours > 24 to represent next day
+      // Example: 21:00-02:00 becomes startHours=21, endHours=26 (24 + 2)
+      const adjustedEndHours = 24.0 + endHours
+      
       availability.get(day)!.push({
         day,
         startHours: startHours,
-        endHours: 24.0,
-        label: block.label ? `${block.label} (Part 1)` : undefined,
+        endHours: adjustedEndHours,
+        label: block.label,
       })
 
-      console.log(`  → Split part 1: ${day} ${formatHoursToTime(startHours)}-24:00`)
-
-      // 2. Next day from midnight (00:00) to end
-      const dayIndex = dayToIndex.get(day) ?? 0
-      const nextDayIndex = (dayIndex + 1) % 7
-      const nextDay = dayNames[nextDayIndex]
-
-      if (!availability.has(nextDay)) {
-        availability.set(nextDay, [])
-      }
-
-      availability.get(nextDay)!.push({
-        day: nextDay,
-        startHours: 0.0,
-        endHours: endHours,
-        label: block.label ? `${block.label} (Part 2)` : undefined,
-      })
-
-      console.log(`  → Split part 2: ${nextDay} 00:00-${formatHoursToTime(endHours)}`)
+      console.log(`  → Overnight slot: ${day} ${formatHoursToTime(startHours)}-${formatHoursToTime(adjustedEndHours)} (continuous)`)
     } else {
       // Normal slot within same day
       availability.get(day)!.push({
@@ -296,45 +295,49 @@ export function calculateStartDate(
   const today = new Date(userNow)
   today.setHours(0, 0, 0, 0)
 
-  if (!preference) {
-    // Default: tomorrow or next Monday if today is Friday/weekend
-    const dayOfWeek = today.getDay()
-    if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
-      // Friday, Saturday, Sunday → next Monday
-      return getNextMonday(today)
-    }
-    // Otherwise tomorrow
-    return addDays(today, 1)
-  }
-
-  const pref = preference.toLowerCase()
-
-  if (pref === 'tomorrow') {
-    return addDays(today, 1)
-  }
+  // ALWAYS check preference first, even if undefined
+  const pref = preference?.toLowerCase() || ''
   
+  // Handle explicit preferences
   if (pref === 'today') {
+    console.log('[ScheduleGeneration] Start preference: TODAY')
     return today
   }
 
+  if (pref === 'tomorrow') {
+    console.log('[ScheduleGeneration] Start preference: TOMORROW')
+    return addDays(today, 1)
+  }
+
   if (pref === 'next_monday' || pref === 'monday') {
+    console.log('[ScheduleGeneration] Start preference: NEXT MONDAY')
     return getNextMonday(today)
   }
 
   // Try to parse as date string (YYYY-MM-DD)
-  const dateMatch = pref.match(/(\d{4})-(\d{2})-(\d{2})/)
-  if (dateMatch) {
-    const parsed = new Date(pref)
-    if (!isNaN(parsed.getTime())) {
-      parsed.setHours(0, 0, 0, 0)
-      // Don't schedule in the past
-      return parsed < today ? today : parsed
+  if (pref) {
+    const dateMatch = pref.match(/(\d{4})-(\d{2})-(\d{2})/)
+    if (dateMatch) {
+      const parsed = new Date(pref)
+      if (!isNaN(parsed.getTime())) {
+        parsed.setHours(0, 0, 0, 0)
+        // Don't schedule in the past
+        return parsed < today ? today : parsed
+      }
     }
   }
 
-  // Default: tomorrow
+  // Default: tomorrow or next Monday if today is Friday/weekend
+  console.log('[ScheduleGeneration] No preference specified, using default logic')
+  const dayOfWeek = today.getDay()
+  if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
+    // Friday, Saturday, Sunday → next Monday
+    return getNextMonday(today)
+  }
+  // Otherwise tomorrow
   return addDays(today, 1)
 }
+
 
 // ============================================
 // Main Scheduling Function

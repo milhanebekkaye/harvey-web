@@ -79,13 +79,19 @@ function getStatusBgClass(status: TaskStatus): string {
 
 /**
  * Format decimal hour to readable time string
+ * 
+ * Handles overnight times (hours >= 24) by wrapping to 0-23 range.
+ * Example: 26.0 (2 AM next day) displays as "2:00 AM"
  *
- * @param decimalHour - Hour as decimal (e.g., 9.5 for 9:30)
- * @returns Formatted time string (e.g., "9:30 AM")
+ * @param decimalHour - Hour as decimal (e.g., 9.5 for 9:30, 26.0 for 2:00 AM next day)
+ * @returns Formatted time string (e.g., "9:30 AM", "2:00 AM")
  */
 function formatTime(decimalHour: number): string {
-  const hours = Math.floor(decimalHour)
-  const minutes = Math.round((decimalHour - hours) * 60)
+  // Wrap hours >= 24 to 0-23 range for overnight tasks
+  const normalizedHour = decimalHour >= 24 ? decimalHour - 24 : decimalHour
+  
+  const hours = Math.floor(normalizedHour)
+  const minutes = Math.round((normalizedHour - hours) * 60)
   const period = hours >= 12 ? 'PM' : 'AM'
   const displayHour = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
   const displayMinutes = minutes.toString().padStart(2, '0')
