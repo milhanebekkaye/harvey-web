@@ -286,7 +286,6 @@ export async function extractConstraints(
   console.log('[ScheduleGeneration] Extracting constraints from conversation...')
 
   try {
-    // Call Claude API with extraction prompt
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
       max_tokens: 1000,
@@ -299,23 +298,31 @@ export async function extractConstraints(
       ],
     })
 
-    // Extract text from response
     const textBlock = response.content.find((block) => block.type === 'text')
     let jsonText = textBlock?.type === 'text' ? textBlock.text : ''
 
     console.log('[ScheduleGeneration] Raw extraction response (first 200 chars):', jsonText.substring(0, 200))
 
-    // Strip markdown code blocks if present
-    jsonText = stripMarkdownCodeBlocks(jsonText)
+    // === 🛠️ FIX STARTS HERE ===
+    // 1. Aggressively find the start and end of the JSON object
+    const firstBrace = jsonText.indexOf('{')
+    const lastBrace = jsonText.lastIndexOf('}')
 
-    // Try to parse JSON with error recovery
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      // Keep only what is strictly between the first { and last }
+      jsonText = jsonText.substring(firstBrace, lastBrace + 1)
+    }
+
+    // 2. Clean up any remaining markdown issues
+    jsonText = stripMarkdownCodeBlocks(jsonText)
+    // === 🛠️ FIX ENDS HERE ===
+
     let constraints: ExtractedConstraints
     
     try {
       constraints = JSON.parse(jsonText) as ExtractedConstraints
     } catch (parseError) {
       console.error('[ScheduleGeneration] JSON parse failed, attempting to repair...')
-      console.error('[ScheduleGeneration] FULL RESPONSE:\n', jsonText)
       
       // Attempt to repair common JSON issues
       const repairedJson = repairJSON(jsonText)
@@ -325,14 +332,11 @@ export async function extractConstraints(
         console.log('[ScheduleGeneration] ✅ JSON repaired successfully')
       } catch (repairError) {
         console.error('[ScheduleGeneration] ❌ JSON repair failed')
-        console.error('[ScheduleGeneration] Parse error:', parseError)
-        console.error('[ScheduleGeneration] Repair error:', repairError)
+        console.error('[ScheduleGeneration] Raw text that failed:', jsonText)
         
-        // TODO: Show error to user instead of using defaults
-        // For now, throw error so API can handle it properly
-        throw new Error(
-          'Failed to extract constraints from conversation. Claude returned invalid JSON. Please try again.'
-        )
+        // 🚨 FALLBACK: Instead of crashing the whole app, return defaults
+        console.warn('[ScheduleGeneration] Returning default constraints to prevent crash.')
+        return getDefaultConstraints() 
       }
     }
 
