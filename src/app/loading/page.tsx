@@ -64,7 +64,7 @@ function LoadingContent() {
     console.log('[LoadingPage] Starting schedule generation for project:', projectId)
 
     try {
-      const response = await fetch('/api/generate-schedule', {
+      const response = await fetch('/api/schedule/generate-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId }),

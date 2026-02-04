@@ -76,33 +76,48 @@ export function ChatSidebar({
   /**
    * Handle the Rebuild Action
    */
+  // ... inside src/components/dashboard/ChatSidebar.tsx
   const handleRebuild = async () => {
     if (!projectId) return
 
     setIsRebuilding(true)
     try {
-      console.log('[Sidebar] Attempting to rebuild for project:', projectId) // Log 1
+      console.log('[Sidebar] Attempting to rebuild for project:', projectId)
 
-      const response = await fetch('/api/schedule/reset', {
+      const response = await fetch('/api/schedule/reset-schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId }),
       })
 
-      // If server returns 400/404/500, read the JSON body
+      // Check if response is NOT ok
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }))
-        console.error('[Sidebar] Server responded with error:', errorData) // Log 2
-        throw new Error(errorData.error || `Server Error: ${response.status}`)
+        // Try to read as text first to avoid JSON parse errors on 404/500 pages
+        const rawText = await response.text()
+        console.error('[Sidebar] Raw Server Error:', rawText)
+        
+        let errorMessage = `Server Error: ${response.status} ${response.statusText}`
+        
+        // If it looks like JSON, try to parse it for a better message
+        try {
+            const json = JSON.parse(rawText)
+            if (json.error) errorMessage = json.error
+        } catch {
+            // Not JSON, stick with the status text
+        }
+        
+        throw new Error(errorMessage)
       }
 
       console.log('[Sidebar] Rebuild successful, redirecting...')
+      
+      // Redirect with projectId
       router.push(`/loading?projectId=${projectId}`)
+      
     } catch (error) {
-      console.error('[Sidebar] Rebuild Catch Block:', error) // Log 3
+      console.error('[Sidebar] Rebuild failed:', error)
       setIsRebuilding(false)
       setShowRebuildModal(false)
-      // Show the actual error to you in an alert so you don't need to check console
       alert(`Failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }

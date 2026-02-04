@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     await prisma.project.update({
       where: { id: projectId },
       data: {
-        contextData: constraints as unknown as Record<string, unknown>,
+        contextData: constraints as any,
         updatedAt: new Date(),
       },
     })
