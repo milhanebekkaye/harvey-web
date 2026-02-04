@@ -278,8 +278,17 @@ function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
     (section) => section.tasks.length > 0
   )
 
-  // Sort each group by start time
-  const sortByTime = (a: DashboardTask, b: DashboardTask) => a.startTime - b.startTime
+  // Sort by start time, treating early morning (0-6am) as "overnight continuation"
+  // that should come AFTER evening tasks (18:00-23:59)
+  const sortByTime = (a: DashboardTask, b: DashboardTask) => {
+    // Adjust times for overnight sorting:
+    // Tasks starting 0:00-6:00 are treated as if they start at 24:00-30:00
+    // This ensures they sort AFTER tasks starting 18:00-23:59
+    const adjustedA = a.startTime < 6 ? a.startTime + 24 : a.startTime
+    const adjustedB = b.startTime < 6 ? b.startTime + 24 : b.startTime
+    
+    return adjustedA - adjustedB
+  }
 
   // Sort overdue by date (oldest first), then by time
   groups.overdue.sort((a, b) => {
