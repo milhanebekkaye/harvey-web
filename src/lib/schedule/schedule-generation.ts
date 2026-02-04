@@ -303,13 +303,38 @@ export async function extractConstraints(
     const textBlock = response.content.find((block) => block.type === 'text')
     let jsonText = textBlock?.type === 'text' ? textBlock.text : ''
 
-    console.log('[ScheduleGeneration] Raw extraction response:', jsonText.substring(0, 200))
+    console.log('[ScheduleGeneration] Raw extraction response (first 200 chars):', jsonText.substring(0, 200))
 
     // Strip markdown code blocks if present
     jsonText = stripMarkdownCodeBlocks(jsonText)
 
-    // Parse JSON
-    const constraints = JSON.parse(jsonText) as ExtractedConstraints
+    // Try to parse JSON with error recovery
+    let constraints: ExtractedConstraints
+    
+    try {
+      constraints = JSON.parse(jsonText) as ExtractedConstraints
+    } catch (parseError) {
+      console.error('[ScheduleGeneration] JSON parse failed, attempting to repair...')
+      console.error('[ScheduleGeneration] FULL RESPONSE:\n', jsonText)
+      
+      // Attempt to repair common JSON issues
+      const repairedJson = repairJSON(jsonText)
+      
+      try {
+        constraints = JSON.parse(repairedJson) as ExtractedConstraints
+        console.log('[ScheduleGeneration] ✅ JSON repaired successfully')
+      } catch (repairError) {
+        console.error('[ScheduleGeneration] ❌ JSON repair failed')
+        console.error('[ScheduleGeneration] Parse error:', parseError)
+        console.error('[ScheduleGeneration] Repair error:', repairError)
+        
+        // TODO: Show error to user instead of using defaults
+        // For now, throw error so API can handle it properly
+        throw new Error(
+          'Failed to extract constraints from conversation. Claude returned invalid JSON. Please try again.'
+        )
+      }
+    }
 
     console.log(
       '[ScheduleGeneration] Extracted constraints:',
@@ -322,11 +347,60 @@ export async function extractConstraints(
     return constraints
   } catch (error) {
     console.error('[ScheduleGeneration] Error extracting constraints:', error)
-
-    // Return default constraints on failure
-    console.log('[ScheduleGeneration] Using default constraints')
-    return getDefaultConstraints()
+    
+    // TODO: Don't use defaults - show error to user and let them retry
+    // For now, throw the error up to the API handler
+    throw error
   }
+}
+
+/**
+ * Attempt to repair common JSON errors
+ * 
+ * Fixes:
+ * - Unescaped newlines in strings
+ * - Unescaped quotes in strings  
+ * - Trailing commas before closing braces/brackets
+ * - Missing closing braces/brackets
+ * 
+ * @param jsonText - Potentially broken JSON string
+ * @returns Repaired JSON string
+ */
+function repairJSON(jsonText: string): string {
+  let repaired = jsonText.trim()
+  
+  // Fix 1: Remove trailing commas before closing braces/brackets
+  repaired = repaired.replace(/,(\s*[}\]])/g, '$1')
+  
+  // Fix 2: Try to close unclosed strings by finding unescaped quotes
+  // This is a heuristic - look for lines ending with quote + comma but no closing quote
+  const lines = repaired.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    // If line has opening quote but ends with comma (not closing quote)
+    if (line.includes('": "') && line.trim().endsWith(',') && !line.trim().endsWith('",')) {
+      lines[i] = line.replace(/,\s*$/, '",')
+    }
+  }
+  repaired = lines.join('\n')
+  
+  // Fix 3: Ensure proper closing of object/array
+  const openBraces = (repaired.match(/{/g) || []).length
+  const closeBraces = (repaired.match(/}/g) || []).length
+  const openBrackets = (repaired.match(/\[/g) || []).length
+  const closeBrackets = (repaired.match(/\]/g) || []).length
+  
+  // Add missing closing braces
+  if (openBraces > closeBraces) {
+    repaired += '\n' + '}'.repeat(openBraces - closeBraces)
+  }
+  
+  // Add missing closing brackets
+  if (openBrackets > closeBrackets) {
+    repaired += ']'.repeat(openBrackets - closeBrackets)
+  }
+  
+  return repaired
 }
 
 /**

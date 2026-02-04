@@ -728,3 +728,21 @@ export async function updateTaskStatus(
 ): Promise<TaskServiceResponse<Task>> {
   return updateTask(taskId, userId, { status })
 }
+
+
+/**
+ * Delete all tasks for a specific project (Hard Reset)
+ */
+export async function deleteAllTasksForProject(projectId: string) {
+  try {
+    const result = await prisma.task.deleteMany({
+      where: {
+        projectId: projectId
+      }
+    })
+    return { success: true, count: result.count }
+  } catch (error) {
+    console.error('Error deleting project tasks:', error)
+    return { success: false, error }
+  }
+}

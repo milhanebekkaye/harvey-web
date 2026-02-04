@@ -158,7 +158,19 @@ export async function POST(request: NextRequest) {
     // ===== STEP 5: Extract Constraints =====
     console.log('[GenerateScheduleAPI] Step 5: 🔍 Extracting constraints from conversation...')
 
-    const constraints = await extractConstraints(conversationText)
+    let constraints: ExtractedConstraints
+    try {
+      constraints = await extractConstraints(conversationText)
+    } catch (constraintError) {
+      console.error('[GenerateScheduleAPI] ❌ Failed to extract constraints:', constraintError)
+      return NextResponse.json(
+        {
+          error: 'Failed to analyze your conversation. Please try generating your schedule again.',
+          details: constraintError instanceof Error ? constraintError.message : 'Unknown error',
+        },
+        { status: 500 }
+      )
+    }
 
     console.log('[GenerateScheduleAPI] ✅ Extracted constraints:', JSON.stringify(constraints, null, 2))
 

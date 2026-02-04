@@ -424,6 +424,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
       <ChatSidebar
         messages={messages}
         projectTitle={projectTitle}
+        projectId={projectId}
         isLoading={isLoadingMessages}
         onSignOut={handleSignOut}
       />
