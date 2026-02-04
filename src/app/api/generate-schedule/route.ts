@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== STEP 10: Create Task Records in Database =====
-    console.log('[GenerateScheduleAPI] Step 10: Creating task records')
+    console.log('[GenerateScheduleAPI] Step 10: Creating task records from scheduled assignments')
 
     // Map priority string to integer (high=1, medium=3, low=5)
     const priorityMap: Record<string, number> = {
@@ -241,45 +241,63 @@ export async function POST(request: NextRequest) {
       low: 5,
     }
 
-    // Prepare task records with scheduled dates from the algorithm
-    const taskRecords = tasks.map((task, index) => {
-      // Get scheduled date/time for this task (first block if split)
-      const scheduleData = getTaskScheduleData(index, scheduleResult.scheduledTasks)
-
+    /**
+     * CRITICAL FIX: Create ONE Task record per ScheduledTaskAssignment
+     * 
+     * Previously, we created one Task per original task, which meant split tasks
+     * only appeared on the first day. Now we create a separate Task record for
+     * each scheduled block, so split tasks appear on multiple days.
+     * 
+     * For split tasks:
+     * - Part 1: Gets "(Part 1)" appended to title
+     * - Part 2: Gets "(Part 2)" appended to title
+     * - All parts share the same description, success criteria, priority
+     * - Each part has its own scheduledDate, startTime, endTime
+     */
+    const taskRecords = scheduleResult.scheduledTasks.map((scheduledTask) => {
+      // Get the original task data
+      const originalTask = tasks[scheduledTask.taskIndex]
+      
+      // Build the title - append part number if task was split
+      let taskTitle = originalTask.title
+      if (scheduledTask.partNumber !== undefined) {
+        taskTitle = `${originalTask.title} (Part ${scheduledTask.partNumber})`
+      }
+      
+      // Convert hours assigned to this block into minutes
+      const durationMinutes = Math.round(scheduledTask.hoursAssigned * 60)
+      
       return {
         userId: user.id,
         projectId: projectId,
-        title: task.title,
-        description: task.description,
-        successCriteria: convertSuccessCriteriaToJson(task.success),
-        estimatedDuration: Math.round(task.hours * 60), // Convert hours to minutes
-        priority: priorityMap[task.priority] || 3,
+        title: taskTitle,
+        description: originalTask.description,
+        successCriteria: convertSuccessCriteriaToJson(originalTask.success),
+        estimatedDuration: durationMinutes, // Duration of THIS part, not the whole task
+        priority: priorityMap[originalTask.priority] || 3,
         type: 'project',
         status: 'pending',
-        // Assigned from scheduling algorithm
-        scheduledDate: scheduleData?.scheduledDate || null,
-        scheduledStartTime: scheduleData?.scheduledStartTime || null,
-        scheduledEndTime: scheduleData?.scheduledEndTime || null,
+        // CRITICAL: Use the scheduled date/time from THIS specific block
+        scheduledDate: scheduledTask.date,
+        scheduledStartTime: scheduledTask.startTime,
+        scheduledEndTime: scheduledTask.endTime,
       }
     })
 
     // Log scheduled tasks for debugging
-    console.log('\n[GenerateScheduleAPI] 📅 SCHEDULED TASKS:')
+    console.log('\n[GenerateScheduleAPI] 📅 TASK RECORDS TO CREATE:')
     taskRecords.forEach((record, index) => {
-      if (record.scheduledDate) {
-        const date = record.scheduledDate.toISOString().split('T')[0]
-        const start = record.scheduledStartTime?.toTimeString().substring(0, 5) || '??:??'
-        const end = record.scheduledEndTime?.toTimeString().substring(0, 5) || '??:??'
-        console.log(`  Task ${index + 1}: ${date} ${start}-${end} - ${record.title}`)
-      } else {
-        console.log(`  Task ${index + 1}: UNSCHEDULED - ${record.title}`)
-      }
+      const date = record.scheduledDate.toISOString().split('T')[0]
+      const start = record.scheduledStartTime.toTimeString().substring(0, 5)
+      const end = record.scheduledEndTime.toTimeString().substring(0, 5)
+      const duration = `${(record.estimatedDuration / 60).toFixed(1)}h`
+      console.log(`  ${index + 1}. ${date} ${start}-${end} (${duration}) - ${record.title}`)
     })
 
-    // Bulk create tasks
+    // Bulk create all task records (including split parts)
     await prisma.task.createMany({ data: taskRecords })
 
-    console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database`)
+    console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database (including split parts)`)
 
     // ===== STEP 11: Return Success Response =====
     console.log('[GenerateScheduleAPI] Step 11: Preparing response')
