@@ -1,0 +1,61 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 2608 >>
+stream
+BT /F2 16 Tf 1 0 0 1 48 740 Tm (Harvey Web - App Summary) Tj ET
+BT /F2 13 Tf 1 0 0 1 48 716 Tm (What it is) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 702 Tm (Harvey Web is a Next.js \(App Router\) + TypeScript web app for AI-assisted project and task) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 690 Tm (planning, scheduling, and discussions. It combines a dashboard UI with API routes and) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 678 Tm (service layers backed by Prisma, Supabase auth, and Anthropic Claude.) Tj ET
+BT /F2 13 Tf 1 0 0 1 48 658 Tm (Who it is for) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 644 Tm (Not found in repo. Inferred from features: people managing projects and tasks who want AI-) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 632 Tm (assisted planning and scheduling in a web dashboard.) Tj ET
+BT /F2 13 Tf 1 0 0 1 48 612 Tm (What it does) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 598 Tm (- Provides onboarding and sign-in flows via Supabase auth.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 586 Tm (- Offers a dashboard with calendar, timeline, and task detail views.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 574 Tm (- Includes an AI chat sidebar and chat API endpoint for assistance.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 562 Tm (- Generates and resets schedules through schedule APIs and scheduling logic.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 550 Tm (- Supports task CRUD operations and per-task checklist items.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 538 Tm (- Manages project discussions linked to specific projects.) Tj ET
+BT /F2 13 Tf 1 0 0 1 48 518 Tm (How it works \(architecture\)) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 504 Tm (- UI: Next.js App Router pages and feature components \(dashboard, onboarding, auth\).) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 492 Tm (- API: Route handlers under src/app/api for chat, tasks, discussions, and scheduling.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 480 Tm (- Services: src/lib modules for AI \(claude-client\), scheduling, tasks, projects, and auth.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 468 Tm (- Data/Auth/AI: Prisma client to Postgres, Supabase for auth, Anthropic Claude via SDK.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 456 Tm (- Typical flow: UI -> API route -> service layer -> Prisma DB and external services.) Tj ET
+BT /F2 13 Tf 1 0 0 1 48 436 Tm (How to run \(minimal\)) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 422 Tm (- Create .env.local from .env.example and fill in DATABASE_URL, Supabase keys, and) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 410 Tm (ANTHROPIC_API_KEY.) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 398 Tm (- Install dependencies \(npm install\).) Tj ET
+BT /F1 10.5 Tf 1 0 0 1 48 386 Tm (- Start the dev server \(npm run dev\) and open http://localhost:3000.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000002911 00000 n 
+0000002981 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3056
+%%EOF
