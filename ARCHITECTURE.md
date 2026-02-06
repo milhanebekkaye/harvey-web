@@ -24,6 +24,7 @@ Root of the repository:
 - **`postcss.config.mjs`**: PostCSS configuration (used by Tailwind and other CSS tooling).
 - **`prisma.config.ts`**: Central Prisma configuration, typically wiring Prisma to the schema and runtime environment.
 - **`public/`**: Static assets served directly by Next.js (images, SVGs, etc.).
+- **`docs/`**: Documentation of the project (how work files, features, etc.).
 - **`README.md`**: Generic Next.js README from `create-next-app`. For detailed internals, prefer this `ARCHITECTURE.md`.
 - **`src/`**: All application source code (Next.js app, components, domain logic, types).
 - **`prisma/`**: Prisma schema and database migrations for this project.

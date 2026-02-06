@@ -50,6 +50,22 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-05 – Add feature docs for auth, onboarding, dashboard
+
+- **Agent / context**: Codex – documentation request for additional features.
+- **Summary**:
+  - Added feature documentation under `docs/` for auth, onboarding, and dashboard flows.
+  - Updated `ARCHITECTURE.md` to reference the new documentation folder.
+- **Files touched**:
+  - `docs/task-generation/README.md`
+  - `docs/auth/README.md`
+  - `docs/onboarding/README.md`
+  - `docs/dashboard/README.md`
+  - `ARCHITECTURE.md`
+- **Motivation**: Provide clear, repo-grounded feature explanations for other agents and humans.
+- **Risks / notes**: Documentation-only change; no runtime behavior changed.
+- **Related docs**: `ARCHITECTURE.md` (Top-level structure), `docs/` (feature docs).
+
 ### 2026-02-05 – Initialize architecture and AI agent changelog docs
 
 - **Agent / context**: Cursor AI assistant – initial documentation setup request.
@@ -61,4 +77,3 @@ You don’t need to paste large code snippets here—this file is about **narrat
   - `AI_AGENT_CHANGELOG.md`
 - **Motivation**: Provide a clear, central reference for how the codebase is organized and a dedicated log for AI-made changes to aid debugging and future maintenance.
 - **Related docs**: `ARCHITECTURE.md` (entire document).
-
