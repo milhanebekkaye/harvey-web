@@ -243,6 +243,12 @@ export interface ParsedTask {
    * Task label (optional)
    */
   label?: string
+
+  /**
+   * 1-based indices of tasks this task depends on (e.g. [1, 3] = depends on first and third task in list).
+   * Resolved to task IDs when persisting.
+   */
+  depends_on?: number[]
 }
 
 /**

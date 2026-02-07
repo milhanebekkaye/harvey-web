@@ -51,16 +51,15 @@ Reset flow:
 - `getDefaultConstraints()`
   - Returns a 2-week default constraint set with weekday evenings and full weekend availability.
 - `extractConstraints(conversationText)`
-  - Calls Claude with `EXTRACTION_SYSTEM_PROMPT`, aggressively isolates JSON, attempts repair, and returns `ExtractedConstraints`.
-  - On parsing failure after repair, returns defaults.
+  - Calls Claude with `EXTRACTION_SYSTEM_PROMPT` (max_tokens 4096 to avoid truncation). Strips markdown; if the response does not look truncated, isolates JSON with first `{` to last `}`; then parses or repairs and returns `ExtractedConstraints`. On parsing failure after repair, returns defaults.
 - `repairJSON(jsonText)`
-  - Heuristic cleanup for Claude JSON issues: removes trailing commas, fixes some unclosed strings, closes braces/brackets.
+  - Heuristic cleanup for Claude JSON: removes trailing commas, closes truncated final string value if needed, then adds missing `]` before `}` (brackets before braces) so user constraints are preferred over defaults when output is cut off.
 - `generateTasks(conversationText, constraints)`
   - Calculates available hours, builds the task generation prompt, calls Claude, and returns raw task text.
 - `parseTasks(claudeResponse)`
   - Splits response into task blocks, extracts milestones, and returns `{ tasks, milestones }`.
 - `parseTaskBlock(block)`
-  - Parses one task block into `ParsedTask` fields: title, description, success, hours, priority.
+  - Parses one task block into `ParsedTask` fields: title, description, success, hours, priority, label, depends_on (optional 1-based indices).
 - `convertSuccessCriteriaToJson(successString)`
   - Converts a bullet list string into `{ id, text, done }[]` for database storage.
 
@@ -83,7 +82,7 @@ Reset flow:
   - Chooses start date using `preferences.start_preference` and user timezone.
   - Defaults to tomorrow, or next Monday if today is Fri/Sat/Sun.
 - `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)`
-  - Core scheduling loop. Sorts tasks by priority, then fills available slots day by day.
+  - Core scheduling loop. First orders tasks by dependencies (topological sort), then by priority, then fills available slots day by day.
   - Splits tasks when they do not fit in a slot; minimum split block is 1 hour; ignores slots under 30 minutes remaining.
   - Returns scheduled tasks and unscheduled task indices with totals.
 - `getTaskScheduleData(taskIndex, scheduledTasks)`
@@ -104,7 +103,16 @@ Reset flow:
 - `Project.contextData` stores extracted constraints JSON.
 - `Discussion.messages` stores the onboarding conversation (`StoredMessage[]`).
 - `Task` stores generated tasks and scheduling times (`scheduledDate`, `scheduledStartTime`, `scheduledEndTime`).
+- `Task.depends_on` is a string array of task IDs this task depends on; used for ordering and cascade skip.
 - `Task.label` stores the AI-assigned label used for task badge color.
+
+## Task Dependencies
+Tasks can declare dependencies on other tasks so Harvey knows e.g. that "Build authentication" must come after "Set up database."
+
+- **Storage**: `Task.depends_on` is a `String[]` of task IDs this task depends on.
+- **Generation**: Claude may output an optional line per task: `DEPENDS_ON: 1, 3` (1-based indices of tasks in the generated list). The parser fills `ParsedTask.depends_on`; the scheduler orders tasks by dependency (topological sort) then priority; when creating DB tasks, dependency indices are resolved to task IDs and saved on each task.
+- **Rescheduling**: The scheduler never schedules a task before its dependencies. When the user resets and regenerates, the new schedule respects dependencies.
+- **Skip behavior**: When a task is set to **skipped**, the task service finds all tasks whose `depends_on` includes that task’s ID and sets them to **skipped** (cascade). The PATCH `/api/tasks/[taskId]` response may include `downstreamSkippedIds` so the client can show e.g. “You skipped ‘Set up database.’ ‘Build authentication’ depends on it, so it was skipped too.”
 
 ## Task Labels
 Each generated task includes a `label` assigned by Claude during schedule generation. Labels are stored on `Task.label` and surfaced in the dashboard as a colored pill on task cards and in the calendar modal header.

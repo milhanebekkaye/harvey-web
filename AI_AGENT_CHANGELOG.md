@@ -34,7 +34,7 @@ When adding a new entry, follow this structure:
 ```markdown
 ### YYYY-MM-DD – Short, descriptive title
 
-- **Agent / context**: (e.g. “Cursor AI assistant”, brief description of the request or task)
+- **Agent / context**: (e.g. “Cursor AI assistant”, “Model Used”, brief description of the request or task)
 - **Summary**: 1–3 bullet points of what changed at a high level.
 - **Files touched**: Key files or directories, not every single file if many were affected.
 - **Motivation**: Why this change was made (bug fix, feature request, refactor, performance, etc.).
@@ -49,6 +49,63 @@ You don’t need to paste large code snippets here—this file is about **narrat
 ## Change log
 
 *(Most recent entries go at the top of this section.)*
+
+### 2026-02-07 – Early project title & description extraction during onboarding
+
+- **Agent / context**: Cursor AI – Quick win: extract and store project_title and project_description from onboarding conversation as soon as they are available.
+- **Summary**:
+  - Added `extractProjectInfo()` in `src/lib/ai/project-extraction.ts` — lightweight Claude call to extract project_title and project_description from conversation text (same pattern as constraint extraction).
+  - Chat route `onFinish` (onboarding context): after saving messages, if project has default title or no description, runs extraction and updates Project via `updateProject()`.
+  - Extended onboarding prompt with brief note that we extract project_title and project_description.
+- **Files touched**: `src/lib/ai/project-extraction.ts` (new), `src/app/api/chat/route.ts`, `src/lib/ai/prompts.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`
+- **Motivation**: Low-effort, high-leverage setup. Gives Harvey stronger context immediately, improves future conversations (post-onboarding chat, schedule regeneration), avoids backfill/migration later.
+- **Risks / notes**: Extraction runs once per message until title and description are populated. No schema change — Project model already has title and description. Extraction failures are logged but do not block chat.
+- **Related docs**: `ARCHITECTURE.md` (`src/lib/ai/`, `src/app/api/chat/`), `docs/onboarding/README.md` (Early Project Info Extraction section).
+
+### 2026-02-07 – Schedule constraint extraction: use user constraints instead of defaults
+
+- **Agent / context**: Cursor AI – fix schedule generation ignoring user constraints and falling back to defaults when constraint JSON was truncated or repair failed.
+- **Summary**:
+  - Constraint extraction was truncated at 1000 tokens; repair added `}` before `]` and did not close truncated string values, so parse and repair both failed and the app returned default constraints.
+  - Increased extraction `max_tokens` to 4096 so full constraint JSON (long blocked/available lists) is usually returned.
+  - In `repairJSON`, close brackets before braces (innermost first), and add a closing `"` when the end of the text looks like a truncated string value, so truncated responses still parse.
+  - When the response looks truncated (does not end with `}\s*` or `]\s*}\s*`), skip the “first `{` to last `}`” slice and pass the full text into repair so missing `"]}` can be added.
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`
+- **Motivation**: Schedules must respect the user’s blocked/available time and schedule duration; avoid silent fallback to defaults.
+- **Related docs**: `docs/task-generation/README.md`, `ARCHITECTURE.md` (`src/lib/schedule/`).
+
+### 2026-02-07 – Validate depends_on: never store dependency on a future task
+
+- **Agent / context**: Cursor AI – fix rare bug where a task could have depends_on containing a task scheduled after it.
+- **Summary**:
+  - When resolving depends_on, we now only persist dependency IDs whose scheduled time is ≤ this task’s scheduled time. Any dependency scheduled after this task is dropped and a WARNING is logged (task titles, ids, dates).
+  - In the scheduler, when topological sort leaves remaining nodes (cycle or invalid ref), we now log a WARNING before appending them so we can spot bad dependency graphs.
+- **Files touched**: `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/schedule/task-scheduler.ts`
+- **Motivation**: Ensure we never store “task depends on future task”; make the cause visible in logs when it would have happened.
+- **Related docs**: Same as Task dependencies entry below.
+
+### 2026-02-07 – Task dependencies (depends_on) and cascade skip
+
+- **Agent / context**: Cursor AI – Quick win: tasks can declare dependencies on other tasks; Harvey respects them during scheduling and cascade-skips downstream when a task is skipped.
+- **Summary**:
+  - **Schema**: Replaced `Task.dependencies` (Json) with `Task.depends_on` (String[]), an array of task IDs. Migration `20260207120000_add_task_depends_on` drops `dependencies` and adds `depends_on`.
+  - **Schedule generation**: Claude outputs optional `DEPENDS_ON: 1, 3` (1-based task indices) per task. Parser fills `ParsedTask.depends_on`. Scheduler orders tasks by dependency (topological sort) then priority. When creating DB tasks, dependencies are resolved to task IDs and persisted on each task.
+  - **Skip behavior**: When a task is set to `skipped`, the task service finds all tasks whose `depends_on` includes that task ID and sets them to `skipped` (cascade). PATCH `/api/tasks/[taskId]` response can include `downstreamSkippedIds` so the client can show e.g. “Build authentication was also skipped because it depended on this task.”
+  - **Types**: `ParsedTask.depends_on` (optional number[]), `DashboardTask.dependsOn` (optional string[]). New helper `getDownstreamDependentTaskIds()` in task-service.
+- **Files touched**:
+  - `src/prisma/schema.prisma` – Task.depends_on
+  - `src/prisma/migrations/20260207120000_add_task_depends_on/migration.sql`
+  - `src/types/api.types.ts` – ParsedTask.depends_on
+  - `src/types/task.types.ts` – DashboardTask.dependsOn
+  - `src/lib/schedule/schedule-generation.ts` – prompt DEPENDS_ON, parseTaskBlock
+  - `src/lib/schedule/task-scheduler.ts` – sortIndicesByDependencies, use in assignTasksToSchedule
+  - `src/app/api/schedule/generate-schedule/route.ts` – create tasks one-by-one, resolve and set depends_on
+  - `src/lib/tasks/task-service.ts` – getDownstreamDependentTaskIds, cascade skip in updateTask, transformToDashboardTask
+  - `src/app/api/tasks/[taskId]/route.ts` – return downstreamSkippedIds in response
+  - `docs/task-generation/README.md`, `ARCHITECTURE.md`
+- **Motivation**: So Harvey knows that e.g. “Build authentication” must come after “Set up database,” and when the user skips the latter, Harvey can skip or move the former and explain why.
+- **Risks / notes**: Run `npx prisma generate` and apply migration. Existing tasks have no `depends_on` (empty array). Rescheduling (reset then regenerate) will populate dependencies for new schedules.
+- **Related docs**: `ARCHITECTURE.md` (Task model, schedule generation, task-service), `docs/task-generation/README.md` (Task Dependencies section).
 
 ### 2026-02-07 – Fix task labels bug and clean up workarounds
 

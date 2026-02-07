@@ -186,6 +186,7 @@ export function transformToDashboardTask(dbTask: Task): DashboardTask {
     estimatedMinutes: dbTask.estimatedDuration,
     scheduledDate: dbTask.scheduledDate?.toISOString(),
     projectId: dbTask.projectId || undefined,
+    dependsOn: Array.isArray(dbTask.depends_on) ? [...dbTask.depends_on] : undefined,
   }
 }
 
@@ -619,22 +620,46 @@ export async function updateTaskChecklist(
 }
 
 /**
+ * Find all task IDs that depend on the given task (downstream dependents).
+ * Used when skipping a task so Harvey can cascade skip or inform the user.
+ *
+ * @param taskId - Task UUID that was skipped
+ * @param userId - User ID for ownership
+ * @returns Array of task IDs that have taskId in their depends_on
+ */
+export async function getDownstreamDependentTaskIds(
+  taskId: string,
+  userId: string
+): Promise<string[]> {
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId,
+      depends_on: { has: taskId },
+      status: { not: 'skipped' },
+    },
+    select: { id: true },
+  })
+  return tasks.map((t) => t.id)
+}
+
+/**
  * Update a task
  *
  * Updates task fields like title, description, status.
  * Validates ownership before updating.
  * Automatically sets completedAt/skippedAt when status changes.
+ * When status is set to 'skipped', downstream tasks (that depend on this task) are also skipped.
  *
  * @param taskId - Task UUID
  * @param userId - User ID for ownership validation
  * @param data - Fields to update
- * @returns Updated task or error
+ * @returns Updated task or error; when skipping, downstream task IDs are in data.downstreamSkippedIds (for API to inform user)
  */
 export async function updateTask(
   taskId: string,
   userId: string,
   data: UpdateTaskData
-): Promise<TaskServiceResponse<Task>> {
+): Promise<TaskServiceResponse<Task & { downstreamSkippedIds?: string[] }>> {
   try {
     console.log('[TaskService] Updating task:', taskId, data)
 
@@ -693,11 +718,30 @@ export async function updateTask(
       data: updateData,
     })
 
+    // Cascade skip: when a task is skipped, skip all tasks that depend on it
+    let downstreamSkippedIds: string[] = []
+    if (data.status === 'skipped') {
+      const dependentIds = await getDownstreamDependentTaskIds(taskId, userId)
+      if (dependentIds.length > 0) {
+        await prisma.task.updateMany({
+          where: { id: { in: dependentIds }, userId },
+          data: {
+            status: 'skipped',
+            skippedAt: new Date(),
+            completedAt: null,
+            updatedAt: new Date(),
+          },
+        })
+        downstreamSkippedIds = dependentIds
+        console.log('[TaskService] Cascaded skip to downstream tasks:', dependentIds)
+      }
+    }
+
     console.log('[TaskService] Task updated successfully')
 
     return {
       success: true,
-      data: task,
+      data: { ...task, downstreamSkippedIds },
     }
   } catch (error: unknown) {
     console.error('[TaskService] Error updating task:', error)

@@ -21,6 +21,7 @@
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import type { Task } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { updateTask, transformToDashboardTask } from '@/lib/tasks/task-service'
 import type { DashboardTask } from '@/types/task.types'
@@ -40,6 +41,8 @@ interface UpdateTaskRequest {
 interface UpdateTaskResponse {
   success: boolean
   task: DashboardTask
+  /** When task was set to skipped, IDs of tasks that were cascade-skipped (depend on this task). */
+  downstreamSkippedIds?: string[]
 }
 
 export async function PATCH(
@@ -119,17 +122,22 @@ export async function PATCH(
     // ===== STEP 4: Transform and Return =====
     console.log('[TaskUpdateAPI] Step 4: Preparing response')
 
-    const dashboardTask = transformToDashboardTask(result.data)
+    const taskData = result.data as Task & { downstreamSkippedIds?: string[] }
+    const dashboardTask = transformToDashboardTask(taskData)
 
     console.log('[TaskUpdateAPI] Task updated successfully:', {
       id: dashboardTask.id,
       status: dashboardTask.status,
+      downstreamSkippedIds: taskData.downstreamSkippedIds?.length,
     })
     console.log('[TaskUpdateAPI] ========== Update complete ==========')
 
     const response: UpdateTaskResponse = {
       success: true,
       task: dashboardTask,
+      ...(taskData.downstreamSkippedIds?.length
+        ? { downstreamSkippedIds: taskData.downstreamSkippedIds }
+        : {}),
     }
 
     return NextResponse.json(response, { status: 200 })

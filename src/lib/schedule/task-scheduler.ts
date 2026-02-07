@@ -340,6 +340,65 @@ export function calculateStartDate(
 
 
 // ============================================
+// Dependency ordering
+// ============================================
+
+/**
+ * Returns task indices in dependency-respecting order (topological sort).
+ * Tasks with depends_on (1-based indices) are scheduled after their dependencies.
+ * If there is a cycle or invalid ref, falls back to original order for affected nodes.
+ *
+ * @param tasks - Parsed tasks with optional depends_on (1-based)
+ * @returns Indices order that respects dependencies
+ */
+function sortIndicesByDependencies(tasks: ParsedTask[]): number[] {
+  const n = tasks.length
+  const indices = tasks.map((_, i) => i)
+
+  // dependents[i] = list of task indices j that depend on task i (i.e. tasks[j].depends_on contains i+1)
+  const dependents: number[][] = Array.from({ length: n }, () => [])
+  const inDegree = new Array(n).fill(0)
+
+  for (let j = 0; j < n; j++) {
+    const deps = tasks[j].depends_on || []
+    for (const oneBased of deps) {
+      const i = oneBased - 1
+      if (i >= 0 && i < n && i !== j) {
+        dependents[i].push(j)
+        inDegree[j]++
+      }
+    }
+  }
+
+  const queue: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (inDegree[i] === 0) queue.push(i)
+  }
+
+  const order: number[] = []
+  while (queue.length > 0) {
+    const i = queue.shift()!
+    order.push(i)
+    for (const j of dependents[i]) {
+      inDegree[j]--
+      if (inDegree[j] === 0) queue.push(j)
+    }
+  }
+
+  // If cycle or missing refs, append any remaining indices in original order
+  const seen = new Set(order)
+  const remaining = indices.filter((i) => !seen.has(i))
+  if (remaining.length > 0) {
+    console.warn(
+      `[TaskScheduler] ⚠️ Dependency order: ${remaining.length} task(s) had cycles or invalid depends_on refs and were appended at end. Order may place dependents before dependencies. Indices: ${remaining.join(', ')}`
+    )
+    for (const i of remaining) order.push(i)
+  }
+
+  return order
+}
+
+// ============================================
 // Main Scheduling Function
 // ============================================
 
@@ -347,6 +406,7 @@ export function calculateStartDate(
  * Assign tasks to specific dates and time slots based on available time
  *
  * This is the main scheduling algorithm, adapted from the Telegram bot.
+ * Respects task dependencies: tasks with depends_on are scheduled after their dependencies.
  *
  * @param tasks - Array of parsed tasks with hours and priority
  * @param constraints - User's scheduling constraints
@@ -377,16 +437,15 @@ export function assignTasksToSchedule(
     )
   }
 
-  // Sort tasks by priority (high=1, medium=2, low=3), maintain original order for same priority
-  const sortedTaskIndices = tasks
-    .map((_, index) => index)
-    .sort((a, b) => {
-      const priorityOrder = { high: 1, medium: 2, low: 3 }
-      const aPriority = priorityOrder[tasks[a].priority] || 2
-      const bPriority = priorityOrder[tasks[b].priority] || 2
-      if (aPriority !== bPriority) return aPriority - bPriority
-      return a - b // Maintain original order for same priority
-    })
+  // First order by dependencies (dependents after their dependencies), then by priority, then by index
+  const dependencyOrder = sortIndicesByDependencies(tasks)
+  const sortedTaskIndices = dependencyOrder.sort((a, b) => {
+    const priorityOrder = { high: 1, medium: 2, low: 3 }
+    const aPriority = priorityOrder[tasks[a].priority] || 2
+    const bPriority = priorityOrder[tasks[b].priority] || 2
+    if (aPriority !== bPriority) return aPriority - bPriority
+    return a - b // Maintain dependency/order for same priority
+  })
 
   // Create remaining tasks queue
   const remainingTasks: RemainingTask[] = sortedTaskIndices.map((taskIndex) => ({

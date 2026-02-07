@@ -104,9 +104,17 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Strips completion marker from response.
 
 ## Data models used (from Prisma schema)
-- `Project`: created on first message; holds `contextData` later (schedule constraints).
+- `Project`: created on first message; holds `title`, `description`, `contextData` (schedule constraints).
 - `Discussion`: `messages` is a JSON array of `{ role, content, timestamp }`.
+
+## Early project title & description extraction
+
+During onboarding, after each chat message is saved, the chat API runs a lightweight extraction to populate `Project.title` and `Project.description` as soon as they can be inferred from the conversation.
+
+- **Where**: `src/lib/ai/project-extraction.ts` — `extractProjectInfo(conversationText)`
+- **When**: Chat route `onFinish`, only when `context === 'onboarding'` and project has default title ("Untitled Project") or no description
+- **How**: Claude analyzes the full conversation and returns `{ project_title, project_description }` as JSON; values are stored via `updateProject()`
+- **Why**: Low-effort, high-leverage setup. Post-onboarding chat, project shadow, and schedule regeneration can reuse these fields without backfill
 
 ## Gaps / Not found in repo
 - No explicit UI state persistence between refreshes in onboarding (messages are refetched only via API when used in dashboard).
-- No explicit update of project title/description based on onboarding conversation in code shown here.

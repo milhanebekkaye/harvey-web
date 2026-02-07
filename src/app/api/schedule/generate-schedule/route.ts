@@ -32,6 +32,7 @@
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
 import {
@@ -256,61 +257,108 @@ export async function POST(request: NextRequest) {
 
     /**
      * CRITICAL FIX: Create ONE Task record per ScheduledTaskAssignment
-     * 
+     *
      * Previously, we created one Task per original task, which meant split tasks
      * only appeared on the first day. Now we create a separate Task record for
      * each scheduled block, so split tasks appear on multiple days.
-     * 
+     *
      * For split tasks:
      * - Part 1: Gets "(Part 1)" appended to title
      * - Part 2: Gets "(Part 2)" appended to title
      * - All parts share the same description, success criteria, priority
      * - Each part has its own scheduledDate, startTime, endTime
+     *
+     * Task dependencies: We create tasks one-by-one to get IDs, then set
+     * depends_on (array of task IDs this task depends on) in a second pass.
      */
     const taskRecords = scheduleResult.scheduledTasks.map((scheduledTask) => {
-      // Get the original task data
       const originalTask = tasks[scheduledTask.taskIndex]
-
-      // Build the title - append part number if task was split
       let taskTitle = originalTask.title
       if (scheduledTask.partNumber !== undefined) {
         taskTitle = `${originalTask.title} (Part ${scheduledTask.partNumber})`
       }
-
-      // Convert hours assigned to this block into minutes
       const durationMinutes = Math.round(scheduledTask.hoursAssigned * 60)
-
       return {
-        userId: user.id,
-        projectId: projectId,
-        title: taskTitle,
-        description: originalTask.description,
-        successCriteria: convertSuccessCriteriaToJson(originalTask.success),
-        estimatedDuration: durationMinutes, // Duration of THIS part, not the whole task
-        priority: priorityMap[originalTask.priority] || 3,
-        type: 'project',
-        status: 'pending',
-        // CRITICAL: Use the scheduled date/time from THIS specific block
-        scheduledDate: scheduledTask.date,
-        scheduledStartTime: scheduledTask.startTime,
-        scheduledEndTime: scheduledTask.endTime,
-        // Task label for visual categorization
-        label: normalizeTaskLabel(originalTask.label),
+        taskIndex: scheduledTask.taskIndex,
+        data: {
+          userId: user.id,
+          projectId: projectId,
+          title: taskTitle,
+          description: originalTask.description,
+          successCriteria: convertSuccessCriteriaToJson(originalTask.success),
+          estimatedDuration: durationMinutes,
+          priority: priorityMap[originalTask.priority] || 3,
+          type: 'project',
+          status: 'pending',
+          scheduledDate: scheduledTask.date,
+          scheduledStartTime: scheduledTask.startTime,
+          scheduledEndTime: scheduledTask.endTime,
+          label: normalizeTaskLabel(originalTask.label),
+        },
       }
     })
 
     // Log scheduled tasks for debugging
     console.log('\n[GenerateScheduleAPI] 📅 TASK RECORDS TO CREATE:')
     taskRecords.forEach((record, index) => {
-      const date = record.scheduledDate.toISOString().split('T')[0]
-      const start = record.scheduledStartTime.toTimeString().substring(0, 5)
-      const end = record.scheduledEndTime.toTimeString().substring(0, 5)
-      const duration = `${(record.estimatedDuration / 60).toFixed(1)}h`
-      console.log(`  ${index + 1}. ${date} ${start}-${end} (${duration}) - ${record.title}`)
+      const d = record.data
+      const date = d.scheduledDate.toISOString().split('T')[0]
+      const start = d.scheduledStartTime.toTimeString().substring(0, 5)
+      const end = d.scheduledEndTime.toTimeString().substring(0, 5)
+      const duration = `${(d.estimatedDuration / 60).toFixed(1)}h`
+      console.log(`  ${index + 1}. ${date} ${start}-${end} (${duration}) - ${d.title}`)
     })
 
-    // Bulk create all task records (including split parts)
-    await prisma.task.createMany({ data: taskRecords })
+    // Create tasks one-by-one to get IDs, then set depends_on
+    const createdIds: string[] = []
+    const taskIndexToIds: Record<number, string[]> = {}
+
+    for (const { taskIndex, data } of taskRecords) {
+      const created = await prisma.task.create({ data })
+      createdIds.push(created.id)
+      if (!taskIndexToIds[taskIndex]) taskIndexToIds[taskIndex] = []
+      taskIndexToIds[taskIndex].push(created.id)
+    }
+
+    // Map: task id → scheduled start time (ms) for validation
+    const idToScheduledTime = new Map<string, number>()
+    for (let j = 0; j < taskRecords.length; j++) {
+      idToScheduledTime.set(createdIds[j], taskRecords[j].data.scheduledStartTime.getTime())
+    }
+
+    // Resolve depends_on (1-based indices) to task IDs; only keep dependencies scheduled before this task
+    for (let i = 0; i < taskRecords.length; i++) {
+      const taskIndex = taskRecords[i].taskIndex
+      const originalTask = tasks[taskIndex]
+      const depIndices = originalTask.depends_on || []
+      const dependantIds = depIndices.flatMap((oneBased) => taskIndexToIds[oneBased - 1] ?? [])
+      const uniqueIds = [...new Set(dependantIds)]
+      const thisTaskTime = taskRecords[i].data.scheduledStartTime.getTime()
+      const thisTaskId = createdIds[i]
+      const thisTitle = taskRecords[i].data.title
+
+      // Only allow dependencies that are scheduled at or before this task (never future tasks)
+      const validIds: string[] = []
+      for (const depId of uniqueIds) {
+        const depTime = idToScheduledTime.get(depId)
+        if (depTime === undefined) continue
+        if (depTime <= thisTaskTime) {
+          validIds.push(depId)
+        } else {
+          const depRecord = taskRecords[createdIds.indexOf(depId)]
+          const depTitle = depRecord?.data.title ?? depId
+          console.warn(
+            `[GenerateScheduleAPI] ⚠️ DEPENDS_ON validation: task "${thisTitle}" (${thisTaskId}) depends on "${depTitle}" (${depId}) but that task is scheduled AFTER this one. Dropping invalid dependency. This task scheduled: ${taskRecords[i].data.scheduledDate.toISOString().split('T')[0]} ${taskRecords[i].data.scheduledStartTime.toTimeString().slice(0, 5)}; dependency scheduled: ${depRecord?.data.scheduledDate?.toISOString().split('T')[0]} ${depRecord?.data.scheduledStartTime?.toTimeString().slice(0, 5)}.`
+          )
+        }
+      }
+      if (validIds.length > 0) {
+        await prisma.task.update({
+          where: { id: thisTaskId },
+          data: { depends_on: validIds } as Prisma.TaskUpdateInput,
+        })
+      }
+    }
 
     console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database (including split parts)`)
 

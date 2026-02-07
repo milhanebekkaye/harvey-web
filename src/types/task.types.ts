@@ -294,6 +294,11 @@ export interface DashboardTask {
    * Scheduled date (ISO string)
    */
   scheduledDate?: string
+
+  /**
+   * Task IDs this task depends on (for dependency chain and cascade skip)
+   */
+  dependsOn?: string[]
 }
 
 // ============================================

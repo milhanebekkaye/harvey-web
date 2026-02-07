@@ -92,7 +92,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/chat`.
   - Streaming chat: uses Vercel AI SDK (`streamText`, `createUIMessageStream`, `createUIMessageStreamResponse`) with `@ai-sdk/anthropic`.
   - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
-  - Saves messages to Discussion on stream finish. See `docs/streaming-chat/README.md`.
+  - Saves messages to Discussion on stream finish. During onboarding, runs early project title/description extraction via `extractProjectInfo()` and updates Project when data is available. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
 
 - **`discussions/[projectId]/route.ts`**
   - Endpoint under `/api/discussions/[projectId]`.
@@ -175,6 +175,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 - **`claude-client.ts`**: Helpers for Claude (`isIntakeComplete`, `cleanResponse`, `formatMessagesForClaude`). Non-streaming chat uses `getChatCompletion`; streaming chat uses Vercel AI SDK (`@ai-sdk/anthropic`) in the API route.
 - **`prompts.ts`**: All prompt templates and system instructions for AI interactions (e.g. how Harvey should respond, task breakdown prompts, schedule generation prompts).
+- **`project-extraction.ts`**: Extracts `project_title` and `project_description` from onboarding conversation via Claude. Used in chat route `onFinish` during onboarding to populate Project model early; mirrors the constraint extraction pattern.
 
 ### `src/lib/auth/`
 
@@ -197,12 +198,12 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/schedule/`
 
-- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Likely calls Claude to refine or propose schedules.
-- **`task-scheduler.ts`**: Pure scheduling algorithms and helpers (e.g. assigning tasks to slots, respecting dependencies and constraints).
+- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Constraint extraction uses a higher token limit (4096) so full constraint JSON is returned; `repairJSON` handles truncated constraint JSON (closes arrays before objects, closes truncated string values) so user constraints are used instead of defaults when the model output is cut off.
+- **`task-scheduler.ts`**: Pure scheduling algorithms and helpers (e.g. assigning tasks to slots, respecting dependencies and constraints). Orders tasks by dependency (topological sort) then priority so dependents are scheduled after their dependencies.
 
 ### `src/lib/tasks/`
 
-- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). Used heavily by task-related API routes and dashboard UI.
+- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. Used heavily by task-related API routes and dashboard UI.
 
 ### `src/lib/users/`
 
@@ -219,7 +220,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 > Note: There is also a generated Prisma client under `src/node_modules/.prisma/`. That generated code should not be modified directly.
 
-- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations.
+- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **Task** model includes `depends_on String[]` (task IDs this task depends on), used for dependency-aware scheduling and cascade skip when a task is skipped.
 
 - **`migrations/`**: Auto-generated migration history:
   - **`20260203144248_change_success_criteria_to_json/`**

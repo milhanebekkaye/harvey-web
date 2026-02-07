@@ -89,7 +89,7 @@ model Task {
   
   // Metadata
   priority     Int       @default(3) // 1-5
-  dependencies Json?     // array of task IDs
+  depends_on   String[]  @default([]) // task IDs this task depends on
   label        String?
   
   // Recurring (for personal tasks)

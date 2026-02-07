@@ -114,6 +114,7 @@ SUCCESS: [Clear completion criteria]
 HOURS: [Number]
 PRIORITY: [high/medium/low]
 LABEL: [Coding|Research|Design|Marketing|Communication|Personal|Planning]
+DEPENDS_ON: [Optional - comma-separated 1-based task numbers this task depends on, e.g. "1" or "1, 2". Order tasks so setup/infra come first.]
 ---
 
 EXAMPLE:
@@ -135,7 +136,7 @@ RULES:
 - Each task: 1-6 hours (break larger tasks into parts)
 - Description: 3-5 specific, actionable bullet points
 - Success criteria: Observable, testable outcome
-- Order by dependencies (setup before coding, coding before testing)
+- Order by dependencies (setup before coding, coding before testing). Use DEPENDS_ON so "Build authentication" can depend on "Set up database" (e.g. DEPENDS_ON: 1).
 - Be realistic about time for skill level: ${skillLevel}
 - CRITICAL: Generate enough tasks to use approximately ${totalAvailableHours.toFixed(0)} hours total
 - The sum of all task hours should be close to ${totalAvailableHours.toFixed(0)} hours (±10%)
@@ -291,7 +292,7 @@ export async function extractConstraints(
   try {
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
-      max_tokens: 1000,
+      max_tokens: 4096,
       system: EXTRACTION_SYSTEM_PROMPT,
       messages: [
         {
@@ -306,19 +307,22 @@ export async function extractConstraints(
 
     console.log('[ScheduleGeneration] Raw extraction response (first 200 chars):', jsonText.substring(0, 200))
 
-    // === 🛠️ FIX STARTS HERE ===
-    // 1. Aggressively find the start and end of the JSON object
-    const firstBrace = jsonText.indexOf('{')
-    const lastBrace = jsonText.lastIndexOf('}')
-
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      // Keep only what is strictly between the first { and last }
-      jsonText = jsonText.substring(firstBrace, lastBrace + 1)
-    }
-
-    // 2. Clean up any remaining markdown issues
+    // Strip markdown first so we can detect truncation on the actual JSON
     jsonText = stripMarkdownCodeBlocks(jsonText)
-    // === 🛠️ FIX ENDS HERE ===
+    const trimmedForEnd = jsonText.trim()
+    const looksTruncated =
+      trimmedForEnd.length > 0 &&
+      !/]\s*}\s*$/.test(trimmedForEnd) &&
+      !/}\s*$/.test(trimmedForEnd)
+
+    // Only slice first { to last } when response looks complete; otherwise repair will add missing ] }
+    if (!looksTruncated) {
+      const firstBrace = jsonText.indexOf('{')
+      const lastBrace = jsonText.lastIndexOf('}')
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        jsonText = jsonText.substring(firstBrace, lastBrace + 1)
+      }
+    }
 
     let constraints: ExtractedConstraints
     
@@ -363,50 +367,55 @@ export async function extractConstraints(
 
 /**
  * Attempt to repair common JSON errors
- * 
+ *
  * Fixes:
- * - Unescaped newlines in strings
- * - Unescaped quotes in strings  
  * - Trailing commas before closing braces/brackets
- * - Missing closing braces/brackets
- * 
+ * - Unclosed string at end (truncated response)
+ * - Missing closing brackets then braces (innermost first)
+ *
  * @param jsonText - Potentially broken JSON string
  * @returns Repaired JSON string
  */
 function repairJSON(jsonText: string): string {
   let repaired = jsonText.trim()
-  
+
   // Fix 1: Remove trailing commas before closing braces/brackets
   repaired = repaired.replace(/,(\s*[}\]])/g, '$1')
-  
-  // Fix 2: Try to close unclosed strings by finding unescaped quotes
-  // This is a heuristic - look for lines ending with quote + comma but no closing quote
+
+  // Fix 2: Close unclosed strings (e.g. lines ending with ": "value but no closing quote)
   const lines = repaired.split('\n')
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    // If line has opening quote but ends with comma (not closing quote)
     if (line.includes('": "') && line.trim().endsWith(',') && !line.trim().endsWith('",')) {
       lines[i] = line.replace(/,\s*$/, '",')
     }
   }
   repaired = lines.join('\n')
-  
-  // Fix 3: Ensure proper closing of object/array
+
+  // Fix 3: Truncated final string — text ends with an unclosed string value (e.g. "label": "Extended evening coding")
+  const trimmed = repaired.trim()
+  if (trimmed.length > 0) {
+    const lastQuote = trimmed.lastIndexOf('"')
+    const afterLastQuote = trimmed.slice(lastQuote + 1)
+    // Ends with " then alphanumeric/space (no closing ") → truncated string
+    if (lastQuote !== -1 && /^[^"]*[\w\s]+$/.test(afterLastQuote) && !trimmed.endsWith('"')) {
+      repaired = repaired + '"'
+    }
+  }
+
+  // Fix 4: Close brackets first, then braces (innermost structure first)
   const openBraces = (repaired.match(/{/g) || []).length
   const closeBraces = (repaired.match(/}/g) || []).length
   const openBrackets = (repaired.match(/\[/g) || []).length
   const closeBrackets = (repaired.match(/\]/g) || []).length
-  
-  // Add missing closing braces
+
+  if (openBrackets > closeBrackets) {
+    repaired += '\n' + ']'.repeat(openBrackets - closeBrackets)
+  }
   if (openBraces > closeBraces) {
     repaired += '\n' + '}'.repeat(openBraces - closeBraces)
   }
-  
-  // Add missing closing brackets
-  if (openBrackets > closeBrackets) {
-    repaired += ']'.repeat(openBrackets - closeBrackets)
-  }
-  
+
   return repaired
 }
 
@@ -586,6 +595,23 @@ function parseTaskBlock(block: string): ParsedTask {
     if (line.toUpperCase().startsWith('LABEL:')) {
       const labelStr = line.replace(/label:/i, '').trim()
       task.label = normalizeTaskLabel(labelStr)
+      break
+    }
+  }
+
+  // Extract depends_on (1-based task indices, e.g. "1" or "1, 2" or "1,2")
+  for (const line of lines) {
+    if (line.toUpperCase().startsWith('DEPENDS_ON:')) {
+      const value = line.replace(/depends_on:/i, '').trim()
+      if (value) {
+        const indices = value
+          .split(',')
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n) && n >= 1)
+        if (indices.length > 0) {
+          task.depends_on = [...new Set(indices)]
+        }
+      }
       break
     }
   }
