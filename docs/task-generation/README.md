@@ -104,6 +104,21 @@ Reset flow:
 - `Project.contextData` stores extracted constraints JSON.
 - `Discussion.messages` stores the onboarding conversation (`StoredMessage[]`).
 - `Task` stores generated tasks and scheduling times (`scheduledDate`, `scheduledStartTime`, `scheduledEndTime`).
+- `Task.label` stores the AI-assigned label used for task badge color.
+
+## Task Labels
+Each generated task includes a `label` assigned by Claude during schedule generation. Labels are stored on `Task.label` and surfaced in the dashboard as a colored pill on task cards and in the calendar modal header.
+
+Allowed labels and colors:
+- Coding → Blue
+- Research → Green
+- Design → Purple
+- Marketing → Orange
+- Communication → Yellow
+- Personal → Grey
+- Planning → Pink
+
+If a label is missing or invalid, it defaults to `Planning`.
 
 ## Gaps / Not found in repo
 - UI entry point that triggers `POST /api/schedule/generate-schedule` is not documented in the files above.

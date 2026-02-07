@@ -2,7 +2,7 @@
  * Task Tile Component
  *
  * Displays a task as a compact card in the timeline view.
- * Shows title, duration, category badge, and status indicator.
+ * Shows title, duration, label badge, and status indicator.
  *
  * Features:
  * - Colored left border based on status
@@ -15,6 +15,7 @@
 
 import type { DashboardTask, TaskStatus } from '@/types/task.types'
 import { STATUS_COLORS } from '@/types/task.types'
+import { TaskLabelBadge } from './TaskCategoryBadge'
 
 /**
  * Props for TaskTile component
@@ -207,8 +208,9 @@ export function TaskTile({
           )}
         </div>
 
-        {/* Right: Duration and Expand Icon */}
+        {/* Right: Label, Duration, and Expand Icon */}
         <div className="flex-shrink-0 flex items-center gap-2">
+          <TaskLabelBadge label={task.label} size={variant === 'calendar' ? 'sm' : 'md'} />
           <span
             className={`
               font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded

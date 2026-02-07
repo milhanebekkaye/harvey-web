@@ -14,6 +14,7 @@ import type {
   ParseResult,
   TimeBlock,
 } from '../../types/api.types'
+import { normalizeTaskLabel } from '../../types/task.types'
 
 // ============================================
 // System Prompts (from Telegram bot)
@@ -112,6 +113,7 @@ DESCRIPTION:
 SUCCESS: [Clear completion criteria]
 HOURS: [Number]
 PRIORITY: [high/medium/low]
+LABEL: [Coding|Research|Design|Marketing|Communication|Personal|Planning]
 ---
 
 EXAMPLE:
@@ -126,6 +128,7 @@ DESCRIPTION:
 SUCCESS: App runs on emulator showing Flutter demo
 HOURS: 2.5
 PRIORITY: high
+LABEL: Coding
 ---
 
 RULES:
@@ -522,6 +525,7 @@ function parseTaskBlock(block: string): ParsedTask {
     success: 'Task completed',
     hours: 2.0,
     priority: 'medium',
+    label: 'Planning',
   }
 
   // Extract title
@@ -573,6 +577,15 @@ function parseTaskBlock(block: string): ParsedTask {
       if (priorityStr === 'high' || priorityStr === 'medium' || priorityStr === 'low') {
         task.priority = priorityStr
       }
+      break
+    }
+  }
+
+  // Extract label
+  for (const line of lines) {
+    if (line.toUpperCase().startsWith('LABEL:')) {
+      const labelStr = line.replace(/label:/i, '').trim()
+      task.label = normalizeTaskLabel(labelStr)
       break
     }
   }

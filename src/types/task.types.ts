@@ -9,6 +9,7 @@
  * - title → title
  * - description → description
  * - estimatedDuration (minutes) → duration (formatted string like "2h", "30m")
+ * - label → label
  * - status (pending/in_progress/completed/skipped) → status (with UI additions)
  * - priority (1-5) → priority (mapped to status urgency)
  * - successCriteria → parsed into checklist items
@@ -63,41 +64,68 @@ export function mapToUIStatus(dbStatus: DatabaseTaskStatus, priority: number): T
 }
 
 // ============================================
-// Category Types
+// Label Types
 // ============================================
 
 /**
- * Task categories for visual grouping
+ * Task labels for visual grouping
  *
  * Used for colored badges in the UI.
- * Can be derived from project type or manually set.
  */
-export type TaskCategory =
-  | 'Management'
+export type TaskLabel =
+  | 'Coding'
   | 'Research'
-  | 'Team'
   | 'Design'
   | 'Marketing'
-  | 'Development'
-  | 'Testing'
-  | 'Documentation'
-  | 'Other'
+  | 'Communication'
+  | 'Personal'
+  | 'Planning'
 
 /**
- * Category colors for badges
+ * Label colors for badges
  *
- * Maps category to Tailwind color classes.
+ * Maps label to Tailwind color classes.
  */
-export const CATEGORY_COLORS: Record<TaskCategory, { bg: string; text: string }> = {
-  Management: { bg: 'bg-blue-100', text: 'text-blue-700' },
-  Research: { bg: 'bg-purple-100', text: 'text-purple-700' },
-  Team: { bg: 'bg-green-100', text: 'text-green-700' },
-  Design: { bg: 'bg-pink-100', text: 'text-pink-700' },
+export const TASK_LABEL_COLORS: Record<TaskLabel, { bg: string; text: string }> = {
+  Coding: { bg: 'bg-blue-100', text: 'text-blue-700' },
+  Research: { bg: 'bg-green-100', text: 'text-green-700' },
+  Design: { bg: 'bg-purple-100', text: 'text-purple-700' },
   Marketing: { bg: 'bg-orange-100', text: 'text-orange-700' },
-  Development: { bg: 'bg-indigo-100', text: 'text-indigo-700' },
-  Testing: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
-  Documentation: { bg: 'bg-slate-100', text: 'text-slate-700' },
-  Other: { bg: 'bg-gray-100', text: 'text-gray-700' },
+  Communication: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
+  Personal: { bg: 'bg-gray-100', text: 'text-gray-700' },
+  Planning: { bg: 'bg-pink-100', text: 'text-pink-700' },
+}
+
+// TODO: When Claude can dynamically generate labels/colors, move mapping to a config store.
+
+/**
+ * Normalize raw label strings into supported labels.
+ *
+ * Defaults to Planning when missing or invalid.
+ */
+export function normalizeTaskLabel(input?: string | null): TaskLabel {
+  if (!input) {
+    return 'Planning'
+  }
+
+  const normalized = input.trim().toLowerCase()
+
+  const map: Record<string, TaskLabel> = {
+    coding: 'Coding',
+    development: 'Coding',
+    dev: 'Coding',
+    engineering: 'Coding',
+    research: 'Research',
+    design: 'Design',
+    marketing: 'Marketing',
+    communication: 'Communication',
+    comms: 'Communication',
+    personal: 'Personal',
+    planning: 'Planning',
+    plan: 'Planning',
+  }
+
+  return map[normalized] || 'Planning'
 }
 
 // ============================================
@@ -206,9 +234,9 @@ export interface DashboardTask {
   duration: string
 
   /**
-   * Task category for visual grouping
+   * Task label for visual grouping
    */
-  category: TaskCategory
+  label: TaskLabel
 
   /**
    * Current task status for display

@@ -90,7 +90,9 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`chat/route.ts`**
   - Endpoint under `/api/chat`.
-  - Orchestrates AI chat interactions, likely calling `src/lib/ai/claude-client.ts` and using prompt templates from `src/lib/ai/prompts.ts`.
+  - Streaming chat: uses Vercel AI SDK (`streamText`, `createUIMessageStream`, `createUIMessageStreamResponse`) with `@ai-sdk/anthropic`.
+  - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
+  - Saves messages to Discussion on stream finish. See `docs/streaming-chat/README.md`.
 
 - **`discussions/[projectId]/route.ts`**
   - Endpoint under `/api/discussions/[projectId]`.
@@ -142,7 +144,7 @@ Dashboard UI for authenticated users:
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
 - **`ChatSidebar.tsx`**: Sidebar showing AI or project-related chat, typically integrated with `/api/chat`.
-- **`TaskCategoryBadge.tsx`**: Styled badge indicating task category (e.g. Planning, Execution, Review).
+- **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
 - **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
@@ -158,7 +160,7 @@ Components used on the onboarding/chat-style experience:
 - **`index.ts`**: Barrel file re-exporting onboarding components.
 - **`ChatAvatar.tsx`**: Avatar component representing the AI assistant or user in chat messages.
 - **`ChatInput.tsx`**: Input area for sending messages or onboarding responses.
-- **`ChatMessage.tsx`**: Render of a single chat message bubble (user or AI).
+- **`ChatMessage.tsx`**: Render of a single chat message bubble (user or AI). Supports streaming: shows content progressively or loading dots.
 - **`OnboardingCTA.tsx`**: Call-to-action component used during onboarding (buttons, prompts).
 - **`OnboardingHeader.tsx`**: Header section for onboarding pages (title, subtitle, progress).
 - **`OnboardingProgress.tsx`**: Visual indicator of user’s progress through onboarding steps.
@@ -171,7 +173,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/ai/`
 
-- **`claude-client.ts`**: Wrapper around the `@anthropic-ai/sdk` for calling Claude. Centralizes API key usage, model selection, and safety settings.
+- **`claude-client.ts`**: Helpers for Claude (`isIntakeComplete`, `cleanResponse`, `formatMessagesForClaude`). Non-streaming chat uses `getChatCompletion`; streaming chat uses Vercel AI SDK (`@ai-sdk/anthropic`) in the API route.
 - **`prompts.ts`**: All prompt templates and system instructions for AI interactions (e.g. how Harvey should respond, task breakdown prompts, schedule generation prompts).
 
 ### `src/lib/auth/`

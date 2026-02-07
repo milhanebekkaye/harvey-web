@@ -56,7 +56,7 @@ interface TaskDetailsProps {
   className?: string
 
   /**
-   * Whether to show the header with title, category, and status
+   * Whether to show the header with title, label, and status
    * Set to false when used inside TaskTile which already shows these
    */
   showHeader?: boolean

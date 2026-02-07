@@ -14,7 +14,7 @@
 
 /**
  * TaskTile - Collapsed task card for timeline view
- * Shows title, duration, category, and status border
+ * Shows title, duration, label, and status border
  */
 export { TaskTile, TaskTileCompact, TaskTileCalendar } from './TaskTile'
 
@@ -41,11 +41,12 @@ export { TaskModal } from './TaskModal'
 export { TaskStatusBadge, StatusDot } from './TaskStatusBadge'
 
 /**
- * TaskCategoryBadge - Category label badge
- * Categories: Management, Research, Team, Design, Marketing, etc.
+ * TaskCategoryBadge - Label badge
+ * Labels: Coding, Research, Design, Marketing, Communication, Personal, Planning
  */
 export {
   TaskCategoryBadge,
+  TaskLabelBadge,
   CategoryBadgeWithIcon,
   getCategoryIcon,
 } from './TaskCategoryBadge'

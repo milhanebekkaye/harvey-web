@@ -13,9 +13,9 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { Task, Project } from '.prisma/client'
-import type { DashboardTask, TaskGroups, TaskCategory, DatabaseTaskStatus, DaySection } from '../../types/task.types'
-import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria } from '../../types/task.types'
+import type { Task, Project } from '@prisma/client'
+import type { DashboardTask, TaskGroups, DatabaseTaskStatus, DaySection } from '../../types/task.types'
+import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria, normalizeTaskLabel } from '../../types/task.types'
 
 // ============================================
 // Types
@@ -175,9 +175,9 @@ export function transformToDashboardTask(dbTask: Task): DashboardTask {
     title: dbTask.title,
     description: dbTask.description || '',
     duration: formatDuration(dbTask.estimatedDuration),
-    category: 'Other' as TaskCategory, // We don't have categories in DB yet
+    label: normalizeTaskLabel(dbTask.label),
     status: mapToUIStatus(dbTask.status as DatabaseTaskStatus, dbTask.priority),
-    checklist: parseSuccessCriteria((dbTask as any).successCriteria ?? ''),
+    checklist: parseSuccessCriteria(dbTask.successCriteria ?? ''),
     harveyTip: undefined, // Could generate on-demand in the future
     day: dbTask.scheduledDate ? getDayAbbreviation(dbTask.scheduledDate) : '',
     startTime,

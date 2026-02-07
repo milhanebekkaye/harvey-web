@@ -1,34 +1,32 @@
 /**
- * Task Category Badge Component
+ * Task Label Badge Component
  *
- * Displays a colored badge showing the task's category.
- * Categories help users visually group related tasks.
+ * Displays a colored badge showing the task's label.
+ * Labels help users visually group related tasks.
  *
- * Available categories:
- * - Management (blue)
- * - Research (purple)
- * - Team (green)
- * - Design (pink)
+ * Available labels:
+ * - Coding (blue)
+ * - Research (green)
+ * - Design (purple)
  * - Marketing (orange)
- * - Development (indigo)
- * - Testing (yellow)
- * - Documentation (slate)
- * - Other (gray)
+ * - Communication (yellow)
+ * - Personal (gray)
+ * - Planning (pink)
  */
 
 'use client'
 
-import type { TaskCategory } from '@/types/task.types'
-import { CATEGORY_COLORS } from '@/types/task.types'
+import type { TaskLabel } from '@/types/task.types'
+import { TASK_LABEL_COLORS } from '@/types/task.types'
 
 /**
- * Props for TaskCategoryBadge component
+ * Props for TaskLabelBadge component
  */
-interface TaskCategoryBadgeProps {
+interface TaskLabelBadgeProps {
   /**
-   * Task category
+   * Task label
    */
-  category: TaskCategory
+  label: TaskLabel
 
   /**
    * Size variant
@@ -44,24 +42,24 @@ interface TaskCategoryBadgeProps {
 }
 
 /**
- * TaskCategoryBadge Component
+ * TaskLabelBadge Component
  *
- * Renders a colored pill badge with the category name.
- * Color is determined by the category type.
- *
- * @example
- * <TaskCategoryBadge category="Management" />
+ * Renders a colored pill badge with the label name.
+ * Color is determined by the label type.
  *
  * @example
- * <TaskCategoryBadge category="Development" size="sm" />
+ * <TaskCategoryBadge label="Coding" />
+ *
+ * @example
+ * <TaskCategoryBadge label="Research" size="sm" />
  */
 export function TaskCategoryBadge({
-  category,
+  label,
   size = 'md',
   className = '',
-}: TaskCategoryBadgeProps) {
-  // Get colors for this category, fallback to "Other" if not found
-  const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Other
+}: TaskLabelBadgeProps) {
+  // Get colors for this label, fallback to Planning if not found
+  const colors = TASK_LABEL_COLORS[label] || TASK_LABEL_COLORS.Planning
 
   // Size-based classes
   const sizeClasses = {
@@ -73,50 +71,48 @@ export function TaskCategoryBadge({
     <span
       className={`inline-flex items-center rounded-full font-medium ${colors.bg} ${colors.text} ${sizeClasses[size]} ${className}`}
     >
-      {category}
+      {label}
     </span>
   )
 }
 
 /**
- * Category Icon Component
+ * Label Icon Component
  *
- * Returns a Material Symbol icon name for each category.
+ * Returns a Material Symbol icon name for each label.
  * Useful when you need icons alongside or instead of text.
  *
- * @param category - Task category
+ * @param label - Task label
  * @returns Material Symbol icon name
  */
-export function getCategoryIcon(category: TaskCategory): string {
-  const icons: Record<TaskCategory, string> = {
-    Management: 'folder_managed',
+export function getCategoryIcon(label: TaskLabel): string {
+  const icons: Record<TaskLabel, string> = {
+    Coding: 'code',
     Research: 'science',
-    Team: 'group',
     Design: 'palette',
     Marketing: 'campaign',
-    Development: 'code',
-    Testing: 'bug_report',
-    Documentation: 'description',
-    Other: 'more_horiz',
+    Communication: 'forum',
+    Personal: 'person',
+    Planning: 'calendar_today',
   }
-  return icons[category]
+  return icons[label]
 }
 
 /**
  * CategoryBadgeWithIcon Component
  *
- * A variant that includes an icon before the category name.
+ * A variant that includes an icon before the label name.
  *
  * @example
- * <CategoryBadgeWithIcon category="Development" />
+ * <CategoryBadgeWithIcon label="Coding" />
  */
 export function CategoryBadgeWithIcon({
-  category,
+  label,
   size = 'md',
   className = '',
-}: TaskCategoryBadgeProps) {
-  const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Other
-  const icon = getCategoryIcon(category)
+}: TaskLabelBadgeProps) {
+  const colors = TASK_LABEL_COLORS[label] || TASK_LABEL_COLORS.Planning
+  const icon = getCategoryIcon(label)
 
   const sizeClasses = {
     sm: 'text-[10px] px-1.5 py-0.5',
@@ -133,7 +129,14 @@ export function CategoryBadgeWithIcon({
       className={`inline-flex items-center gap-1 rounded-full font-medium ${colors.bg} ${colors.text} ${sizeClasses[size]} ${className}`}
     >
       <span className={`material-symbols-outlined ${iconSizeClasses[size]}`}>{icon}</span>
-      {category}
+      {label}
     </span>
   )
 }
+
+/**
+ * Backward-compatible alias (deprecated).
+ *
+ * Prefer TaskLabelBadge moving forward.
+ */
+export const TaskLabelBadge = TaskCategoryBadge

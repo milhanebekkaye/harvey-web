@@ -54,8 +54,10 @@ export function ChatMessage({
   // Determine the display name
   const displayName = senderName || (isAssistant ? 'Harvey' : 'You')
 
-  // ===== LOADING STATE (for future AI streaming) =====
-  const isLoading = status === 'sending' || status === 'streaming'
+  // ===== STREAMING STATE =====
+  // When streaming, show content progressively (word-by-word). Only show dots when no content yet.
+  const isStreaming = status === 'streaming' || status === 'sending'
+  const showContent = content && content.length > 0
 
   // ===== HARVEY (ASSISTANT) MESSAGE =====
   if (isAssistant) {
@@ -73,18 +75,17 @@ export function ChatMessage({
             </p>
           )}
 
-          {/* Message bubble - white background, rounded except bottom-left */}
+          {/* Message bubble - show streamed content progressively, or loading dots when no content yet */}
           <div className="text-base font-medium leading-relaxed flex max-w-[85%] rounded-2xl rounded-bl-none px-6 py-4 bg-white text-[#110d1c] shadow-md">
-            {/* Show loading dots when streaming/sending */}
-            {isLoading ? (
+            {showContent ? (
+              content
+            ) : isStreaming ? (
               <span className="flex gap-1">
                 <span className="animate-bounce">.</span>
                 <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>.</span>
                 <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>.</span>
               </span>
-            ) : (
-              content
-            )}
+            ) : null}
           </div>
         </div>
       </div>

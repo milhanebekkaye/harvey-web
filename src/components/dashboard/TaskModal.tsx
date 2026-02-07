@@ -17,7 +17,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { DashboardTask } from '@/types/task.types'
 import { TaskDetails } from './TaskDetails'
-import { TaskCategoryBadge } from './TaskCategoryBadge'
+import { TaskLabelBadge } from './TaskCategoryBadge'
 import { TaskStatusBadge } from './TaskStatusBadge'
 
 /**
@@ -182,7 +182,7 @@ export function TaskModal({
                 {task.title}
               </h2>
               <div className="flex items-center gap-2 mt-2">
-                <TaskCategoryBadge category={task.category} />
+                <TaskLabelBadge label={task.label} />
                 <TaskStatusBadge status={task.status} size="md" showLabel />
                 <span className="text-sm text-slate-500 ml-1">
                   {task.duration}

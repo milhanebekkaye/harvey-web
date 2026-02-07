@@ -42,7 +42,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 ## Feature flow (end-to-end)
 1. User visits `/onboarding`.
 2. `OnboardingPage` initializes with Harvey’s greeting message.
-3. User sends a message; UI calls `POST /api/chat` with `{ message, projectId? }`.
+3. User sends a message; UI calls `POST /api/chat` (streaming) with `{ messages, projectId?, context }` via `useChat`.
 4. `Chat API` authenticates user via Supabase.
 5. First message:
    - Ensures DB `User` exists.
@@ -50,9 +50,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
    - Creates `Discussion` linked to project.
 6. Subsequent messages:
    - Loads existing discussion by `projectId`.
-7. API formats conversation history and calls Claude (`getChatCompletion`).
-8. API appends user + assistant messages into `Discussion.messages`.
-9. API returns `response`, `isComplete`, and `projectId`.
+7. API streams Claude response via Vercel AI SDK (`streamText`).
+8. API appends user + assistant messages into `Discussion.messages` when stream completes.
+9. Client receives streamed text and `projectId` (via transient data). `isComplete` is derived when response contains `PROJECT_INTAKE_COMPLETE`.
 10. When `isComplete` is true, UI shows “Build my schedule” CTA.
 11. CTA navigates to `/loading?projectId=...` (schedule generation starts there).
 
@@ -60,7 +60,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 
 ### `src/app/onboarding/page.tsx`
 - `handleSendMessage(content)`
-  - Optimistically adds user message, calls `/api/chat`, appends Harvey response, sets `isComplete`.
+  - Calls `sendMessage({ text: content })` from `useChat`. Response streams word-by-word; `isComplete` set via `onFinish` when last message contains `PROJECT_INTAKE_COMPLETE`.
 - `handleBuildSchedule()`
   - Redirects to `/loading` with `projectId` for schedule generation.
 - `calculateProgress()`
@@ -70,9 +70,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `POST(request)`
   - Authenticates user.
   - Creates/loads project + discussion.
-  - Calls Claude with conversation history.
-  - Saves messages to discussion.
-  - Returns cleaned response + completion flag.
+  - Streams Claude response via `streamText` + `createUIMessageStream`.
+  - Saves messages to discussion when stream completes.
+  - Sends `projectId` via transient data for client continuation.
 
 ### `src/app/api/discussions/[projectId]/route.ts`
 - `GET(request, { params })`
@@ -97,8 +97,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Updates title/description/goals.
 
 ### `src/lib/ai/claude-client.ts`
-- `getChatCompletion(systemPrompt, messages)`
-  - Sends conversation to Claude and returns text response.
+- `getChatCompletion(systemPrompt, messages)` – used by non-streaming flows (e.g. schedule generation).
 - `isIntakeComplete(response)`
   - Checks for completion marker.
 - `cleanResponse(response)`

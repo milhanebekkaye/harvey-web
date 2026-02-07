@@ -12,11 +12,14 @@
     "prisma:studio": "prisma studio --schema=src/prisma/schema.prisma"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.38",
+    "@ai-sdk/react": "^3.0.77",
     "@anthropic-ai/sdk": "^0.72.1",
     "@prisma/adapter-pg": "^7.3.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.93.3",
     "@tanstack/react-query": "^5.90.20",
+    "ai": "^6.0.75",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

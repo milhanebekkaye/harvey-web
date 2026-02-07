@@ -238,6 +238,11 @@ export interface ParsedTask {
    * Task priority
    */
   priority: 'high' | 'medium' | 'low'
+
+  /**
+   * Task label (optional)
+   */
+  label?: string
 }
 
 /**

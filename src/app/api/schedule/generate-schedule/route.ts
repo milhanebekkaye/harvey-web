@@ -45,6 +45,7 @@ import {
   calculateStartDate,
   getTaskScheduleData,
 } from '@/lib/schedule/task-scheduler'
+import { normalizeTaskLabel } from '@/types/task.types'
 import type {
   GenerateScheduleRequest,
   GenerateScheduleResponse,
@@ -269,16 +270,16 @@ export async function POST(request: NextRequest) {
     const taskRecords = scheduleResult.scheduledTasks.map((scheduledTask) => {
       // Get the original task data
       const originalTask = tasks[scheduledTask.taskIndex]
-      
+
       // Build the title - append part number if task was split
       let taskTitle = originalTask.title
       if (scheduledTask.partNumber !== undefined) {
         taskTitle = `${originalTask.title} (Part ${scheduledTask.partNumber})`
       }
-      
+
       // Convert hours assigned to this block into minutes
       const durationMinutes = Math.round(scheduledTask.hoursAssigned * 60)
-      
+
       return {
         userId: user.id,
         projectId: projectId,
@@ -293,6 +294,8 @@ export async function POST(request: NextRequest) {
         scheduledDate: scheduledTask.date,
         scheduledStartTime: scheduledTask.startTime,
         scheduledEndTime: scheduledTask.endTime,
+        // Task label for visual categorization
+        label: normalizeTaskLabel(originalTask.label),
       }
     })
 
