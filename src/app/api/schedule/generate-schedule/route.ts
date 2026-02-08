@@ -18,6 +18,7 @@
  * 8. Save constraints to Project.contextData
  * 9. Schedule tasks to specific dates/times using algorithm
  * 10. Create Task records in database with scheduled dates
+ * 10.5. Append Harvey's post-schedule message to Discussion (so user sees it in chat sidebar)
  * 11. Return success with task count
  *
  * Request Body:
@@ -47,6 +48,11 @@ import {
   getTaskScheduleData,
 } from '@/lib/schedule/task-scheduler'
 import { normalizeTaskLabel } from '@/types/task.types'
+import {
+  createDiscussion,
+  getOnboardingDiscussion,
+  getProjectDiscussion,
+} from '@/lib/discussions/discussion-service'
 import type {
   GenerateScheduleRequest,
   GenerateScheduleResponse,
@@ -103,25 +109,20 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] Project ID:', projectId)
 
-    // ===== STEP 3: Load Discussion from Database =====
-    console.log('[GenerateScheduleAPI] Step 3: Loading discussion')
+    // ===== STEP 3: Load Onboarding Discussion from Database =====
+    console.log('[GenerateScheduleAPI] Step 3: Loading onboarding discussion')
 
-    const discussion = await prisma.discussion.findFirst({
-      where: {
-        projectId: projectId,
-        userId: user.id, // Ensure user owns the discussion
-      },
-    })
+    const discussion = await getOnboardingDiscussion(projectId, user.id)
 
     if (!discussion) {
-      console.error('[GenerateScheduleAPI] Discussion not found for project')
+      console.error('[GenerateScheduleAPI] Onboarding discussion not found for project')
       return NextResponse.json(
         { success: false, error: 'Discussion not found', code: 'DISCUSSION_NOT_FOUND' },
         { status: 404 }
       )
     }
 
-    console.log('[GenerateScheduleAPI] Discussion found:', discussion.id)
+    console.log('[GenerateScheduleAPI] Onboarding discussion found:', discussion.id)
 
     // ===== STEP 3.5: Check if tasks already exist for this project =====
     // This prevents duplicate task creation from double API calls (React Strict Mode, network retries)
@@ -236,8 +237,8 @@ export async function POST(request: NextRequest) {
     console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)
     console.log(`[GenerateScheduleAPI] Duration: ${durationWeeks} weeks`)
 
-    // Run the scheduling algorithm to assign tasks to available time slots
-    const scheduleResult = assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)
+    // Run the scheduling algorithm (slot times in user TZ, stored as UTC)
+    const scheduleResult = assignTasksToSchedule(tasks, constraints, startDate, durationWeeks, userTimezone)
 
     console.log(`[GenerateScheduleAPI] ✅ Scheduled ${scheduleResult.scheduledTasks.length} task blocks`)
     console.log(`[GenerateScheduleAPI]   Total hours scheduled: ${scheduleResult.totalHoursScheduled.toFixed(1)}`)
@@ -361,6 +362,30 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database (including split parts)`)
+
+    // ===== STEP 10.5: Create project discussion with Harvey greeting =====
+    const harveyGreeting: StoredMessage = {
+      role: 'assistant',
+      content:
+        "Here's your schedule! Take a look and let me know if anything needs adjusting — you can ask me to move tasks, add new ones, or change your availability anytime.",
+      timestamp: new Date().toISOString(),
+    }
+    const existingProjectDiscussion = await getProjectDiscussion(projectId, user.id)
+    if (!existingProjectDiscussion) {
+      const createResult = await createDiscussion({
+        projectId,
+        userId: user.id,
+        type: 'project',
+        initialMessage: harveyGreeting,
+      })
+      if (createResult.success) {
+        console.log('[GenerateScheduleAPI] ✅ Created project discussion with Harvey greeting')
+      } else {
+        console.error('[GenerateScheduleAPI] ⚠️ Failed to create project discussion:', createResult.error?.message)
+      }
+    } else {
+      console.log('[GenerateScheduleAPI] Project discussion already exists, skipping creation')
+    }
 
     // ===== STEP 11: Return Success Response =====
     console.log('[GenerateScheduleAPI] Step 11: Preparing response')

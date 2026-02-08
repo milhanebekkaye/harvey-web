@@ -18,6 +18,7 @@
  */
 
 import type { ExtractedConstraints, ParsedTask, TimeBlock } from '../../types/api.types'
+import { localTimeInTimezoneToUTC } from '../timezone'
 
 // ============================================
 // Types
@@ -182,19 +183,11 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /**
- * Create a full datetime from a date and decimal hours
- * 
- * Handles overnight times (hours >= 24) by adding days to the date.
- * Example: date=Saturday, hours=26.0 → Sunday 02:00
- *
- * @param date - Date (day)
- * @param hours - Decimal hours (e.g., 9.5, or 26.0 for 2 AM next day)
- * @returns Full datetime
+ * Create a full datetime from a date and decimal hours (legacy, uses server local time).
+ * Prefer createDateTimeInTimezone for timezone-aware scheduling.
  */
 function createDateTime(date: Date, hours: number): Date {
   const result = new Date(date)
-  
-  // Handle overnight: hours >= 24 means next day
   if (hours >= 24) {
     const daysToAdd = Math.floor(hours / 24)
     const remainingHours = hours % 24
@@ -207,8 +200,30 @@ function createDateTime(date: Date, hours: number): Date {
     const m = Math.round((hours % 1) * 60)
     result.setHours(h, m, 0, 0)
   }
-  
   return result
+}
+
+/**
+ * Create a UTC datetime from a date and decimal hours in the user's timezone.
+ * Used so "9:00" in available_time is stored as 9:00 user local → correct UTC.
+ *
+ * @param date - Date (calendar day)
+ * @param hours - Decimal hours in user's local time (e.g. 9.5, or 26.0 for 2 AM next day)
+ * @param userTimezone - IANA timezone (e.g. Europe/Paris)
+ * @returns Full datetime in UTC
+ */
+function createDateTimeInTimezone(date: Date, hours: number, userTimezone: string): Date {
+  let d = new Date(date)
+  let h = hours
+  if (hours >= 24) {
+    const daysToAdd = Math.floor(hours / 24)
+    d = addDays(d, daysToAdd)
+    h = hours % 24
+  }
+  const dateStr = d.toISOString().split('T')[0]
+  const hour = Math.floor(h)
+  const minute = Math.round((h % 1) * 60)
+  return localTimeInTimezoneToUTC(dateStr, hour, minute, userTimezone)
 }
 
 /**
@@ -407,18 +422,21 @@ function sortIndicesByDependencies(tasks: ParsedTask[]): number[] {
  *
  * This is the main scheduling algorithm, adapted from the Telegram bot.
  * Respects task dependencies: tasks with depends_on are scheduled after their dependencies.
+ * When userTimezone is provided, slot times (e.g. 9–17) are interpreted in that zone and stored as UTC.
  *
  * @param tasks - Array of parsed tasks with hours and priority
  * @param constraints - User's scheduling constraints
  * @param startDate - When to start scheduling
  * @param durationWeeks - How many weeks to schedule
+ * @param userTimezone - User's IANA timezone (e.g. Europe/Paris) so times are stored in UTC
  * @returns Schedule result with assigned tasks
  */
 export function assignTasksToSchedule(
   tasks: ParsedTask[],
   constraints: ExtractedConstraints,
   startDate: Date,
-  durationWeeks: number
+  durationWeeks: number,
+  userTimezone: string = 'UTC'
 ): ScheduleResult {
   console.log(
     `[TaskScheduler] Starting scheduling: ${tasks.length} tasks, ${durationWeeks} weeks, starting ${startDate.toISOString().split('T')[0]}`
@@ -504,8 +522,8 @@ export function assignTasksToSchedule(
             taskIndex: task.taskIndex,
             task: task.task,
             date: new Date(currentDate),
-            startTime: createDateTime(currentDate, currentSlotStartHours),
-            endTime: createDateTime(currentDate, taskEndHours),
+            startTime: createDateTimeInTimezone(currentDate, currentSlotStartHours, userTimezone),
+            endTime: createDateTimeInTimezone(currentDate, taskEndHours, userTimezone),
             timeBlock: `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
             partNumber: task.partNumber > 1 ? task.partNumber : undefined,
             hoursAssigned: task.remainingHours,
@@ -527,8 +545,8 @@ export function assignTasksToSchedule(
               taskIndex: task.taskIndex,
               task: task.task,
               date: new Date(currentDate),
-              startTime: createDateTime(currentDate, currentSlotStartHours),
-              endTime: createDateTime(currentDate, taskEndHours),
+              startTime: createDateTimeInTimezone(currentDate, currentSlotStartHours, userTimezone),
+              endTime: createDateTimeInTimezone(currentDate, taskEndHours, userTimezone),
               timeBlock: `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
               partNumber: task.partNumber,
               hoursAssigned: hoursThisSlot,

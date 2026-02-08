@@ -16,7 +16,7 @@
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
-import { getDiscussionByProjectId } from '@/lib/discussions/discussion-service'
+import { getProjectDiscussion } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
 import type { ChatMessage } from '@/types/chat.types'
 import type { StoredMessage } from '@/types/api.types'
@@ -92,17 +92,18 @@ export async function GET(
 
     console.log('[DiscussionAPI] Project verified:', project.title)
 
-    // ===== STEP 3: Fetch Discussion =====
-    console.log('[DiscussionAPI] Step 3: Fetching discussion')
+    // ===== STEP 3: Fetch Project Discussion (not onboarding) =====
+    console.log('[DiscussionAPI] Step 3: Fetching project discussion')
 
-    const discussion = await getDiscussionByProjectId(projectId, user.id)
+    const discussion = await getProjectDiscussion(projectId, user.id)
 
     if (!discussion) {
-      console.error('[DiscussionAPI] Discussion not found')
-      return NextResponse.json(
-        { error: 'Discussion not found', code: 'DISCUSSION_NOT_FOUND' },
-        { status: 404 }
-      )
+      console.log('[DiscussionAPI] No project discussion yet (e.g. before schedule generation), returning empty messages')
+      const response: DiscussionApiResponse = {
+        messages: [],
+        projectTitle: project.title,
+      }
+      return NextResponse.json(response, { status: 200 })
     }
 
     // ===== STEP 4: Transform and Return =====

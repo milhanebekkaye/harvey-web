@@ -1,44 +1,59 @@
 /**
- * Chat Sidebar Component
+ * Chat Sidebar Component — Interactive Post-Onboarding Chat
  *
- * Displays the conversation history from onboarding in the dashboard.
- * Shows Harvey's messages and user responses in a chat-like interface.
+ * Displays conversation history AND allows live interaction with Harvey.
+ * Uses Vercel AI SDK's useChat hook for streaming responses.
  *
  * Features:
  * - Harvey header with avatar
  * - REBUILD SCHEDULE Button & Modal
- * - Scrollable message history
- * - Read-only input with lock message
- * - Loading and empty states
+ * - Scrollable message history with streaming support
+ * - Active chat input (useChat → /api/chat/project)
+ * - Typing indicator while Harvey is responding
+ * - Auto-scroll to latest message
+ * - Task refetch after tool calls
  */
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ChatMessage } from '@/types/chat.types'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+import type { UIMessage } from 'ai'
+
+/**
+ * Stored message format from the Discussion model.
+ * Matches StoredMessage from api.types.ts.
+ */
+interface StoredMsg {
+  role: 'assistant' | 'user'
+  content: string
+  timestamp: string
+}
 
 /**
  * Props for ChatSidebar component
  */
 interface ChatSidebarProps {
   /**
-   * Conversation messages to display
+   * Initial messages loaded from the Discussion (onboarding + previous chat).
+   * These are converted to UIMessage format for useChat's initialMessages.
    */
-  messages: ChatMessage[]
+  initialMessages: StoredMsg[]
 
   /**
-   * Project title to show in constraint pill (optional)
+   * Project title to show in constraint pill
    */
   projectTitle?: string
 
   /**
-   * Project ID required for rebuilding the schedule
+   * Project ID — required for the chat API and rebuild
    */
-  projectId: string | null // <--- NEW PROP
+  projectId: string | null
 
   /**
-   * Whether messages are loading
+   * Whether initial messages are still loading
    */
   isLoading?: boolean
 
@@ -46,37 +61,177 @@ interface ChatSidebarProps {
    * Callback when sign out button is clicked
    */
   onSignOut?: () => void
+
+  /**
+   * Callback when tasks may have changed (tool call executed).
+   * Dashboard uses this to refetch the task list.
+   */
+  onTasksChanged?: () => void
+}
+
+/**
+ * Convert StoredMessage array to UIMessage array for useChat initialMessages.
+ */
+function storedToUIMessages(stored: StoredMsg[]): UIMessage[] {
+  return stored
+    .filter((m) => !m.content.includes('PROJECT_INTAKE_COMPLETE'))
+    .map((m, i) => ({
+      id: `stored-${i}`,
+      role: m.role as 'user' | 'assistant',
+      parts: [{ type: 'text' as const, text: m.content }],
+    }))
+}
+
+/**
+ * Extract text content from a UIMessage's parts.
+ */
+function getTextFromParts(msg: UIMessage): string {
+  if (!msg.parts) return ''
+  return msg.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('')
+}
+
+/**
+ * Check if a UIMessage contains tool invocation parts.
+ * AI SDK v6 uses part.type === 'tool-{name}' (e.g. tool-add_task) or 'dynamic-tool'.
+ */
+function hasToolCall(msg: UIMessage): boolean {
+  if (!msg.parts) return false
+  return msg.parts.some(
+    (p) => typeof p.type === 'string' && (p.type.startsWith('tool-') || p.type === 'dynamic-tool')
+  )
+}
+
+/**
+ * Check if any assistant message in the conversation contains a tool call.
+ * Used after onFinish to trigger task refetch when Harvey executed a tool.
+ */
+function anyAssistantMessageHasToolCall(messages: UIMessage[]): boolean {
+  return messages.some((m) => m.role === 'assistant' && hasToolCall(m))
 }
 
 /**
  * ChatSidebar Component
  */
 export function ChatSidebar({
-  messages,
+  initialMessages,
   projectTitle,
   projectId,
   isLoading = false,
   onSignOut,
+  onTasksChanged,
 }: ChatSidebarProps) {
   const router = useRouter()
-  
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Ref so transport body() always reads current projectId at request time (useChat may reuse transport from first render when projectId was null)
+  const projectIdRef = useRef(projectId)
+  projectIdRef.current = projectId
+
   // --- STATE ---
   const [showRebuildModal, setShowRebuildModal] = useState(false)
   const [isRebuilding, setIsRebuilding] = useState(false)
 
-  // --- LOGIC ---
+  // --- LOCAL INPUT STATE (useChat doesn't provide input/setInput) ---
+  const [inputValue, setInputValue] = useState('')
+
+  // --- CHAT HOOK ---
+  const {
+    messages,
+    sendMessage,
+    status,
+    error: chatError,
+  } = useChat({
+    messages: storedToUIMessages(initialMessages),
+    transport: new DefaultChatTransport({
+      api: '/api/chat/project',
+      body: () => ({
+        projectId: projectIdRef.current ?? undefined,
+      }),
+    }),
+    onFinish: ({ messages: finishedMessages }) => {
+      const hadToolCall = anyAssistantMessageHasToolCall(finishedMessages)
+      console.log('[ChatSidebar] onFinish called', {
+        finishedMessagesCount: finishedMessages.length,
+        hadToolCall,
+      })
+      if (hadToolCall) {
+        onTasksChanged?.()
+      }
+    },
+  })
+
+  const isTyping = status === 'streaming' || status === 'submitted'
+
+  // --- DEBUG: useChat error ---
+  useEffect(() => {
+    if (chatError) {
+      console.error('[ChatSidebar] ChatSidebar.tsx useChat error:', chatError?.message ?? String(chatError))
+    }
+  }, [chatError])
+
+  // --- DEBUG: status transitions ---
+  useEffect(() => {
+    console.log('[ChatSidebar] ChatSidebar.tsx status changed to:', status)
+  }, [status])
+
+  // --- AUTO-SCROLL ---
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
+
+  // --- HANDLERS ---
 
   /**
-   * Filter out messages containing PROJECT_INTAKE_COMPLETE
+   * Handle form submission — send message via useChat
    */
-  const displayMessages = messages.filter(
-    (msg) => !msg.content.includes('PROJECT_INTAKE_COMPLETE')
-  )
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    console.log('[ChatSidebar] ChatSidebar.tsx handleSubmit called', {
+      projectId,
+      inputValueLength: inputValue.length,
+      inputValueTruncated: inputValue.slice(0, 80),
+      isTyping,
+      status,
+    })
+    if (!inputValue.trim() || isTyping || !projectId) return
+    console.log('[ChatSidebar] ChatSidebar.tsx sendMessage({ text: "..." })', {
+      textTruncated: inputValue.slice(0, 80),
+    })
+    sendMessage({ text: inputValue })
+    setInputValue('')
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }
+
+  /**
+   * Handle Enter key (submit on Enter, newline on Shift+Enter)
+   */
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }
+
+  /**
+   * Auto-resize textarea as user types
+   */
+  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value)
+    const el = e.target
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
 
   /**
    * Handle the Rebuild Action
    */
-  // ... inside src/components/dashboard/ChatSidebar.tsx
   const handleRebuild = async () => {
     if (!projectId) return
 
@@ -90,30 +245,21 @@ export function ChatSidebar({
         body: JSON.stringify({ projectId }),
       })
 
-      // Check if response is NOT ok
       if (!response.ok) {
-        // Try to read as text first to avoid JSON parse errors on 404/500 pages
         const rawText = await response.text()
         console.error('[Sidebar] Raw Server Error:', rawText)
-        
         let errorMessage = `Server Error: ${response.status} ${response.statusText}`
-        
-        // If it looks like JSON, try to parse it for a better message
         try {
-            const json = JSON.parse(rawText)
-            if (json.error) errorMessage = json.error
+          const json = JSON.parse(rawText)
+          if (json.error) errorMessage = json.error
         } catch {
-            // Not JSON, stick with the status text
+          // Not JSON
         }
-        
         throw new Error(errorMessage)
       }
 
       console.log('[Sidebar] Rebuild successful, redirecting...')
-      
-      // Redirect with projectId
       router.push(`/loading?projectId=${projectId}`)
-      
     } catch (error) {
       console.error('[Sidebar] Rebuild failed:', error)
       setIsRebuilding(false)
@@ -145,7 +291,7 @@ export function ChatSidebar({
         {/* Harvey Header */}
         <div className="p-6 flex items-center gap-4">
           <div className="size-12 rounded-full bg-[#895af6] flex items-center justify-center text-white shadow-lg overflow-hidden">
-            <span className="text-2xl">🦞</span>
+            <span className="text-2xl">&#x1F99E;</span>
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight">Harvey</h1>
@@ -153,7 +299,7 @@ export function ChatSidebar({
               AI Project Coach
             </p>
           </div>
-          
+
           <div className="ml-auto flex items-center gap-2">
             {/* --- REBUILD BUTTON --- */}
             <button 
@@ -168,7 +314,7 @@ export function ChatSidebar({
             <button className="bg-primary/10 hover:bg-primary/20 text-[#895af6] p-2 rounded-lg transition-colors">
               <span className="material-symbols-outlined">settings</span>
             </button>
-            
+
             {onSignOut && (
               <button
                 onClick={onSignOut}
@@ -191,7 +337,7 @@ export function ChatSidebar({
           </div>
         )}
 
-        {/* Chat History */}
+        {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Loading State */}
           {isLoading && (
@@ -206,61 +352,100 @@ export function ChatSidebar({
           )}
 
           {/* Empty State */}
-          {!isLoading && displayMessages.length === 0 && (
+          {!isLoading && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">
                 chat
               </span>
-              <p className="text-sm text-slate-400">No conversation history</p>
+              <p className="text-sm text-slate-400">
+                Start a conversation with Harvey!
+              </p>
             </div>
           )}
 
-          {/* Messages */}
+          {/* Messages — rendered from useChat's messages array */}
           {!isLoading &&
-            displayMessages.map((message, index) => (
-              <div
-                key={message.id || `msg-${index}`}
-                className={`flex flex-col gap-2 max-w-[85%] ${
-                  message.role === 'user' ? 'self-end items-end' : ''
-                }`}
-              >
-                {/* Message Bubble */}
-                <div
-                  className={`p-4 rounded-2xl shadow-sm ${
-                    message.role === 'user'
-                      ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
-                      : 'bg-white rounded-tl-none border border-white/50'
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
-                </div>
+            messages.map((message, index) => {
+              const text = getTextFromParts(message)
+              if (!text) return null // Skip empty messages (e.g., tool-only)
 
-                {/* Timestamp */}
-                <span
-                  className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${
-                    message.role === 'user' ? 'mr-1' : 'ml-1'
+              return (
+                <div
+                  key={message.id || `msg-${index}`}
+                  className={`flex flex-col gap-2 max-w-[85%] ${
+                    message.role === 'user' ? 'self-end items-end' : ''
                   }`}
                 >
-                  {message.role === 'user' ? 'You' : 'Harvey'}
-                  {message.timestamp && ` • ${formatTime(message.timestamp)}`}
-                </span>
+                  {/* Message Bubble */}
+                  <div
+                    className={`p-4 rounded-2xl shadow-sm ${
+                      message.role === 'user'
+                        ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
+                        : 'bg-white rounded-tl-none border border-white/50'
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+                  </div>
+
+                  {/* Tool call indicator (if message has tool invocations) */}
+                  {message.role === 'assistant' && hasToolCall(message) && (
+                    <div className="flex items-center gap-1 ml-1 text-[10px] text-emerald-600 font-medium">
+                      <span className="material-symbols-outlined text-xs">check_circle</span>
+                      Action completed
+                    </div>
+                  )}
+
+                  {/* Sender label */}
+                  <span
+                    className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${
+                      message.role === 'user' ? 'mr-1' : 'ml-1'
+                    }`}
+                  >
+                    {message.role === 'user' ? 'You' : 'Harvey'}
+                  </span>
+                </div>
+              )
+            })}
+
+          {/* Typing Indicator */}
+          {isTyping && (
+            <div className="flex flex-col gap-2 max-w-[85%]">
+              <div className="p-4 rounded-2xl bg-white rounded-tl-none border border-white/50 shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:300ms]" />
+                </div>
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Auto-scroll anchor */}
+          <div ref={chatEndRef} />
         </div>
 
-        {/* Read-Only Input */}
+        {/* Active Chat Input */}
         <div className="p-6 border-t border-black/5 bg-white/20">
-          <div className="relative flex items-center">
-            <input
-              type="text"
-              placeholder="Chat is read-only. Editing coming soon!"
-              disabled
-              className="w-full bg-white/50 border-none rounded-xl py-4 pl-4 pr-12 text-sm shadow-inner cursor-not-allowed opacity-60"
+          <form onSubmit={handleSubmit} className="relative flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={handleTextareaInput}
+              onKeyDown={handleKeyDown}
+              placeholder={projectId ? 'Ask Harvey anything...' : 'Loading project...'}
+              disabled={!projectId || isTyping}
+              rows={1}
+              className="flex-1 bg-white/50 border border-white/30 rounded-xl py-3 pl-4 pr-3 text-sm shadow-inner resize-none focus:outline-none focus:ring-2 focus:ring-[#895af6]/30 focus:border-[#895af6]/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ maxHeight: '120px' }}
             />
-            <div className="absolute right-2 bg-slate-300 text-white p-2 rounded-lg">
-              <span className="material-symbols-outlined">lock</span>
-            </div>
-          </div>
+            <button
+              type="submit"
+              disabled={!inputValue.trim() || isTyping || !projectId}
+              className="bg-[#895af6] hover:bg-[#7849d9] text-white p-3 rounded-xl transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              <span className="material-symbols-outlined text-lg">send</span>
+            </button>
+          </form>
         </div>
       </aside>
 
@@ -278,11 +463,14 @@ export function ChatSidebar({
               <h3 className="text-xl font-bold text-slate-800 mb-2">
                 Rebuild Schedule?
               </h3>
-              
+
               <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-                This will <strong className="text-slate-700">permanently delete all tasks</strong> for 
-                this project and regenerate a new schedule from scratch based on 
-                our discussion.
+                This will{' '}
+                <strong className="text-slate-700">
+                  permanently delete all tasks
+                </strong>{' '}
+                for this project and regenerate a new schedule from scratch
+                based on our discussion.
               </p>
 
               <div className="flex flex-col gap-3 w-full">
@@ -300,7 +488,7 @@ export function ChatSidebar({
                     'Yes, Rebuild Schedule'
                   )}
                 </button>
-                
+
                 <button
                   onClick={() => setShowRebuildModal(false)}
                   disabled={isRebuilding}

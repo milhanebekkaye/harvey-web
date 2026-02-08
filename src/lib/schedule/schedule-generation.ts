@@ -110,7 +110,11 @@ DESCRIPTION:
 - [Bullet point 1 - specific action]
 - [Bullet point 2 - specific action]
 - [Bullet point 3 - specific action]
-SUCCESS: [Clear completion criteria]
+SUCCESS:
+- [Success criterion 1 - specific, measurable]
+- [Success criterion 2 - specific, measurable]
+- [Success criterion 3 - optional]
+- [Success criterion 4 - optional, if needed]
 HOURS: [Number]
 PRIORITY: [high/medium/low]
 LABEL: [Coding|Research|Design|Marketing|Communication|Personal|Planning]
@@ -126,7 +130,11 @@ DESCRIPTION:
 - Run 'flutter doctor' to verify installation
 - Create first app: flutter create my_app
 - Run app on emulator, verify "Hello World" appears
-SUCCESS: App runs on emulator showing Flutter demo
+SUCCESS:
+- Flutter SDK installed and 'flutter doctor' passes
+- Android Studio has Flutter plugin enabled
+- Demo app runs on emulator showing "Hello World"
+- No critical errors in flutter doctor output
 HOURS: 2.5
 PRIORITY: high
 LABEL: Coding
@@ -135,7 +143,7 @@ LABEL: Coding
 RULES:
 - Each task: 1-6 hours (break larger tasks into parts)
 - Description: 3-5 specific, actionable bullet points
-- Success criteria: Observable, testable outcome
+- Success criteria: Provide 2–4 criteria per task. Each must be specific, measurable, and directly related to what makes this task successful. Think thoroughly about what "done" means for this task.
 - Order by dependencies (setup before coding, coding before testing). Use DEPENDS_ON so "Build authentication" can depend on "Set up database" (e.g. DEPENDS_ON: 1).
 - Be realistic about time for skill level: ${skillLevel}
 - CRITICAL: Generate enough tasks to use approximately ${totalAvailableHours.toFixed(0)} hours total
@@ -559,12 +567,26 @@ function parseTaskBlock(block: string): ParsedTask {
     }
   }
 
-  // Extract success criteria
-  for (const line of lines) {
-    if (line.trim().startsWith('SUCCESS:')) {
-      task.success = line.replace('SUCCESS:', '').trim()
-      break
+  // Extract success criteria (2–4 lines under SUCCESS: until HOURS: or next section)
+  const successStart = lines.findIndex((l) => l.trim().startsWith('SUCCESS:'))
+  if (successStart !== -1) {
+    const successLines: string[] = []
+    for (let i = successStart; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+      if (i === successStart) {
+        const afterLabel = line.replace(/^SUCCESS:\s*/i, '').trim()
+        if (afterLabel) successLines.push(afterLabel)
+        continue
+      }
+      if (/^(HOURS|PRIORITY|LABEL|DEPENDS_ON|TASK|DESCRIPTION):/i.test(trimmed)) break
+      if (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*')) {
+        successLines.push(trimmed.replace(/^[-•*]\s*/, '').trim())
+      } else if (trimmed.length > 0) {
+        successLines.push(trimmed)
+      }
     }
+    task.success = successLines.filter((s) => s.length > 0).join('\n') || 'Task completed'
   }
 
   // Extract hours

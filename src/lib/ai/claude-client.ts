@@ -36,8 +36,9 @@ if (process.env.NODE_ENV !== 'production') {
  * - Model: claude-sonnet-4-20250514 (fast, capable, cost-effective)
  * - Max tokens: 300 (keeps responses concise for chat)
  */
+/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
 export const CLAUDE_CONFIG = {
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-haiku-4-5-20251001',
   maxTokens: 300,
 } as const
 

@@ -1,7 +1,7 @@
 # Dashboard (Tasks, Timeline, Chat Sidebar)
 
 ## What this feature is about
-The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by date), a chat sidebar with onboarding conversation history, and controls for task status and checklist updates.
+The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by date), a chat sidebar with onboarding conversation history, and controls for task status and checklist updates. Tasks added via chat (Harvey's add_task tool) now receive 2–4 AI-generated success criteria, shown in the task detail view as checklist items—same format as onboarding-generated tasks.
 
 ## Files involved (and where to find them)
 - `src/app/dashboard/page.tsx`
@@ -48,6 +48,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
    - `PATCH /api/tasks/[taskId]/checklist` for checklist updates.
 7. Chat sidebar shows onboarding messages and exposes a “Rebuild schedule” button.
 8. Rebuild calls `POST /api/schedule/reset-schedule` then redirects to `/loading?projectId=...`.
+9. **Auto-refresh after chat tools**: When Harvey executes a tool via chat (e.g. add task, modify schedule, regenerate schedule), `ChatSidebar` detects it in `onFinish` and calls `onTasksChanged`, which triggers `fetchTasks()`. Timeline (and future calendar) views update immediately without manual reload.
 
 ## Function reference (what each function does)
 

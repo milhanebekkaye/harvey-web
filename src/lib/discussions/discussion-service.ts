@@ -14,6 +14,9 @@ import { prisma } from '../db/prisma'
 import type { StoredMessage } from '../../types/api.types'
 import type { Prisma } from '@prisma/client'
 
+/** Discussion type: onboarding (during intake), project (post-schedule chat), or task (future) */
+export type DiscussionType = 'onboarding' | 'project' | 'task'
+
 /**
  * Data needed to create a new discussion
  */
@@ -27,6 +30,17 @@ export interface CreateDiscussionData {
    * User who owns this discussion (matches Supabase Auth ID)
    */
   userId: string
+
+  /**
+   * Discussion type: "onboarding" | "project" | "task"
+   * Defaults to "project" when not provided.
+   */
+  type?: DiscussionType
+
+  /**
+   * Only set when type = "task" — references Task id
+   */
+  taskId?: string
 
   /**
    * Optional initial message to include
@@ -75,6 +89,18 @@ function toJsonInput(messages: StoredMessage[]): Prisma.InputJsonValue {
 }
 
 /**
+ * Check if error indicates missing type/taskId columns (migration not applied yet).
+ */
+function isColumnMissingError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error)
+  return (
+    /column.*["']?type["']?.*does not exist/i.test(msg) ||
+    /column.*["']?taskId["']?.*does not exist/i.test(msg) ||
+    /does not exist/i.test(msg)
+  )
+}
+
+/**
  * Create a new discussion for a project
  *
  * Called during onboarding when project is created.
@@ -98,6 +124,8 @@ export async function createDiscussion(
       data: {
         projectId: data.projectId,
         userId: data.userId,
+        type: data.type ?? 'project',
+        taskId: data.taskId ?? null,
         messages: toJsonInput(messages),
       },
     })
@@ -112,46 +140,66 @@ export async function createDiscussion(
       },
     }
   } catch (error: unknown) {
+    // Fallback: if type/taskId columns don't exist (migration not applied), use raw insert
+    if (isColumnMissingError(error)) {
+      console.warn('[DiscussionService] type/taskId columns missing, using raw insert (run migrations or scripts/apply-discussion-migrations.sql)')
+      try {
+        const messages: StoredMessage[] = data.initialMessage ? [data.initialMessage] : []
+        const rows = await prisma.$queryRawUnsafe<Array<{ id: string; projectId: string; userId: string; messages: unknown; createdAt: Date; updatedAt: Date }>>(
+          `INSERT INTO discussions (id, "projectId", "userId", messages, "createdAt", "updatedAt")
+           VALUES (gen_random_uuid()::text, $1, $2, $3::jsonb, now(), now())
+           RETURNING id, "projectId", "userId", messages, "createdAt", "updatedAt"`,
+          data.projectId,
+          data.userId,
+          JSON.stringify(messages)
+        )
+        const row = rows[0]
+        if (row) {
+          return {
+            success: true,
+            discussion: {
+              ...row,
+              messages: toStoredMessages(row.messages as Prisma.JsonValue),
+            },
+          }
+        }
+      } catch (retryError) {
+        console.error('[DiscussionService] Raw insert fallback failed:', retryError)
+      }
+    }
+
     console.error('[DiscussionService] Error creating discussion:', error)
-
-    const errorMessage =
-      error instanceof Error ? error.message : 'Failed to create discussion'
-
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create discussion'
     return {
       success: false,
-      error: {
-        message: errorMessage,
-        details: error,
-      },
+      error: { message: errorMessage, details: error },
     }
   }
 }
 
 /**
- * Get discussion by project ID
- *
- * A project typically has one active discussion.
- * Returns the most recent if multiple exist.
+ * Get discussion by project ID and type
  *
  * @param projectId - Project UUID
  * @param userId - User ID for ownership validation
+ * @param type - Discussion type to fetch
  * @returns Discussion or null if not found
  */
-export async function getDiscussionByProjectId(
+export async function getDiscussionByProjectIdAndType(
   projectId: string,
-  userId: string
+  userId: string,
+  type: DiscussionType
 ): Promise<DiscussionServiceResponse['discussion'] | null> {
   try {
-    console.log('[DiscussionService] Fetching discussion for project:', projectId)
+    console.log('[DiscussionService] Fetching discussion for project:', projectId, 'type:', type)
 
     const discussion = await prisma.discussion.findFirst({
       where: {
-        projectId: projectId,
-        userId: userId, // Ensures user owns the discussion
+        projectId,
+        userId,
+        type,
       },
-      orderBy: {
-        createdAt: 'desc', // Get most recent if multiple exist
-      },
+      orderBy: { createdAt: 'desc' },
     })
 
     if (!discussion) {
@@ -161,15 +209,81 @@ export async function getDiscussionByProjectId(
 
     const messages = toStoredMessages(discussion.messages)
     console.log('[DiscussionService] Discussion found with', messages.length, 'messages')
+    console.log('[DiscussionService] discussion-service.ts getDiscussionByProjectIdAndType returning', {
+      type,
+      messagesLength: messages.length,
+    })
 
     return {
       ...discussion,
       messages,
     }
   } catch (error) {
+    // Fallback: if type column doesn't exist (migration not applied), use raw query
+    if (isColumnMissingError(error)) {
+      console.warn('[DiscussionService] type column missing, falling back to raw query (run migrations or scripts/apply-discussion-migrations.sql)')
+      try {
+        const rows = await prisma.$queryRawUnsafe<Array<{ id: string; projectId: string; userId: string; messages: unknown; createdAt: Date; updatedAt: Date }>>(
+          `SELECT id, "projectId", "userId", messages, "createdAt", "updatedAt" FROM discussions WHERE "projectId" = $1 AND "userId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+          projectId,
+          userId
+        )
+        const row = rows[0]
+        if (!row) return null
+        return {
+          ...row,
+          messages: toStoredMessages(row.messages as Prisma.JsonValue),
+        }
+      } catch {
+        return null
+      }
+    }
     console.error('[DiscussionService] Error fetching discussion:', error)
     return null
   }
+}
+
+/**
+ * Get the project discussion (post-schedule chat).
+ * Used by dashboard chat and project chat API.
+ *
+ * @param projectId - Project UUID
+ * @param userId - User ID for ownership validation
+ * @returns Project discussion or null if not found
+ */
+export async function getProjectDiscussion(
+  projectId: string,
+  userId: string
+): Promise<DiscussionServiceResponse['discussion'] | null> {
+  return getDiscussionByProjectIdAndType(projectId, userId, 'project')
+}
+
+/**
+ * Get the onboarding discussion.
+ * Used by onboarding chat and schedule generation (for extracting conversation text).
+ *
+ * @param projectId - Project UUID
+ * @param userId - User ID for ownership validation
+ * @returns Onboarding discussion or null if not found
+ */
+export async function getOnboardingDiscussion(
+  projectId: string,
+  userId: string
+): Promise<DiscussionServiceResponse['discussion'] | null> {
+  return getDiscussionByProjectIdAndType(projectId, userId, 'onboarding')
+}
+
+/**
+ * Get discussion by project ID (legacy).
+ * Fetches onboarding discussion for backward compatibility.
+ *
+ * @deprecated Prefer getProjectDiscussion or getOnboardingDiscussion
+ */
+export async function getDiscussionByProjectId(
+  projectId: string,
+  userId: string
+): Promise<DiscussionServiceResponse['discussion'] | null> {
+  return getOnboardingDiscussion(projectId, userId)
 }
 
 /**
@@ -212,7 +326,9 @@ export async function appendMessages(
     })
 
     if (!current) {
-      console.error('[DiscussionService] Discussion not found:', discussionId)
+      console.error('[DiscussionService] discussion-service.ts appendMessages FAILED: Discussion not found', {
+        discussionId,
+      })
       return {
         success: false,
         error: {
@@ -236,6 +352,10 @@ export async function appendMessages(
     })
 
     console.log('[DiscussionService] Messages appended, total:', updatedMessages.length)
+    console.log('[DiscussionService] discussion-service.ts appendMessages success', {
+      discussionId,
+      appendedCount: messages.length,
+    })
 
     return {
       success: true,
@@ -245,7 +365,8 @@ export async function appendMessages(
       },
     }
   } catch (error: unknown) {
-    console.error('[DiscussionService] Error appending messages:', error)
+    const errMsg = error instanceof Error ? error.message : String(error)
+    console.error('[DiscussionService] discussion-service.ts appendMessages FAILED', errMsg, error)
 
     const errorMessage =
       error instanceof Error ? error.message : 'Failed to append messages'

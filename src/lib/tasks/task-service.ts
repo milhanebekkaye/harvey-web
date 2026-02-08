@@ -15,7 +15,8 @@
 import { prisma } from '../db/prisma'
 import type { Task, Project } from '@prisma/client'
 import type { DashboardTask, TaskGroups, DatabaseTaskStatus, DaySection } from '../../types/task.types'
-import { mapToUIStatus, formatDuration, getDayAbbreviation, getHourDecimal, parseSuccessCriteria, normalizeTaskLabel } from '../../types/task.types'
+import { mapToUIStatus, formatDuration, getDayAbbreviation, parseSuccessCriteria, normalizeTaskLabel } from '../../types/task.types'
+import { getHourDecimalInTimezone } from '../timezone'
 
 // ============================================
 // Types
@@ -152,21 +153,24 @@ function getEndOfNextWeek(date: Date): Date {
  * - estimatedDuration (minutes) → duration (formatted string)
  * - status + priority → UI status (with urgent/focus)
  * - successCriteria → checklist items
- * - scheduledDate/Times → day, startTime, endTime
+ * - scheduledDate/Times (UTC) → day, startTime, endTime in user's timezone
+ *
+ * @param dbTask - Task from database
+ * @param userTimezone - User's IANA timezone (e.g. Europe/Paris) so times display in local time
  */
-export function transformToDashboardTask(dbTask: Task): DashboardTask {
-  // Calculate start and end times
-  let startTime = 9 // Default 9 AM
-  let endTime = 10 // Default 10 AM
+export function transformToDashboardTask(dbTask: Task, userTimezone?: string): DashboardTask {
+  const tz = userTimezone || 'UTC'
+  // Start/end as decimal hours in user's timezone for display
+  let startTime = 9
+  let endTime = 10
 
   if (dbTask.scheduledStartTime) {
-    startTime = getHourDecimal(dbTask.scheduledStartTime)
+    startTime = getHourDecimalInTimezone(dbTask.scheduledStartTime, tz)
   }
 
   if (dbTask.scheduledEndTime) {
-    endTime = getHourDecimal(dbTask.scheduledEndTime)
+    endTime = getHourDecimalInTimezone(dbTask.scheduledEndTime, tz)
   } else if (dbTask.scheduledStartTime) {
-    // Calculate end time from start time + duration
     endTime = startTime + dbTask.estimatedDuration / 60
   }
 
@@ -473,8 +477,15 @@ export async function getGroupedTasks(
       }
     }
 
-    // Transform to dashboard format
-    const dashboardTasks = tasksResult.data.map(transformToDashboardTask)
+    // User timezone for displaying times in local time
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    })
+    const userTimezone = dbUser?.timezone || 'Europe/Paris'
+
+    // Transform to dashboard format (UTC → user local for display)
+    const dashboardTasks = tasksResult.data.map((t) => transformToDashboardTask(t, userTimezone))
 
     // Group by date
     const groupedTasks = groupTasksByDate(dashboardTasks)

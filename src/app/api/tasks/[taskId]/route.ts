@@ -25,6 +25,7 @@ import type { Task } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { updateTask, transformToDashboardTask } from '@/lib/tasks/task-service'
 import type { DashboardTask } from '@/types/task.types'
+import { prisma } from '@/lib/db/prisma'
 
 /**
  * Request body for PATCH /api/tasks/[taskId]
@@ -123,7 +124,12 @@ export async function PATCH(
     console.log('[TaskUpdateAPI] Step 4: Preparing response')
 
     const taskData = result.data as Task & { downstreamSkippedIds?: string[] }
-    const dashboardTask = transformToDashboardTask(taskData)
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { timezone: true },
+    })
+    const userTimezone = dbUser?.timezone || 'Europe/Paris'
+    const dashboardTask = transformToDashboardTask(taskData, userTimezone)
 
     console.log('[TaskUpdateAPI] Task updated successfully:', {
       id: dashboardTask.id,

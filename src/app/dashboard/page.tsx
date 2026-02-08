@@ -38,7 +38,6 @@ import type { ViewMode } from '@/components/dashboard'
 
 // Import types
 import type { TaskGroups, DashboardTask } from '@/types/task.types'
-import type { ChatMessage } from '@/types/chat.types'
 
 // ============================================
 // API Response Types
@@ -50,8 +49,15 @@ interface TasksApiResponse {
   projectTitle: string
 }
 
+/** Stored message format from Discussion (role, content, timestamp) */
+interface StoredMsg {
+  role: 'assistant' | 'user'
+  content: string
+  timestamp: string
+}
+
 interface DiscussionApiResponse {
-  messages: ChatMessage[]
+  messages: StoredMsg[]
   projectTitle: string
 }
 
@@ -70,9 +76,9 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<TaskGroups | null>(null)
 
   /**
-   * Conversation messages (from API)
+   * Conversation messages (from API) — passed as initialMessages to ChatSidebar
    */
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<StoredMsg[]>([])
 
   /**
    * Active project info
@@ -420,13 +426,15 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAF9F6]">
-      {/* ========== LEFT SIDEBAR - Chat (40%) ========== */}
+      {/* ========== LEFT SIDEBAR - Interactive Chat (40%) ========== */}
       <ChatSidebar
-        messages={messages}
+        key={`chat-${projectId ?? ''}-${isLoadingMessages ? 'loading' : 'ready'}`}
+        initialMessages={messages}
         projectTitle={projectTitle}
         projectId={projectId}
         isLoading={isLoadingMessages}
         onSignOut={handleSignOut}
+        onTasksChanged={fetchTasks}
       />
 
       {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}

@@ -42,6 +42,11 @@ model Project {
   // Stores: schedule_duration_weeks, blocked_time, available_time, preferences, exclusions
   contextData Json?
 
+  // Harvey's qualitative notes about the user/project (plain text, NOT JSON)
+  projectNotes    String?
+  // How many schedule generations have occurred
+  generationCount Int      @default(1)
+
   // Relations
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks       Task[]
@@ -56,6 +61,11 @@ model Discussion {
   messages  Json     // Array of {role, content, timestamp}
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Discussion type: "project" (post-onboarding chat), "onboarding", "task"
+  type   String  @default("project")
+  // Only set when type = "task" — references Task id
+  taskId String?
 
   // Relations
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -92,6 +102,16 @@ model Task {
   depends_on   String[]  @default([]) // task IDs this task depends on
   label        String?
   
+  // Feedback fields (for Feature 3 prep, added now to avoid double migration)
+  actualDuration    Int?       // minutes — how long the task actually took
+  completionNotes   String?    // optional notes the user adds on completion
+  skipReason        String?    // "too_tired" | "ran_out_of_time" | "task_unclear" | "not_priority" | "other"
+  skipNotes         String?    // free text explanation for skip
+  startedAt         DateTime?  // when user started working on this task
+  
+  // Batch tracking — which schedule generation created this task
+  batchNumber       Int        @default(1)
+
   // Recurring (for personal tasks)
   recurring Json?
   

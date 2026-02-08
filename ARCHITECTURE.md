@@ -19,6 +19,7 @@ Root of the repository:
 - **`components.json`**: Configuration for UI component tooling (often used by component libraries or generators).
 - **`eslint.config.mjs`**: ESLint configuration for linting the codebase (JavaScript/TypeScript/React rules).
 - **`next.config.ts`**: Next.js configuration (custom build config, experimental flags, etc.).
+- **`output/`**: Local-generated artifacts (not application source). Includes `output/pdf/` for generated PDF reports/summaries.
 - **`package-lock.json`**: Exact dependency tree lockfile for npm. Do not edit manually.
 - **`package.json`**: Project metadata, dependencies, and scripts (e.g. `dev`, `build`, `lint`, `prisma:*`).
 - **`postcss.config.mjs`**: PostCSS configuration (used by Tailwind and other CSS tooling).
@@ -94,6 +95,16 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
   - Saves messages to Discussion on stream finish. During onboarding, runs early project title/description extraction via `extractProjectInfo()` and updates Project when data is available. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
 
+- **`chat/project/route.ts`**
+  - Endpoint under `/api/chat/project`.
+  - **Post-onboarding project chat**: streaming endpoint with 7 AI tools for schedule management. Uses **Claude Haiku** (`claude-haiku-4-5-20251001`) during MVP testing to reduce cost; can be switched back to Sonnet for paid users (see `AI_AGENT_CHANGELOG.md`).
+  - Sends only the last **10 messages** as conversation history (reduced from 15 for cost).
+  - Uses `assembleProjectChatContext()` to build a dynamic system prompt with live DB data (tasks, constraints, stats, notes). Schedule in the prompt is limited to today + next 7 days with a compact task format to reduce tokens.
+  - Tools: `modify_schedule`, `update_constraints`, `add_task`, `suggest_next_action`, `get_progress_summary`, `regenerate_schedule`, `update_project_notes`.
+  - Claude decides whether to call a tool (Category A) or respond conversationally (Category B).
+  - Persists messages to Discussion (type: "project") on stream finish.
+  - See `docs/chat-router/README.md` for full architecture docs.
+
 - **`discussions/[projectId]/route.ts`**
   - Endpoint under `/api/discussions/[projectId]`.
   - Manages AI or human discussions tied to a specific project (identified by `projectId`).
@@ -143,7 +154,7 @@ Dashboard UI for authenticated users:
 
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
-- **`ChatSidebar.tsx`**: Sidebar showing AI or project-related chat, typically integrated with `/api/chat`.
+- **`ChatSidebar.tsx`**: Interactive chat sidebar using `useChat` from `@ai-sdk/react`. Posts to `/api/chat/project` for live conversation with Harvey. Shows streaming messages, typing indicator, tool call indicators. Calls `onTasksChanged` callback in `onFinish` when any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `dynamic-tool`), triggering dashboard task refetch so timeline/calendar show updates immediately without manual reload.
 - **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
 - **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
@@ -198,12 +209,26 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/schedule/`
 
-- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Constraint extraction uses a higher token limit (4096) so full constraint JSON is returned; `repairJSON` handles truncated constraint JSON (closes arrays before objects, closes truncated string values) so user constraints are used instead of defaults when the model output is cut off.
+- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Each generated task includes **2–4 success criteria** (prompt and parser output multi-line SUCCESS section; `convertSuccessCriteriaToJson` turns it into the JSON checklist format). Constraint extraction uses a higher token limit (4096) so full constraint JSON is returned; `repairJSON` handles truncated constraint JSON (closes arrays before objects, closes truncated string values) so user constraints are used instead of defaults when the model output is cut off.
 - **`task-scheduler.ts`**: Pure scheduling algorithms and helpers (e.g. assigning tasks to slots, respecting dependencies and constraints). Orders tasks by dependency (topological sort) then priority so dependents are scheduled after their dependencies.
 
 ### `src/lib/tasks/`
 
 - **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. Used heavily by task-related API routes and dashboard UI.
+
+### `src/lib/chat/`
+
+- **`assembleContext.ts`**: Builds the dynamic system prompt for post-onboarding chat. Queries DB for project, user, and tasks, computes stats (including "today's tasks" in the user's timezone), then limits the schedule section to **today + next 7 days** (plus unscheduled) and uses a **compact task line format** to reduce tokens. Generates a detailed system prompt with Harvey's personality, project context, constraints, schedule, stats, and tool usage instructions. Uses `src/lib/timezone.ts` for date-in-timezone helpers. Rebuilt for every message.
+- **`generateSuccessCriteria.ts`**: Generates 2–4 success criteria for a task using Claude (Sonnet) from title and optional description. Returns JSON array `{ id, text, done }[]` for `Task.successCriteria`. Used by `add_task` so chat-added tasks get the same checklist quality as onboarding tasks.
+- **`types.ts`**: Shared TypeScript types for the chat system (ContextData, TaskStats, tool result types).
+- **`README.md`**: Documentation for the chat router system, including how to add new tools.
+- **`tools/modifySchedule.ts`**: Move/resize tasks with conflict detection and dependency validation.
+- **`tools/updateConstraints.ts`**: Modify user availability (permanent recurring or one-off date-specific blocks).
+- **`tools/addTask.ts`**: Create new tasks with automatic slot-finding and **2–4 AI-generated success criteria** (via `generateSuccessCriteria`) so criteria appear in the task detail view.
+- **`tools/suggestNextAction.ts`**: Returns structured data about current/next/overdue tasks for Claude to reason about.
+- **`tools/getProgressSummary.ts`**: Simple completion statistics by period (today, this_week, all).
+- **`tools/regenerateSchedule.ts`**: Greedy reschedule of pending/skipped tasks (remaining) or full rebuild via Claude (full_rebuild). **Dependencies**: Remaining scope sorts tasks by `depends_on` (topological order) so dependents are never scheduled before their dependencies; full rebuild uses `assignTasksToSchedule`, which already respects dependencies. Returns a concise `message` and optional `change_summary` (moved count, completion date before/after) so Harvey can give a clear 2–3 sentence recap. Logs to console during regeneration (which tasks moved, old → new dates, completion date) for debugging.
+- **`tools/updateProjectNotes.ts`**: Timestamped notes Harvey stores about user preferences and patterns.
 
 ### `src/lib/users/`
 
@@ -214,13 +239,17 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 - **`utils.ts`**: Grab-bag of shared helper functions (formatting, date utilities, type guards, etc.) used across different parts of the app.
 
+### `src/lib/timezone.ts` – Timezone helpers
+
+- **`timezone.ts`**: Utilities for user-timezone-aware date/time handling. Database stores UTC; this module provides `getDateStringInTimezone` (YYYY-MM-DD in a given IANA timezone), `formatDateLongInTimezone` (long date for prompts), `getHourDecimalInTimezone`, `formatTimeInTimezone`, and `localTimeInTimezoneToUTC` for saving. Used by chat context assembly and chat tools so "today", overdue, and schedule dates are correct for the user's timezone.
+
 ---
 
 ## `src/prisma/` – Prisma schema and migrations
 
 > Note: There is also a generated Prisma client under `src/node_modules/.prisma/`. That generated code should not be modified directly.
 
-- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **Task** model includes `depends_on String[]` (task IDs this task depends on), used for dependency-aware scheduling and cascade skip when a task is skipped.
+- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **Task** model includes `depends_on String[]` (task IDs this task depends on) and `batchNumber Int` (which schedule generation created the task). The **Project** model includes `projectNotes String?` (Harvey's memory) and `generationCount Int` (total schedule generations). The **Discussion** model includes `type String` ("project" | "onboarding" | "task") and `taskId String?`.
 
 - **`migrations/`**: Auto-generated migration history:
   - **`20260203144248_change_success_criteria_to_json/`**

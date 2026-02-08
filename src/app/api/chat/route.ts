@@ -33,7 +33,7 @@ import { createUser } from '@/lib/users/user-service'
 import { createProject, getProjectById, updateProject } from '@/lib/projects/project-service'
 import {
   createDiscussion,
-  getDiscussionByProjectId,
+  getOnboardingDiscussion,
   appendMessages,
 } from '@/lib/discussions/discussion-service'
 import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream } from 'ai'
@@ -45,7 +45,9 @@ import type { StoredMessage } from '@/types/api.types'
 import type { UIMessage } from 'ai'
 
 /** Model identifier - matches existing CLAUDE_CONFIG */
-const MODEL_ID = 'claude-sonnet-4-20250514'
+/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
+
+const MODEL_ID = 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 300
 
 /** Extract text content from UIMessage parts */
@@ -139,6 +141,7 @@ export async function POST(request: NextRequest) {
       const discussionResult = await createDiscussion({
         projectId: currentProjectId,
         userId: user.id,
+        type: 'onboarding',
       })
       if (!discussionResult.success || !discussionResult.discussion) {
         return NextResponse.json(
@@ -157,7 +160,7 @@ export async function POST(request: NextRequest) {
       }
       currentProjectId = project.id
 
-      const discussion = await getDiscussionByProjectId(projectId, user.id)
+      const discussion = await getOnboardingDiscussion(projectId, user.id)
       if (!discussion) {
         return NextResponse.json(
           { error: 'Discussion not found', code: 'DISCUSSION_NOT_FOUND' },
