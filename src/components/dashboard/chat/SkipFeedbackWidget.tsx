@@ -33,6 +33,15 @@ export function SkipFeedbackWidget({
     notes?: string
   ) => {
     if (submitted || loading) return
+    const labels: Record<string, string> = {
+      too_tired: "I'm too tired.",
+      ran_out_time: 'I ran out of time.',
+      task_unclear: 'The task was unclear.',
+      not_priority: "It's not a priority right now.",
+      other: notes?.trim() ? `Other: ${notes.trim()}` : 'Other reason.',
+    }
+    onAppendMessage('user', labels[reason] || 'Skipping.')
+    setSubmitted(true)
     setLoading(true)
     try {
       await fetch(`/api/tasks/${taskId}`, {
@@ -43,18 +52,15 @@ export function SkipFeedbackWidget({
           ...(notes != null && notes.trim() ? { skipNotes: notes.trim() } : {}),
         }),
       })
-      const labels: Record<string, string> = {
-        too_tired: "I'm too tired.",
-        ran_out_time: 'I ran out of time.',
-        task_unclear: 'The task was unclear.',
-        not_priority: "It's not a priority right now.",
-        other: notes?.trim() ? `Other: ${notes.trim()}` : 'Other reason.',
+
+      // Show Harvey's reply after a short delay so the conversation reads user → then Harvey
+      const sendAssistant = (content: string, widget?: ChatWidget) => {
+        const ASSISTANT_DELAY_MS = 400
+        setTimeout(() => onAppendMessage('assistant', content, widget), ASSISTANT_DELAY_MS)
       }
-      onAppendMessage('user', labels[reason] || 'Skipping.')
-      setSubmitted(true)
 
       if (reason === 'not_priority') {
-        onAppendMessage('assistant', "Okay, I'll leave it skipped for now.")
+        sendAssistant("Okay, I'll leave it skipped for now.")
         return
       }
 
@@ -62,16 +68,16 @@ export function SkipFeedbackWidget({
         `/api/tasks/${taskId}/suggestion?skipReason=${encodeURIComponent(reason)}`
       )
       if (!suggestionRes.ok) {
-        onAppendMessage('assistant', "Okay, I'll leave it skipped for now.")
+        sendAssistant("Okay, I'll leave it skipped for now.")
         return
       }
       const suggestionJson = await suggestionRes.json()
       if (!suggestionJson.success || !suggestionJson.suggestion) {
-        onAppendMessage('assistant', "Okay, I'll leave it skipped for now.")
+        sendAssistant("Okay, I'll leave it skipped for now.")
         return
       }
       const s = suggestionJson.suggestion
-      onAppendMessage('assistant', s.suggestionText, {
+      sendAssistant(s.suggestionText, {
         type: 'reschedule_prompt',
         data: {
           taskId,

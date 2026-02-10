@@ -23,7 +23,7 @@
 
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
 
@@ -115,6 +115,9 @@ export default function DashboardPage() {
    */
   const [searchQuery, setSearchQuery] = useState('')
 
+  /** Only auto-expand first task once on initial load; avoids refetch when expandedTaskId changes */
+  const hasAutoExpandedRef = useRef(false)
+
   /**
    * Messages appended by dashboard (e.g. after Complete/Skip) so ChatSidebar can show them before refetch.
    * Each has createdAt (ISO string) so ChatSidebar can sort merged messages correctly.
@@ -165,8 +168,9 @@ export default function DashboardPage() {
       setProjectId(data.projectId)
       setProjectTitle(data.projectTitle)
 
-      // Auto-expand first task if none expanded (prioritize overdue, then today)
-      if (!expandedTaskId) {
+      // Auto-expand first task only once on initial load (so expand/collapse doesn't trigger refetch)
+      if (!hasAutoExpandedRef.current) {
+        hasAutoExpandedRef.current = true
         if (data.tasks.overdue.length > 0) {
           setExpandedTaskId(data.tasks.overdue[0].id)
         } else if (data.tasks.today.length > 0) {
@@ -180,7 +184,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoadingTasks(false)
     }
-  }, [router, expandedTaskId])
+  }, [router])
 
   /**
    * Fetch conversation messages from API
@@ -269,11 +273,32 @@ export default function DashboardPage() {
   )
 
   /**
-   * Handle task completion
+   * Handle task completion (optimistic UI: update timeline immediately, revert on API failure)
    */
   const handleCompleteTask = async (taskId: string) => {
-    console.log('[Dashboard] Completing task:', taskId)
-    setIsActionLoading(true)
+    const previousTask = findTaskById(tasks, taskId)
+    if (!previousTask) return
+
+    // Optimistic: show task as completed in timeline immediately
+    setTasks((prev) =>
+      prev
+        ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'completed' }))
+        : prev
+    )
+    // Show feedback message + widget in chat immediately (no wait for API)
+    const completionMsg = {
+      id: `complete-${taskId}-${Date.now()}`,
+      role: 'assistant' as const,
+      content: 'Nice work! Quick question: how long did that actually take?',
+      createdAt: new Date().toISOString(),
+      widget: { type: 'completion_feedback' as const, data: { taskId } },
+    }
+    setAppendedByDashboard((prev) => [...prev, completionMsg])
+    void appendMessageToDiscussion(
+      completionMsg.role,
+      completionMsg.content,
+      completionMsg.widget
+    )
 
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
@@ -281,44 +306,45 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'completed' }),
       })
-
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to complete task')
       }
-
       console.log('[Dashboard] Task completed successfully')
-      await fetchTasks()
-
-      // Append feedback message to chat (with widget); createdAt ensures correct order when merged in ChatSidebar
-      const completionMsg = {
-        id: `complete-${taskId}-${Date.now()}`,
-        role: 'assistant' as const,
-        content: 'Nice work! Quick question: how long did that actually take?',
-        createdAt: new Date().toISOString(),
-        widget: { type: 'completion_feedback' as const, data: { taskId } },
-      }
-      setAppendedByDashboard((prev) => [...prev, completionMsg])
-      await appendMessageToDiscussion(
-        completionMsg.role,
-        completionMsg.content,
-        completionMsg.widget
-      )
+      // Sync in background (e.g. server timestamps); optional, keeps UI consistent
+      void fetchTasks()
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to complete task'
       console.error('[Dashboard] Error completing task:', errorMessage)
+      setTasks((prev) =>
+        prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
+      )
+      setAppendedByDashboard((prev) => prev.filter((m) => m.id !== completionMsg.id))
       alert(errorMessage)
-    } finally {
-      setIsActionLoading(false)
     }
   }
 
   /**
-   * Handle task skip
+   * Handle task skip (optimistic UI: update timeline immediately, revert on API failure)
    */
   const handleSkipTask = async (taskId: string) => {
-    console.log('[Dashboard] Skipping task:', taskId)
-    setIsActionLoading(true)
+    const previousTask = findTaskById(tasks, taskId)
+    if (!previousTask) return
+
+    setTasks((prev) =>
+      prev
+        ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'skipped' }))
+        : prev
+    )
+    const skipMsg = {
+      id: `skip-${taskId}-${Date.now()}`,
+      role: 'assistant' as const,
+      content: 'No problem! Quick question: why are you skipping this?',
+      createdAt: new Date().toISOString(),
+      widget: { type: 'skip_feedback' as const, data: { taskId } },
+    }
+    setAppendedByDashboard((prev) => [...prev, skipMsg])
+    void appendMessageToDiscussion(skipMsg.role, skipMsg.content, skipMsg.widget)
 
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
@@ -326,31 +352,27 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'skipped' }),
       })
-
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to skip task')
       }
-
-      console.log('[Dashboard] Task skipped successfully')
-      await fetchTasks()
-
-      // Append skip feedback message to chat (with widget); createdAt ensures correct order when merged in ChatSidebar
-      const skipMsg = {
-        id: `skip-${taskId}-${Date.now()}`,
-        role: 'assistant' as const,
-        content: 'No problem! Quick question: why are you skipping this?',
-        createdAt: new Date().toISOString(),
-        widget: { type: 'skip_feedback' as const, data: { taskId } },
+      const data = await response.json()
+      const downstreamIds = data?.downstreamSkippedIds as string[] | undefined
+      if (downstreamIds?.length) {
+        setTasks((prev) =>
+          prev ? setTasksStatusInGroups(prev, downstreamIds, 'skipped') : prev
+        )
       }
-      setAppendedByDashboard((prev) => [...prev, skipMsg])
-      await appendMessageToDiscussion(skipMsg.role, skipMsg.content, skipMsg.widget)
+      console.log('[Dashboard] Task skipped successfully')
+      void fetchTasks()
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to skip task'
       console.error('[Dashboard] Error skipping task:', errorMessage)
+      setTasks((prev) =>
+        prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
+      )
+      setAppendedByDashboard((prev) => prev.filter((m) => m.id !== skipMsg.id))
       alert(errorMessage)
-    } finally {
-      setIsActionLoading(false)
     }
   }
 
@@ -368,19 +390,64 @@ export default function DashboardPage() {
  */
 function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask | null {
   if (!tasks) return null
-  
+
   const allTasks = [
     ...tasks.past,
     ...tasks.overdue,
     ...tasks.today,
     ...tasks.tomorrow,
-    ...tasks.weekDays.flatMap(d => d.tasks),
+    ...tasks.weekDays.flatMap((d) => d.tasks),
     ...tasks.nextWeek,
     ...tasks.later,
     ...tasks.unscheduled,
   ]
-  
-  return allTasks.find(t => t.id === taskId) || null
+
+  return allTasks.find((t) => t.id === taskId) || null
+}
+
+/**
+ * Helper: Update one task in TaskGroups by ID (returns new TaskGroups).
+ */
+function updateTaskInGroups(
+  prev: TaskGroups,
+  taskId: string,
+  updater: (t: DashboardTask) => DashboardTask
+): TaskGroups {
+  const update = (t: DashboardTask) => (t.id === taskId ? updater(t) : t)
+  return {
+    ...prev,
+    past: prev.past.map(update),
+    overdue: prev.overdue.map(update),
+    today: prev.today.map(update),
+    tomorrow: prev.tomorrow.map(update),
+    weekDays: prev.weekDays.map((d) => ({ ...d, tasks: d.tasks.map(update) })),
+    nextWeek: prev.nextWeek.map(update),
+    later: prev.later.map(update),
+    unscheduled: prev.unscheduled.map(update),
+  }
+}
+
+/**
+ * Helper: Set status for multiple tasks by ID (e.g. cascade skip).
+ */
+function setTasksStatusInGroups(
+  prev: TaskGroups,
+  taskIds: string[],
+  status: 'completed' | 'skipped'
+): TaskGroups {
+  const ids = new Set(taskIds)
+  const update = (t: DashboardTask) => (ids.has(t.id) ? { ...t, status } : t)
+  return {
+    ...prev,
+    past: prev.past.map(update),
+    overdue: prev.overdue.map(update),
+    today: prev.today.map(update),
+    tomorrow: prev.tomorrow.map(update),
+    weekDays: prev.weekDays.map((d) => ({ ...d, tasks: d.tasks.map(update) })),
+    nextWeek: prev.nextWeek.map(update),
+    later: prev.later.map(update),
+    unscheduled: prev.unscheduled.map(update),
+  }
 }
 
 /**

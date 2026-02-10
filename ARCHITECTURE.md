@@ -79,7 +79,7 @@ Additional route groups:
 - **`loading/page.tsx`**: A route that provides a loading/placeholder experience, likely displayed while the main experience or data loads.
 - **`onboarding/page.tsx`**: `/onboarding` route. Manages the onboarding experience and initial user setup, using components from `src/components/onboarding`.
 - **`signin/page.tsx`**: `/signin` route. Handles email-based sign-in and integration with Supabase auth.
-- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components.
+- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure).
 
 Auth callback:
 
@@ -126,7 +126,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.
-  - Handles single-task operations (fetch, update, delete) based on `taskId`.
+  - Handles single-task operations (fetch, update, delete) based on `taskId`. PATCH returns the updated task and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
 
 - **`tasks/[taskId]/checklist/route.ts`**
   - Endpoint under `/api/tasks/[taskId]/checklist`.
@@ -159,14 +159,14 @@ Dashboard UI for authenticated users:
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
 - **`ChatSidebar.tsx`**: Interactive chat sidebar using `useChat` from `@ai-sdk/react`. Posts to `/api/chat/project` for live conversation with Harvey. Merges three message sources (initial/useChat, dashboard-appended after Complete/Skip, widget-appended feedback); every message has a consistent `createdAt` (ISO string) and the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Shows streaming messages, typing indicator, tool call indicators. Auto-scrolls to bottom when messages or appended lists change. Calls `onTasksChanged` in `onFinish` when any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `dynamic-tool`), triggering dashboard task refetch so timeline/calendar show updates immediately without manual reload.
-- **`chat/CompletionFeedbackWidget.tsx`**: Inline widget shown after “how long did it take?” when the user completes a task. User picks duration (less/same/more, optional minutes). On submit: PATCH task with feedback, then GET `/api/progress/today`. The acknowledgment message compares the **completed task’s scheduled date** to **today** (in the user’s timezone from the progress response): if same day → “That’s X/Y tasks done today”; if overdue → “You’re catching up — good job finishing that one”; if future → “You’re ahead of schedule — nice work.” In all cases the message ends with “Next up: [task]” (today or nearest upcoming pending) or “You’re all clear for now.”
+- **`chat/CompletionFeedbackWidget.tsx`**: Inline widget shown after “how long did it take?” when the user completes a task. User picks duration (less/same/more, optional minutes). On submit: single PATCH with `?returnProgressToday=true` (response includes progressToday, avoiding a separate GET; fallback to GET `/api/progress/today` if absent). The acknowledgment message compares the **completed task’s scheduled date** to **today** (in the user’s timezone from the progress response): if same day → “That’s X/Y tasks done today”; if overdue → “You’re catching up — good job finishing that one”; if future → “You’re ahead of schedule — nice work.” In all cases the message ends with “Next up: [task]” (today or nearest upcoming pending) or “You’re all clear for now.”
 - **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
 - **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views.
-- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`).
+- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
 - **`ViewToggle.tsx`**: Control for toggling between different dashboard views (e.g. Calendar vs Timeline).
 
 ### `src/components/onboarding/`

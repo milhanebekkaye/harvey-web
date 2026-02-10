@@ -27,16 +27,28 @@ export function CompletionFeedbackWidget({
     actualMinutes?: number
   ) => {
     if (submitted || loading) return
+    const userMessages: Record<'less' | 'same' | 'more', string> = {
+      less: 'The task took me less time than planned.',
+      same: 'The task took me about the right time you scheduled.',
+      more: 'The task took me longer than planned.',
+    }
+    // Show user message in chat immediately (DB persist runs in background via parent)
+    onAppendMessage('user', userMessages[durationAccuracy])
+    setSubmitted(true)
     setLoading(true)
     try {
-      const patchRes = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          durationAccuracy,
-          ...(actualMinutes != null ? { actualDuration: actualMinutes } : {}),
-        }),
-      })
+      // Single PATCH returns task + optional progressToday (avoids separate GET /api/progress/today)
+      const patchRes = await fetch(
+        `/api/tasks/${taskId}?returnProgressToday=true`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            durationAccuracy,
+            ...(actualMinutes != null ? { actualDuration: actualMinutes } : {}),
+          }),
+        }
+      )
       if (!patchRes.ok) {
         setLoading(false)
         return
@@ -45,19 +57,15 @@ export function CompletionFeedbackWidget({
       const completedTaskScheduledDate: string | undefined =
         patchJson?.task?.scheduledDate
 
-      const userMessages: Record<'less' | 'same' | 'more', string> = {
-        less: 'The task took me less time than planned.',
-        same: 'The task took me about the right time you scheduled.',
-        more: 'The task took me longer than planned.',
+      // Use progress from PATCH response when present; otherwise fallback to GET (e.g. older API)
+      let d = patchJson?.progressToday
+      if (!d) {
+        const progressRes = await fetch('/api/progress/today')
+        if (!progressRes.ok) return
+        const progressJson = await progressRes.json()
+        if (!progressJson.success || !progressJson.data) return
+        d = progressJson.data
       }
-      onAppendMessage('user', userMessages[durationAccuracy])
-      setSubmitted(true)
-
-      const progressRes = await fetch('/api/progress/today')
-      if (!progressRes.ok) return
-      const progressJson = await progressRes.json()
-      if (!progressJson.success || !progressJson.data) return
-      const d = progressJson.data
       const userTimezone = d.userTimezone || 'Europe/Paris'
       const todayStr = getDateStringInTimezone(new Date(), userTimezone)
       const taskDateStr =
@@ -85,8 +93,12 @@ export function CompletionFeedbackWidget({
       } else {
         ack = "You're ahead of schedule — nice work." + nextUpSuffix
       }
-      onAppendMessage('assistant', ack)
-      onTasksChanged?.()
+      // Show Harvey's reply after a short delay so the conversation reads user → then Harvey
+      const ASSISTANT_DELAY_MS = 400
+      setTimeout(() => {
+        onAppendMessage('assistant', ack)
+        onTasksChanged?.()
+      }, ASSISTANT_DELAY_MS)
     } catch (e) {
       console.error('[CompletionFeedbackWidget]', e)
     } finally {

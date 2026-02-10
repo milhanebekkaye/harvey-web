@@ -50,6 +50,29 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Task expand refetch fix + feedback conversation order
+
+- **Agent / context**: Cursor AI – Fix refetch on task expand; make feedback widgets show user message first, then Harvey’s reply (conversation order).
+- **Summary**:
+  - **Expand no longer triggers refetch**: `fetchTasks` depended on `expandedTaskId`, so every expand/collapse re-ran the effect and caused a full GET /api/tasks (~2s). Removed `expandedTaskId` from the callback deps and moved “auto-expand first task” to a ref (`hasAutoExpandedRef`) so it runs only once on initial load. Expanding a task is now instant (no API call).
+  - **Feedback flow reads like a conversation**: In CompletionFeedbackWidget the user’s reply (e.g. “The task took me about the right time…”) is appended to the chat immediately on button click; PATCH and progress run in the background; Harvey’s acknowledgment is appended after a short delay (400ms) so the order is clearly user → then Harvey. SkipFeedbackWidget already appended the user first; added the same 400ms delay before showing Harvey’s reply. Message persistence (POST to discussion) continues to run in the background via the parent callback.
+- **Files touched**: `src/app/dashboard/page.tsx` (useRef, hasAutoExpandedRef, fetchTasks deps), `src/components/dashboard/chat/CompletionFeedbackWidget.tsx` (user message first, then PATCH, then delayed assistant), `src/components/dashboard/chat/SkipFeedbackWidget.tsx` (delayed assistant), `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Expand felt slow (2s) due to unnecessary refetch; user wanted feedback to look like a real back-and-forth (user message visible first, then Harvey).
+- **Risks / notes**: Auto-expand runs only once per session; if the user collapses the only expanded task we do not auto-expand again on a later fetch.
+
+### 2026-02-10 – Dashboard responsiveness: optimistic UI, fewer API calls, widget visibility
+
+- **Agent / context**: Cursor AI – Targeted performance/UX optimizations for the dashboard: Complete/Skip, feedback widgets, and task detail loading.
+- **Summary**:
+  - **Optimistic UI (Complete/Skip)**: Clicking Complete or Skip on a task now updates the task's visual status in the Timeline immediately. The feedback message and widget appear in the chat right away. The PATCH request runs in the background; on failure the task state is reverted and the user is alerted. Cascade-skipped task IDs from the API are applied to local state on success. No blocking `fetchTasks()` or `setIsActionLoading` before UI update.
+  - **Fewer API calls in feedback widgets**: The task PATCH endpoint accepts an optional query `returnProgressToday=true`. When set, the response includes `progressToday` (same shape as GET `/api/progress/today`). CompletionFeedbackWidget now uses this single PATCH for task feedback + progress, avoiding a separate GET. SkipFeedbackWidget appends the user's reply message immediately, then runs PATCH and suggestion in the background so the UI feels instant.
+  - **Task detail loading**: Confirmed that expanding a task in the Timeline uses the same task object from the already-loaded list; no extra fetch on click. A short comment was added in TimelineView for clarity.
+  - **Widget button visibility**: Feedback widgets (duration accuracy, skip reason) are shown as soon as the Harvey message is in the merged list. With optimistic Complete/Skip, that message is added to `appendedByDashboard` immediately, so the widget appears without waiting for the API. Widgets do not conditionally hide their buttons behind a loading state on first render.
+- **Files touched**: `src/app/dashboard/page.tsx` (optimistic complete/skip, helpers `updateTaskInGroups`, `setTasksStatusInGroups`), `src/app/api/tasks/[taskId]/route.ts` (optional `progressToday` in response when `?returnProgressToday=true`), `src/components/dashboard/chat/CompletionFeedbackWidget.tsx` (single PATCH with progress, fallback GET), `src/components/dashboard/chat/SkipFeedbackWidget.tsx` (append user message first, then PATCH/suggestion), `src/components/dashboard/TimelineView.tsx` (comment re task detail from list), `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/dashboard/README.md`.
+- **Motivation**: Buttons and task details felt slow because each action triggered sequential API calls and the UI waited for them. Optimistic updates and combining PATCH + progress reduce round-trips and make the UI feel instant.
+- **Risks / notes**: On PATCH failure after Complete/Skip, the reverted task is restored from the snapshot taken at click time; any concurrent changes from another tab are overwritten for that task. CompletionFeedbackWidget still falls back to GET `/api/progress/today` if the PATCH response has no `progressToday` (e.g. older deployments).
+- **Related docs**: `ARCHITECTURE.md` (tasks PATCH, progress/today, ChatSidebar, CompletionFeedbackWidget), `docs/dashboard/README.md` (Complete/Skip flow, completion feedback, task detail).
+
 ### 2026-02-10 – Completion feedback: date-aware acknowledgment (overdue/future tasks no longer “0/0 today”)
 
 - **Agent / context**: Cursor AI – Bug fix: when a user completed a task not scheduled for today (overdue or future), Harvey showed “0/0 tasks done today” because the progress query only counted today’s tasks.

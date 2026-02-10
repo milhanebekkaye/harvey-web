@@ -163,6 +163,7 @@ export function TimelineView({
                   className={isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
                 />
 
+                {/* Task detail uses same task from list — no extra fetch on expand */}
                 {isExpanded && !gridLayout && (
                   <div
                     className="px-5 pb-5 pt-4 bg-gradient-to-b from-slate-50/50 to-white animate-in slide-in-from-top-2 duration-200"

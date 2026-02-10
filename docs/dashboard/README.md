@@ -9,13 +9,13 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/ChatSidebar.tsx`
   - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip), and feedback widgets; sorts by `createdAt` (ISO) so order is always chronological. Auto-scrolls to the latest message.
 - `src/components/dashboard/TimelineView.tsx`
-  - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service).
+  - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
 - `src/components/dashboard/TaskTile.tsx`
   - Compact task card, clickable to expand.
 - `src/components/dashboard/TaskDetails.tsx`
   - Expanded task details (description, checklist, actions).
 - `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`
-  - “How long did it take?” widget after task completion. Compares the completed task’s scheduled date to today (user timezone): same day → “That’s X/Y tasks done today”; overdue → “You’re catching up — good job finishing that one”; future → “You’re ahead of schedule — nice work.” Always appends “Next up: [task]” or “You’re all clear for now.”
+  - “How long did it take?” widget after task completion. Uses single PATCH with ?returnProgressToday=true (response includes progress; fallback GET if absent). Builds acknowledgment: same day/overdue/future. Compares the completed task’s scheduled date to today (user timezone): same day → “That’s X/Y tasks done today”; overdue → “You’re catching up — good job finishing that one”; future → “You’re ahead of schedule — nice work.” Always appends “Next up: [task]” or “You’re all clear for now.”
 - `src/components/dashboard/TaskChecklistItem.tsx`
   - Checklist UI with toggle support.
 - `src/components/dashboard/CalendarView.tsx`
@@ -62,7 +62,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `fetchMessages(projectId)`
   - Calls `/api/discussions/[projectId]` and loads conversation history.
 - `handleCompleteTask(taskId)` / `handleSkipTask(taskId)`
-  - PATCH task status then refresh tasks. Append a Harvey feedback message (with completion/skip widget) to `appendedByDashboard` with `createdAt` so the chat sidebar shows it in correct chronological order.
+  - **Optimistic UI**: Update task status in local state and append the Harvey feedback message (with widget) to `appendedByDashboard` immediately. PATCH runs in the background; on failure the task is reverted and the user is alerted. On skip success, cascade-skipped task IDs from the response are applied to local state. Optional background `fetchTasks()` to sync.
 - `handleChecklistToggle(taskId, itemId, done)`
   - Optimistically updates checklist and persists via `/api/tasks/[taskId]/checklist`.
 - `handleSignOut()`
@@ -74,7 +74,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 
 ### `src/app/api/tasks/[taskId]/route.ts`
 - `PATCH(request, { params })`
-  - Validates ownership and updates task status/title/description.
+  - Validates ownership and updates task status/title/description. When `?returnProgressToday=true` is set, the response includes `progressToday` (same shape as GET `/api/progress/today`) so the completion feedback widget can avoid a separate GET.
 
 ### `src/app/api/tasks/[taskId]/checklist/route.ts`
 - `PATCH(request, { params })`

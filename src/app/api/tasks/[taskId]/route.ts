@@ -23,7 +23,12 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { Task } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
-import { updateTask, transformToDashboardTask } from '@/lib/tasks/task-service'
+import {
+  updateTask,
+  transformToDashboardTask,
+  getTodayProgress,
+  type TodayProgress,
+} from '@/lib/tasks/task-service'
 import type { DashboardTask } from '@/types/task.types'
 import { prisma } from '@/lib/db/prisma'
 
@@ -51,6 +56,8 @@ interface UpdateTaskResponse {
   task: DashboardTask
   /** When task was set to skipped, IDs of tasks that were cascade-skipped (depend on this task). */
   downstreamSkippedIds?: string[]
+  /** When ?returnProgressToday=true, today's progress (avoids separate GET /api/progress/today). */
+  progressToday?: TodayProgress
 }
 
 export async function PATCH(
@@ -148,7 +155,6 @@ export async function PATCH(
       status: dashboardTask.status,
       downstreamSkippedIds: taskData.downstreamSkippedIds?.length,
     })
-    console.log('[TaskUpdateAPI] ========== Update complete ==========')
 
     const response: UpdateTaskResponse = {
       success: true,
@@ -158,6 +164,16 @@ export async function PATCH(
         : {}),
     }
 
+    // Optional: return today's progress in same response to avoid separate GET /api/progress/today
+    const url = new URL(request.url)
+    if (url.searchParams.get('returnProgressToday') === 'true') {
+      const progressResult = await getTodayProgress(user.id)
+      if (progressResult.success && progressResult.data) {
+        response.progressToday = progressResult.data
+      }
+    }
+
+    console.log('[TaskUpdateAPI] ========== Update complete ==========')
     return NextResponse.json(response, { status: 200 })
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
