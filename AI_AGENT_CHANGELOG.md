@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Completion feedback: date-aware acknowledgment (overdue/future tasks no longer “0/0 today”)
+
+- **Agent / context**: Cursor AI – Bug fix: when a user completed a task not scheduled for today (overdue or future), Harvey showed “0/0 tasks done today” because the progress query only counted today’s tasks.
+- **Summary**:
+  - **CompletionFeedbackWidget**: After the user submits duration (“how long did it take?”), the widget now compares the completed task’s `scheduledDate` to today’s date in the user’s timezone (from User model via progress API). If same day → “That’s X/Y tasks done today. Next up: [task]”; if overdue → “You’re catching up — good job finishing that one. Next up: [task]”; if future → “You’re ahead of schedule — nice work. Next up: [task].” If no upcoming task exists, message ends with “You’re all clear for now.”
+  - **Backend**: `getTodayProgress` (task-service) now returns **userTimezone** and **nextTask** as the first pending task today or, if none, the nearest upcoming pending task by date. Progress API response shape unchanged for existing fields; new fields are additive.
+  - **Frontend**: Widget uses PATCH response `task.scheduledDate` and progress response `userTimezone`; uses `getDateStringInTimezone` from `@/lib/timezone` for comparison.
+- **Files touched**: `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`, `src/lib/tasks/task-service.ts` (TodayProgress interface and getTodayProgress), `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/dashboard/README.md`.
+- **Motivation**: Overdue or early-completed tasks should get a correct, encouraging message instead of “0/0 tasks done today.”
+- **Risks / notes**: None. Progress API consumers that ignore unknown keys are unaffected; widget only uses the new fields when building the ack.
+- **Related docs**: `ARCHITECTURE.md` (progress/today, task-service getTodayProgress, CompletionFeedbackWidget), `docs/dashboard/README.md` (completion feedback, progress API, getTodayProgress).
+
 ### 2026-02-10 – Chat sidebar message order fix (Complete/Skip feedback above older messages)
 
 - **Agent / context**: Cursor AI – Bug fix: when a user completes or skips a task from the dashboard, the automatic Harvey feedback message (“Nice work! Quick question…” / “No problem! Quick question…”) was rendering above older messages instead of at the bottom.

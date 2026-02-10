@@ -653,7 +653,9 @@ export interface TodayProgress {
   pending: number
   total: number
   percentage: number
-  /** First pending task today by start time (for "Next up: [task]" message) */
+  /** User's IANA timezone (e.g. Europe/Paris) for date comparison in completion feedback */
+  userTimezone: string
+  /** First pending task today, or nearest upcoming pending task (for "Next up: [task]" message) */
   nextTask?: { id: string; title: string; startTime: string | null }
 }
 
@@ -699,14 +701,31 @@ export async function getTodayProgress(
     const total = todayTasks.length
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
 
-    const sortedToday = todayTasks.sort(
+    const sortedToday = [...todayTasks].sort(
       (a, b) =>
         (a.scheduledStartTime?.getTime() ?? 0) -
         (b.scheduledStartTime?.getTime() ?? 0)
     )
-    const firstPending = sortedToday.find(
+    let firstPending = sortedToday.find(
       (t) => t.status === 'pending' || t.status === 'in_progress'
     )
+    if (!firstPending) {
+      const upcomingPending = tasksResult.data
+        .filter(
+          (t) =>
+            (t.status === 'pending' || t.status === 'in_progress') &&
+            t.scheduledDate != null &&
+            getDateStringInTimezone(t.scheduledDate, userTimezone) >= todayStr
+        )
+        .sort(
+          (a, b) =>
+            (a.scheduledDate?.getTime() ?? 0) -
+            (b.scheduledDate?.getTime() ?? 0) ||
+            (a.scheduledStartTime?.getTime() ?? 0) -
+              (b.scheduledStartTime?.getTime() ?? 0)
+        )[0]
+      firstPending = upcomingPending
+    }
     const nextTask = firstPending
       ? {
           id: firstPending.id,
@@ -717,7 +736,15 @@ export async function getTodayProgress(
 
     return {
       success: true,
-      data: { completed, skipped, pending, total, percentage, nextTask },
+      data: {
+        completed,
+        skipped,
+        pending,
+        total,
+        percentage,
+        userTimezone,
+        nextTask,
+      },
     }
   } catch (error: unknown) {
     console.error('[TaskService] getTodayProgress error:', error)

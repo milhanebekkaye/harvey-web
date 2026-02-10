@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { ChatWidget } from '@/types/api.types'
+import { getDateStringInTimezone } from '@/lib/timezone'
 
 interface CompletionFeedbackWidgetProps {
   taskId: string
@@ -28,7 +29,7 @@ export function CompletionFeedbackWidget({
     if (submitted || loading) return
     setLoading(true)
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      const patchRes = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -36,6 +37,14 @@ export function CompletionFeedbackWidget({
           ...(actualMinutes != null ? { actualDuration: actualMinutes } : {}),
         }),
       })
+      if (!patchRes.ok) {
+        setLoading(false)
+        return
+      }
+      const patchJson = await patchRes.json()
+      const completedTaskScheduledDate: string | undefined =
+        patchJson?.task?.scheduledDate
+
       const userMessages: Record<'less' | 'same' | 'more', string> = {
         less: 'The task took me less time than planned.',
         same: 'The task took me about the right time you scheduled.',
@@ -49,20 +58,32 @@ export function CompletionFeedbackWidget({
       const progressJson = await progressRes.json()
       if (!progressJson.success || !progressJson.data) return
       const d = progressJson.data
-      let ack = `Got it! That's ${d.completed}/${d.total} tasks done today.`
-      if (d.nextTask) {
-        const timePart = d.nextTask.startTime
-          ? new Date(d.nextTask.startTime).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true,
-            })
-          : ''
-        ack += ` Next up: ${d.nextTask.title}${timePart ? ` at ${timePart}` : ''}.`
-      } else if (d.pending > 0) {
-        ack += ' Keep it up!'
+      const userTimezone = d.userTimezone || 'Europe/Paris'
+      const todayStr = getDateStringInTimezone(new Date(), userTimezone)
+      const taskDateStr =
+        completedTaskScheduledDate &&
+        getDateStringInTimezone(new Date(completedTaskScheduledDate), userTimezone)
+
+      const nextUpSuffix = d.nextTask
+        ? (() => {
+            const timePart = d.nextTask.startTime
+              ? new Date(d.nextTask.startTime).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true,
+                })
+              : ''
+            return ` Next up: ${d.nextTask.title}${timePart ? ` at ${timePart}` : ''}.`
+          })()
+        : " You're all clear for now."
+
+      let ack: string
+      if (taskDateStr == null || taskDateStr === todayStr) {
+        ack = `Got it! That's ${d.completed}/${d.total} tasks done today.` + nextUpSuffix
+      } else if (taskDateStr < todayStr) {
+        ack = "You're catching up — good job finishing that one." + nextUpSuffix
       } else {
-        ack += ' All done for today!'
+        ack = "You're ahead of schedule — nice work." + nextUpSuffix
       }
       onAppendMessage('assistant', ack)
       onTasksChanged?.()

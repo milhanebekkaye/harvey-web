@@ -14,6 +14,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Compact task card, clickable to expand.
 - `src/components/dashboard/TaskDetails.tsx`
   - Expanded task details (description, checklist, actions).
+- `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`
+  - “How long did it take?” widget after task completion. Compares the completed task’s scheduled date to today (user timezone): same day → “That’s X/Y tasks done today”; overdue → “You’re catching up — good job finishing that one”; future → “You’re ahead of schedule — nice work.” Always appends “Next up: [task]” or “You’re all clear for now.”
 - `src/components/dashboard/TaskChecklistItem.tsx`
   - Checklist UI with toggle support.
 - `src/components/dashboard/CalendarView.tsx`
@@ -26,6 +28,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Update a task’s status/title/description.
 - `src/app/api/tasks/[taskId]/checklist/route.ts`
   - Update a task’s checklist state.
+- `src/app/api/progress/today/route.ts`
+  - Today’s progress and next task for completion feedback acknowledgment.
 - `src/app/api/discussions/[projectId]/route.ts`
   - Fetch discussion history for the sidebar.
 - `src/app/api/schedule/reset-schedule/route.ts`
@@ -76,6 +80,10 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `PATCH(request, { params })`
   - Validates ownership and updates checklist JSON for a task.
 
+### `src/app/api/progress/today/route.ts`
+- `GET()`
+  - Returns today’s progress (completed, skipped, pending, total), userTimezone, and nextTask (first pending today or nearest upcoming). Used by the completion feedback widget to build the Harvey acknowledgment after “how long did it take?”
+
 ### `src/lib/tasks/task-service.ts`
 - `getActiveProject(userId)`
   - Returns most recent active project for user.
@@ -87,6 +95,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Groups tasks into past, overdue, today, tomorrow, weekDays, nextWeek, later, unscheduled. Uses user timezone for “today” so Past (completed from previous days), Overdue, and Today are correct.
 - `getGroupedTasks(userId)`
   - Orchestrates active project lookup + task fetch + transform + grouping.
+- `getTodayProgress(userId)`
+  - Returns today’s counts (completed, skipped, pending, total), userTimezone, and nextTask (first pending today or nearest upcoming). Used by completion feedback acknowledgment.
 - `updateTask(taskId, userId, data)`
   - Updates task fields and sets completedAt/skippedAt timestamps.
 - `updateTaskChecklist(taskId, userId, checklist)`

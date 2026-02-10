@@ -133,6 +133,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Manages per-task checklist items (e.g. marking subtasks complete/incomplete).
   - Works together with the `TaskChecklistItem` UI component and `task-service`.
 
+- **`progress/today/route.ts`**
+  - Endpoint under `/api/progress/today`.
+  - Returns today’s task counts (completed, skipped, pending, total), **userTimezone** (from User model), and **nextTask** (first pending today or nearest upcoming pending task). Used by the completion feedback widget to build the Harvey acknowledgment message after the user answers “how long did it take?”.
+
 ---
 
 ## `src/components/` – UI components
@@ -155,6 +159,7 @@ Dashboard UI for authenticated users:
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
 - **`ChatSidebar.tsx`**: Interactive chat sidebar using `useChat` from `@ai-sdk/react`. Posts to `/api/chat/project` for live conversation with Harvey. Merges three message sources (initial/useChat, dashboard-appended after Complete/Skip, widget-appended feedback); every message has a consistent `createdAt` (ISO string) and the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Shows streaming messages, typing indicator, tool call indicators. Auto-scrolls to bottom when messages or appended lists change. Calls `onTasksChanged` in `onFinish` when any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `dynamic-tool`), triggering dashboard task refetch so timeline/calendar show updates immediately without manual reload.
+- **`chat/CompletionFeedbackWidget.tsx`**: Inline widget shown after “how long did it take?” when the user completes a task. User picks duration (less/same/more, optional minutes). On submit: PATCH task with feedback, then GET `/api/progress/today`. The acknowledgment message compares the **completed task’s scheduled date** to **today** (in the user’s timezone from the progress response): if same day → “That’s X/Y tasks done today”; if overdue → “You’re catching up — good job finishing that one”; if future → “You’re ahead of schedule — nice work.” In all cases the message ends with “Next up: [task]” (today or nearest upcoming pending) or “You’re all clear for now.”
 - **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
 - **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
@@ -214,7 +219,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/tasks/`
 
-- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). **Task grouping** (`groupTasksByDate(tasks, userTimezone)`) uses the user’s timezone for “today” so that Past (completed tasks from previous days), Overdue (past-date, not completed), and Today (scheduledDate = today in user TZ) are correct. When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. Used heavily by task-related API routes and dashboard UI.
+- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). **Task grouping** (`groupTasksByDate(tasks, userTimezone)`) uses the user’s timezone for “today” so that Past (completed tasks from previous days), Overdue (past-date, not completed), and Today (scheduledDate = today in user TZ) are correct. When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. **getTodayProgress(userId)** returns today’s completed/skipped/pending counts, **userTimezone**, and **nextTask** (first pending today, or if none, the nearest upcoming pending task by date). Used by `/api/progress/today` and the completion feedback widget. Used heavily by task-related API routes and dashboard UI.
 
 ### `src/lib/chat/`
 
