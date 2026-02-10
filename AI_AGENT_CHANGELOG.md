@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Chat sidebar message order fix (Complete/Skip feedback above older messages)
+
+- **Agent / context**: Cursor AI – Bug fix: when a user completes or skips a task from the dashboard, the automatic Harvey feedback message (“Nice work! Quick question…” / “No problem! Quick question…”) was rendering above older messages instead of at the bottom.
+- **Summary**:
+  - **Root cause**: The chat sidebar merged three message sources (useChat messages, `appendedByParent`, `appendedFeedbackMessages`) by simple concatenation with no sorting. Sources used different or missing timestamps, so display order was wrong.
+  - **Fix (frontend only)**: Every display message now has a consistent `createdAt` (ISO string). useChat messages use `initialMessages[i].timestamp` when available, else current time; dashboard-appended and widget-appended messages get `new Date().toISOString()` at creation. After merging, the display list is sorted by `createdAt` ascending so the newest message is always at the bottom.
+  - **Other**: Auto-scroll effect now depends on `appendedByParent` so the view scrolls to bottom when the dashboard appends after Complete/Skip. Tool-call indicator lookup uses `message.id` to find the useChat message (required after sort changed order).
+- **Files touched**: `src/components/dashboard/ChatSidebar.tsx` (DisplayMessage.createdAt, merge + sort, scroll deps, render by id), `src/app/dashboard/page.tsx` (appendedByDashboard items include `createdAt`), `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/dashboard/README.md`, `docs/chat-router/README.md`.
+- **Motivation**: Database stored messages correctly; the bug was purely in how the frontend merged and rendered multiple message arrays without timestamp-based ordering.
+- **Risks / notes**: No change to DB storage or fetch. If a source omits `createdAt`, it is assigned at merge time so ordering remains well-defined.
+- **Related docs**: `ARCHITECTURE.md` (ChatSidebar), `docs/dashboard/README.md` (chat sidebar, Complete/Skip flow), `docs/chat-router/README.md` (Frontend Integration).
+
 ### 2026-02-10 – Timeline “Past” section and timezone-aware today/overdue
 
 - **Agent / context**: Cursor AI – Feature: add a “Past” section to the Timeline view so completed tasks from previous days no longer appear under TODAY; use user timezone for today/past/overdue.

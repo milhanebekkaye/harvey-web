@@ -37,11 +37,12 @@ interface StoredMsg {
   widget?: ChatWidget
 }
 
-/** Single display message (useChat or appended) with optional widget */
+/** Single display message (useChat or appended) with optional widget. createdAt is ISO string for consistent sort order. */
 interface DisplayMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  createdAt: string
   widget?: ChatWidget
 }
 
@@ -89,8 +90,9 @@ interface ChatSidebarProps {
 
   /**
    * Messages appended by parent (e.g. after Complete/Skip) so they show immediately.
+   * Should include createdAt (ISO string) for correct ordering; if missing, one is assigned at merge time.
    */
-  appendedByParent?: DisplayMessage[]
+  appendedByParent?: Array<Omit<DisplayMessage, 'createdAt'> & { createdAt?: string }>
 }
 
 /**
@@ -169,7 +171,8 @@ export function ChatSidebar({
   const handleAppendMessage = useCallback(
     (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => {
       const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-      setAppendedFeedbackMessages((prev) => [...prev, { id, role, content, widget }])
+      const createdAt = new Date().toISOString()
+      setAppendedFeedbackMessages((prev) => [...prev, { id, role, content, createdAt, widget }])
       parentOnAppendMessage?.(role, content, widget)
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     },
@@ -219,19 +222,26 @@ export function ChatSidebar({
   // --- AUTO-SCROLL ---
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping, appendedFeedbackMessages])
+  }, [messages, isTyping, appendedFeedbackMessages, appendedByParent])
 
   // --- DISPLAY LIST: useChat messages (with widget from initialMessages by index) + parent-appended + widget-appended ---
+  // Every message gets a consistent createdAt (ISO string); missing ones get new Date().toISOString() so sort is stable.
   const displayMessages: DisplayMessage[] = [
     ...messages.map((msg, i) => ({
       id: msg.id || `msg-${i}`,
       role: msg.role as 'user' | 'assistant',
       content: getTextFromParts(msg),
+      createdAt: i < initialMessages.length ? initialMessages[i].timestamp : new Date().toISOString(),
       widget: i < initialMessages.length ? initialMessages[i].widget : undefined,
     })),
-    ...appendedByParent,
+    ...appendedByParent.map((m) => ({
+      ...m,
+      createdAt: m.createdAt ?? new Date().toISOString(),
+    })),
     ...appendedFeedbackMessages,
-  ].filter((m) => m.content || m.widget)
+  ]
+    .filter((m) => m.content || m.widget)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
 
   // --- HANDLERS ---
 
@@ -413,12 +423,11 @@ export function ChatSidebar({
             </div>
           )}
 
-          {/* Messages — useChat messages + appended feedback, with optional widgets */}
+          {/* Messages — merged and sorted by createdAt; resolve useChat message by id for tool-call indicator */}
           {!isLoading &&
-            displayMessages.map((message, index) => {
+            displayMessages.map((message) => {
               const text = message.content
-              const fromUseChat = index < messages.length
-              const uiMsg = fromUseChat ? messages[index] : null
+              const uiMsg = messages.find((m) => (m.id || '') === message.id)
               const showToolCall =
                 uiMsg && message.role === 'assistant' && hasToolCall(uiMsg)
 

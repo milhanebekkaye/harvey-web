@@ -109,7 +109,7 @@ Dates and "today" are derived using `getDateStringInTimezone` from `src/lib/time
 
 ## Frontend Integration
 
-The `ChatSidebar` component uses `useChat` from `@ai-sdk/react` with `DefaultChatTransport` pointed at `/api/chat/project`. In `onFinish`, it checks if any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `part.type === 'dynamic-tool'`). If so, it calls `onTasksChanged`, which triggers a task list refetch in the dashboard. Timeline and calendar views update immediately after tools like `add_task`, `modify_schedule`, or `regenerate_schedule` complete—no manual page reload needed.
+The `ChatSidebar` component uses `useChat` from `@ai-sdk/react` with `DefaultChatTransport` pointed at `/api/chat/project`. Messages are merged from three sources: useChat (initial + streamed), dashboard-appended (e.g. after Complete/Skip), and widget-appended (feedback buttons). Each message has a `createdAt` (ISO string); the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Auto-scroll runs when messages or appended lists change. In `onFinish`, the sidebar checks if any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `part.type === 'dynamic-tool'`). If so, it calls `onTasksChanged`, which triggers a task list refetch in the dashboard. Timeline and calendar views update immediately after tools like `add_task`, `modify_schedule`, or `regenerate_schedule` complete—no manual page reload needed.
 
 ## Message Persistence
 

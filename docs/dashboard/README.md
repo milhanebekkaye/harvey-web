@@ -7,7 +7,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/app/dashboard/page.tsx`
   - Dashboard page: fetches tasks and discussions, handles actions, and renders views.
 - `src/components/dashboard/ChatSidebar.tsx`
-  - Displays conversation history and includes “Rebuild schedule” action.
+  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip), and feedback widgets; sorts by `createdAt` (ISO) so order is always chronological. Auto-scrolls to the latest message.
 - `src/components/dashboard/TimelineView.tsx`
   - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service).
 - `src/components/dashboard/TaskTile.tsx`
@@ -58,7 +58,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `fetchMessages(projectId)`
   - Calls `/api/discussions/[projectId]` and loads conversation history.
 - `handleCompleteTask(taskId)` / `handleSkipTask(taskId)`
-  - PATCH task status then refresh tasks.
+  - PATCH task status then refresh tasks. Append a Harvey feedback message (with completion/skip widget) to `appendedByDashboard` with `createdAt` so the chat sidebar shows it in correct chronological order.
 - `handleChecklistToggle(taskId, itemId, done)`
   - Optimistically updates checklist and persists via `/api/tasks/[taskId]/checklist`.
 - `handleSignOut()`

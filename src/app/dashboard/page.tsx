@@ -116,10 +116,11 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
 
   /**
-   * Messages appended by dashboard (e.g. after Complete/Skip) so ChatSidebar can show them before refetch
+   * Messages appended by dashboard (e.g. after Complete/Skip) so ChatSidebar can show them before refetch.
+   * Each has createdAt (ISO string) so ChatSidebar can sort merged messages correctly.
    */
   const [appendedByDashboard, setAppendedByDashboard] = useState<
-    Array<{ id: string; role: 'assistant' | 'user'; content: string; widget?: ChatWidget }>
+    Array<{ id: string; role: 'assistant' | 'user'; content: string; createdAt: string; widget?: ChatWidget }>
   >([])
 
   // ===== DATA FETCHING =====
@@ -289,11 +290,12 @@ export default function DashboardPage() {
       console.log('[Dashboard] Task completed successfully')
       await fetchTasks()
 
-      // Append feedback message to chat (with widget)
+      // Append feedback message to chat (with widget); createdAt ensures correct order when merged in ChatSidebar
       const completionMsg = {
         id: `complete-${taskId}-${Date.now()}`,
         role: 'assistant' as const,
         content: 'Nice work! Quick question: how long did that actually take?',
+        createdAt: new Date().toISOString(),
         widget: { type: 'completion_feedback' as const, data: { taskId } },
       }
       setAppendedByDashboard((prev) => [...prev, completionMsg])
@@ -333,11 +335,12 @@ export default function DashboardPage() {
       console.log('[Dashboard] Task skipped successfully')
       await fetchTasks()
 
-      // Append skip feedback message to chat (with widget)
+      // Append skip feedback message to chat (with widget); createdAt ensures correct order when merged in ChatSidebar
       const skipMsg = {
         id: `skip-${taskId}-${Date.now()}`,
         role: 'assistant' as const,
         content: 'No problem! Quick question: why are you skipping this?',
+        createdAt: new Date().toISOString(),
         widget: { type: 'skip_feedback' as const, data: { taskId } },
       }
       setAppendedByDashboard((prev) => [...prev, skipMsg])
