@@ -50,6 +50,17 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Complete skipped tasks later (task detail “Complete” button)
+
+- **Agent / context**: Cursor AI – Allow completing a task after it was skipped.
+- **Summary**:
+  - **Task detail tile**: When a task is skipped, the task detail view now shows a “Complete” button at the bottom right. Clicking it marks the task as completed (same flow as normal completion: PATCH with `status: 'completed'`, optimistic UI, optional completion feedback in chat).
+  - **Database**: No schema change. Existing `Task.completedAt` is set by `task-service.updateTask()` when status changes to `completed`; `skippedAt` is cleared. PATCH `/api/tasks/[taskId]` already supports this transition.
+- **Files touched**: `src/components/dashboard/TaskDetails.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users could not change status after skipping; they can now complete a skipped task later from the task detail view.
+- **Risks / notes**: None. Backend already allowed `skipped` → `completed`; only the UI was hiding the action for skipped tasks.
+- **Related docs**: `ARCHITECTURE.md` (TaskDetails, tasks/[taskId] PATCH, task-service).
+
 ### 2026-02-10 – Daily Check-In quick wins (styling, loading, fallback, guard, test buttons)
 
 - **Agent / context**: Cursor AI – Quick-win improvements to the Daily Check-In feature.

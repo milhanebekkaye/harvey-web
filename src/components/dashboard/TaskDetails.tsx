@@ -230,18 +230,48 @@ export function TaskDetails({
         </div>
       )}
 
-      {/* Completed/Skipped Status Message */}
-      {!isActionable && (
-        <div className={`
-          flex items-center gap-2 py-2 px-3 rounded-lg
-          ${task.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'}
-        `}>
-          <span className="material-symbols-outlined text-base">
-            {task.status === 'completed' ? 'check_circle' : 'skip_next'}
-          </span>
-          <span className="text-sm font-medium">
-            {task.status === 'completed' ? 'Task completed' : 'Task skipped'}
-          </span>
+      {/* Completed: clear success state */}
+      {task.status === 'completed' && (
+        <div className="pt-3 mt-2 border-t border-slate-100">
+          <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+            <span className="material-symbols-outlined text-base">check_circle</span>
+            <span className="text-sm font-medium">Task completed</span>
+          </div>
+        </div>
+      )}
+
+      {/* Skipped: distinct “not done” state + option to complete later */}
+      {task.status === 'skipped' && (
+        <div className="pt-3 mt-2 border-t border-slate-100 space-y-3">
+          <div className="flex flex-col gap-1 py-3 px-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">skip_next</span>
+              <span className="text-sm font-semibold">This task was skipped</span>
+            </div>
+            <p className="text-xs text-amber-700 pl-7">
+              You can still mark it complete if you do it later.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs text-slate-500"> Finally completed?</span>
+            <button
+              type="button"
+              onClick={() => onComplete?.(task.id)}
+              disabled={isLoading}
+              className={`
+                flex items-center gap-1.5 px-4 py-2
+                bg-green-500 text-white text-sm font-semibold
+                rounded-lg shadow-sm
+                hover:bg-green-600 hover:shadow-md
+                active:scale-95
+                disabled:opacity-50 disabled:cursor-not-allowed
+                transition-all duration-150
+              `}
+            >
+              <span className="material-symbols-outlined text-base">check_circle</span>
+              Complete
+            </button>
+          </div>
         </div>
       )}
     </div>
