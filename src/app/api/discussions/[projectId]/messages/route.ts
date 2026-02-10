@@ -18,6 +18,8 @@ interface AppendMessageBody {
   role: 'assistant' | 'user'
   content: string
   widget?: ChatWidget
+  /** Optional type for styling (e.g. 'check-in' for daily check-in message) */
+  messageType?: 'check-in'
 }
 
 export async function POST(
@@ -88,6 +90,7 @@ export async function POST(
       content: body.content,
       timestamp: new Date().toISOString(),
       ...(body.widget != null ? { widget: body.widget } : {}),
+      ...(body.messageType != null ? { messageType: body.messageType } : {}),
     }
 
     const result = await appendMessage(discussion.id, message)

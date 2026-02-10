@@ -7,7 +7,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/app/dashboard/page.tsx`
   - Dashboard page: fetches tasks and discussions, handles actions, and renders views.
 - `src/components/dashboard/ChatSidebar.tsx`
-  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip), and feedback widgets; sorts by `createdAt` (ISO) so order is always chronological. Auto-scrolls to the latest message.
+  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message.
 - `src/components/dashboard/TimelineView.tsx`
   - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
 - `src/components/dashboard/TaskTile.tsx`
@@ -53,6 +53,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 7. Chat sidebar shows onboarding messages and exposes a “Rebuild schedule” button.
 8. Rebuild calls `POST /api/schedule/reset-schedule` then redirects to `/loading?projectId=...`.
 9. **Auto-refresh after chat tools**: When Harvey executes a tool via chat (e.g. add task, modify schedule, regenerate schedule), `ChatSidebar` detects it in `onFinish` and calls `onTasksChanged`, which triggers `fetchTasks()`. Timeline (and future calendar) views update immediately without manual reload.
+10. **Daily check-in**: When the user has an active project and at least one task, and rate limit allows (no check-in in the last 3 hours or new calendar day), the dashboard calls `POST /api/chat/checkin`. The response streams as plain text; the sidebar shows it live at the bottom. When the stream ends, the client persists the message via `POST /api/discussions/[projectId]/messages` with `messageType: 'check-in'` and appends it to the chat. See `docs/checkin/README.md`.
 
 ## Function reference (what each function does)
 

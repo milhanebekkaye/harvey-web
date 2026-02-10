@@ -112,6 +112,11 @@ export interface StoredMessage {
    * Optional embedded widget (completion/skip feedback, reschedule prompt)
    */
   widget?: ChatWidget
+
+  /**
+   * Optional message type for styling or behaviour (e.g. daily check-in).
+   */
+  messageType?: 'check-in'
 }
 
 // ============================================

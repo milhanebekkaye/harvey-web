@@ -50,6 +50,32 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Daily Check-In quick wins (styling, loading, fallback, guard, test buttons)
+
+- **Agent / context**: Cursor AI – Quick-win improvements to the Daily Check-In feature.
+- **Summary**:
+  - **Check-in message styling**: Messages with `messageType: 'check-in'` get a subtle tint (`bg-[#895af6]/5`), left border accent, and a small "Check-in" label above the bubble.
+  - **"Harvey is saying hi…"**: When the check-in stream has started but no chunk has arrived yet (`streamingCheckIn === ''`), the sidebar shows a placeholder with that text and typing dots (and `aria-live="polite"`).
+  - **Graceful fallback**: On API failure or non-ok response, the dashboard sets a brief error message ("Harvey couldn't say hi right now."); the sidebar shows it in a small red banner; it auto-clears after 3 seconds. Empty stream response does not persist or append.
+  - **Don't run check-in while one is in progress**: A ref (`checkInInProgressRef`) guards so a second check-in is not triggered until the current one finishes.
+  - **Skip check-in when conversation is brand new**: Automatic check-in runs only if there are existing messages (`messages.length > 0`) or a previous check-in exists in localStorage for this project.
+  - **Test buttons**: Three buttons (AM, PM, Eve) next to Rebuild/Settings/Logout trigger a check-in with `timeOfDay` override (morning / afternoon / evening) for easier testing; they bypass rate limit and "brand new" check. API and `assembleCheckInContext` accept optional `timeOfDay`/`timeOfDayOverride`.
+- **Files touched**: `src/lib/checkin/checkin-context.ts`, `src/app/api/chat/checkin/route.ts`, `src/app/dashboard/page.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Better UX (loading state, error feedback), avoid duplicate or inappropriate check-ins, and make it easy to test morning/afternoon/evening tones.
+
+### 2026-02-10 – Daily Check-In feature
+
+- **Agent / context**: Cursor AI – Implement Daily Check-In for returning users: contextual greeting streamed at the bottom of the chat sidebar.
+- **Summary**:
+  - **Check-in context** (`src/lib/checkin/checkin-context.ts`): Assembles time of day (morning/afternoon/evening in user TZ), today’s pending/in-progress tasks with titles and times, yesterday’s completion summary (completed/skipped/total), current streak (consecutive days with ≥1 completion), and recently skipped tasks (last 2 days). Uses existing task and user timezone from DB.
+  - **Check-in API** (`POST /api/chat/checkin`): Accepts `{ projectId }`, authenticates user, builds context, runs `streamText()` with a concise system prompt (2–3 sentence check-in, tone examples). Returns streaming plain text; client persists the message to the project discussion with `messageType: 'check-in'`.
+  - **Frontend**: Dashboard triggers check-in on load when user has active project and existing tasks; rate limit via `localStorage` (`harvey_checkin_${projectId}`): only if >3 hours since last check-in or new calendar day. Stream is shown live in the sidebar (`streamingCheckIn`); on stream end the message is POSTed to discussions and appended to chat. ChatSidebar accepts `streamingCheckIn` and `messageType: 'check-in'`; check-in messages have `data-message-type="check-in"` for future styling.
+  - **Types**: `StoredMessage` and append-message API accept optional `messageType: 'check-in'`; GET discussions returns it; `ChatMessage` and dashboard/sidebar types extended accordingly.
+- **Files touched**: `src/lib/checkin/checkin-context.ts` (new), `src/app/api/chat/checkin/route.ts` (new), `src/app/dashboard/page.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `src/types/api.types.ts`, `src/types/chat.types.ts`, `src/app/api/discussions/[projectId]/messages/route.ts`, `src/app/api/discussions/[projectId]/route.ts`, `ARCHITECTURE.md`, `docs/checkin/README.md` (new), `docs/dashboard/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Returning users get a short, contextual Harvey greeting and direction (today’s tasks, yesterday’s summary, streak, skips) without blocking dashboard load.
+- **Risks / notes**: Check-in runs after a 300ms delay so it does not block initial render. No new DB table; messages stored in Discussion.messages. Rate limiting is client-only (localStorage); clearing storage will allow more frequent check-ins.
+- **Related docs**: `ARCHITECTURE.md` (chat/checkin route, dashboard check-in, ChatSidebar, lib/checkin), `docs/checkin/README.md`, `docs/dashboard/README.md`.
+
 ### 2026-02-10 – Task expand refetch fix + feedback conversation order
 
 - **Agent / context**: Cursor AI – Fix refetch on task expand; make feedback widgets show user message first, then Harvey’s reply (conversation order).

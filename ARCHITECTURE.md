@@ -79,7 +79,7 @@ Additional route groups:
 - **`loading/page.tsx`**: A route that provides a loading/placeholder experience, likely displayed while the main experience or data loads.
 - **`onboarding/page.tsx`**: `/onboarding` route. Manages the onboarding experience and initial user setup, using components from `src/components/onboarding`.
 - **`signin/page.tsx`**: `/signin` route. Handles email-based sign-in and integration with Supabase auth.
-- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure).
+- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure). **Daily check-in**: on load, when the user has an active project and existing tasks, triggers a contextual check-in message (rate-limited to every 3 hours or new calendar day via localStorage); the message streams at the bottom of the chat and is persisted with `messageType: 'check-in'`.
 
 Auth callback:
 
@@ -104,6 +104,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Claude decides whether to call a tool (Category A) or respond conversationally (Category B).
   - Persists messages to Discussion (type: "project") on stream finish.
   - See `docs/chat-router/README.md` for full architecture docs.
+
+- **`chat/checkin/route.ts`**
+  - Endpoint under `/api/chat/checkin`.
+  - **Daily check-in**: generates a contextual 2–3 sentence greeting for returning users. POST body: `{ projectId }`. Uses `assembleCheckInContext()` (time of day, today’s tasks, yesterday’s summary, streak, recent skipped tasks) and `streamText()` with a concise system prompt. Response is streaming plain text; the client persists the message to the project discussion with `messageType: 'check-in'`. Rate limiting is client-side via localStorage (3 hours or new calendar day per project). See `docs/checkin/README.md`.
 
 - **`discussions/[projectId]/route.ts`**
   - Endpoint under `/api/discussions/[projectId]`.
@@ -158,7 +162,7 @@ Dashboard UI for authenticated users:
 
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
-- **`ChatSidebar.tsx`**: Interactive chat sidebar using `useChat` from `@ai-sdk/react`. Posts to `/api/chat/project` for live conversation with Harvey. Merges three message sources (initial/useChat, dashboard-appended after Complete/Skip, widget-appended feedback); every message has a consistent `createdAt` (ISO string) and the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Shows streaming messages, typing indicator, tool call indicators. Auto-scrolls to bottom when messages or appended lists change. Calls `onTasksChanged` in `onFinish` when any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `dynamic-tool`), triggering dashboard task refetch so timeline/calendar show updates immediately without manual reload.
+- **`ChatSidebar.tsx`**: Interactive chat sidebar using `useChat` from `@ai-sdk/react`. Posts to `/api/chat/project` for live conversation with Harvey. Merges message sources (initial/useChat, dashboard-appended after Complete/Skip or check-in, widget-appended feedback, and optional `streamingCheckIn` for live check-in text); every message has a consistent `createdAt` (ISO string) and the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Supports `messageType: 'check-in'` for styling (e.g. `data-message-type="check-in"`). Shows streaming messages, typing indicator, tool call indicators. Auto-scrolls to bottom when messages or appended lists or streaming check-in change. Calls `onTasksChanged` in `onFinish` when any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `dynamic-tool`), triggering dashboard task refetch so timeline/calendar show updates immediately without manual reload.
 - **`chat/CompletionFeedbackWidget.tsx`**: Inline widget shown after “how long did it take?” when the user completes a task. User picks duration (less/same/more, optional minutes). On submit: single PATCH with `?returnProgressToday=true` (response includes progressToday, avoiding a separate GET; fallback to GET `/api/progress/today` if absent). The acknowledgment message compares the **completed task’s scheduled date** to **today** (in the user’s timezone from the progress response): if same day → “That’s X/Y tasks done today”; if overdue → “You’re catching up — good job finishing that one”; if future → “You’re ahead of schedule — nice work.” In all cases the message ends with “Next up: [task]” (today or nearest upcoming pending) or “You’re all clear for now.”
 - **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
@@ -244,9 +248,13 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 - **`utils.ts`**: Grab-bag of shared helper functions (formatting, date utilities, type guards, etc.) used across different parts of the app.
 
+### `src/lib/checkin/` – Daily check-in context
+
+- **`checkin-context.ts`**: Assembles context for the daily check-in message: time of day (morning/afternoon/evening in user timezone), today’s pending/in-progress tasks with titles and times, yesterday’s completion summary (completed/skipped/total), current streak (consecutive days with at least one completion), and recently skipped tasks (last 2 days). Used by `POST /api/chat/checkin`.
+
 ### `src/lib/timezone.ts` – Timezone helpers
 
-- **`timezone.ts`**: Utilities for user-timezone-aware date/time handling. Database stores UTC; this module provides `getDateStringInTimezone` (YYYY-MM-DD in a given IANA timezone), `formatDateLongInTimezone` (long date for prompts), `getHourDecimalInTimezone`, `formatTimeInTimezone`, and `localTimeInTimezoneToUTC` for saving. Used by chat context assembly and chat tools so "today", overdue, and schedule dates are correct for the user's timezone.
+- **`timezone.ts`**: Utilities for user-timezone-aware date/time handling. Database stores UTC; this module provides `getDateStringInTimezone` (YYYY-MM-DD in a given IANA timezone), `formatDateLongInTimezone` (long date for prompts), `getHourDecimalInTimezone`, `formatTimeInTimezone`, and `localTimeInTimezoneToUTC` for saving. Used by chat context assembly, chat tools, and check-in context so "today", overdue, and schedule dates are correct for the user's timezone.
 
 ---
 

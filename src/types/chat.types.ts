@@ -64,6 +64,11 @@ export interface ChatMessage {
    * Optional embedded widget (completion/skip feedback, reschedule prompt)
    */
   widget?: ChatWidget
+
+  /**
+   * Optional message type (e.g. 'check-in' for daily check-in) for styling or behaviour
+   */
+  messageType?: 'check-in'
 }
 
 /**

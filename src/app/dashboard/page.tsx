@@ -50,12 +50,13 @@ interface TasksApiResponse {
   projectTitle: string
 }
 
-/** Stored message format from Discussion (role, content, timestamp, optional widget) */
+/** Stored message format from Discussion (role, content, timestamp, optional widget, optional messageType) */
 interface StoredMsg {
   role: 'assistant' | 'user'
   content: string
   timestamp: string
   widget?: ChatWidget
+  messageType?: 'check-in'
 }
 
 interface DiscussionApiResponse {
@@ -119,12 +120,26 @@ export default function DashboardPage() {
   const hasAutoExpandedRef = useRef(false)
 
   /**
-   * Messages appended by dashboard (e.g. after Complete/Skip) so ChatSidebar can show them before refetch.
+   * Messages appended by dashboard (e.g. after Complete/Skip, or daily check-in) so ChatSidebar can show them.
    * Each has createdAt (ISO string) so ChatSidebar can sort merged messages correctly.
    */
   const [appendedByDashboard, setAppendedByDashboard] = useState<
-    Array<{ id: string; role: 'assistant' | 'user'; content: string; createdAt: string; widget?: ChatWidget }>
+    Array<{ id: string; role: 'assistant' | 'user'; content: string; createdAt: string; widget?: ChatWidget; messageType?: 'check-in' }>
   >([])
+
+  /**
+   * Daily check-in: streaming content while the check-in message is being generated.
+   * When set, ChatSidebar shows this as a Harvey message at the bottom (updating live).
+   */
+  const [checkInStreaming, setCheckInStreaming] = useState<string | null>(null)
+
+  /**
+   * Brief error message when check-in API fails; cleared after a few seconds.
+   */
+  const [checkInError, setCheckInError] = useState<string | null>(null)
+
+  /** Guard: don't run a second check-in while one is already in progress. */
+  const checkInInProgressRef = useRef(false)
 
   // ===== DATA FETCHING =====
 
@@ -232,6 +247,117 @@ export default function DashboardPage() {
       setAppendedByDashboard([])
     }
   }, [projectId, fetchMessages])
+
+  /** Run check-in (shared logic for auto and test). timeOfDayOverride skips rate limit and "brand new" check. */
+  const runCheckIn = useCallback(
+    async (timeOfDayOverride?: 'morning' | 'afternoon' | 'evening') => {
+      if (!projectId || !tasks) return
+      if (checkInInProgressRef.current) return
+      const totalTasks =
+        tasks.past.length +
+        tasks.overdue.length +
+        tasks.today.length +
+        tasks.tomorrow.length +
+        tasks.nextWeek.length +
+        tasks.later.length +
+        tasks.unscheduled.length +
+        tasks.weekDays.reduce((s, d) => s + d.tasks.length, 0)
+      if (totalTasks === 0 && !timeOfDayOverride) return
+
+      const storageKey = `harvey_checkin_${projectId}`
+      const lastStr = typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey) : null
+
+      if (!timeOfDayOverride) {
+        if (messages.length === 0 && !lastStr) return
+        if (lastStr) {
+          const lastTs = parseInt(lastStr, 10)
+          if (!Number.isNaN(lastTs)) {
+            const now = Date.now()
+            const threeHoursMs = 3 * 60 * 60 * 1000
+            const sameDay = new Date(lastTs).toDateString() === new Date(now).toDateString()
+            if (sameDay && now - lastTs < threeHoursMs) return
+          }
+        }
+      }
+
+      checkInInProgressRef.current = true
+      setCheckInError(null)
+      setCheckInStreaming('')
+      try {
+        const res = await fetch('/api/chat/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId, ...(timeOfDayOverride ? { timeOfDay: timeOfDayOverride } : {}) }),
+        })
+        if (!res.ok || !res.body) {
+          setCheckInError('Harvey couldn\'t say hi right now.')
+          return
+        }
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let content = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          content += decoder.decode(value, { stream: true })
+          setCheckInStreaming(content)
+        }
+        setCheckInStreaming(null)
+        if (!content.trim()) return
+
+        await fetch(`/api/discussions/${projectId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: 'assistant',
+            content: content.trim(),
+            messageType: 'check-in',
+          }),
+        })
+        const checkInMsg = {
+          id: `checkin-${Date.now()}`,
+          role: 'assistant' as const,
+          content: content.trim(),
+          createdAt: new Date().toISOString(),
+          messageType: 'check-in' as const,
+        }
+        setAppendedByDashboard((prev) => [...prev, checkInMsg])
+        if (!timeOfDayOverride) {
+          try {
+            localStorage.setItem(storageKey, String(Date.now()))
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Check-in failed:', err)
+        setCheckInError('Harvey couldn\'t say hi right now.')
+        setCheckInStreaming(null)
+      } finally {
+        checkInInProgressRef.current = false
+      }
+    },
+    [projectId, tasks, messages.length]
+  )
+
+  /**
+   * Daily check-in: trigger when dashboard has project + tasks, returning user, and rate limit allows.
+   */
+  const triggerCheckInIfNeeded = useCallback(() => {
+    runCheckIn()
+  }, [runCheckIn])
+
+  useEffect(() => {
+    if (!projectId || !tasks || isLoadingTasks) return
+    const t = setTimeout(triggerCheckInIfNeeded, 300)
+    return () => clearTimeout(t)
+  }, [projectId, tasks, isLoadingTasks, triggerCheckInIfNeeded])
+
+  useEffect(() => {
+    if (!checkInError) return
+    const t = setTimeout(() => setCheckInError(null), 3000)
+    return () => clearTimeout(t)
+  }, [checkInError])
 
   // ===== HANDLERS =====
 
@@ -558,6 +684,9 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         onTasksChanged={fetchTasks}
         onAppendMessage={appendMessageToDiscussion}
         appendedByParent={appendedByDashboard}
+        streamingCheckIn={checkInStreaming}
+        checkInError={checkInError}
+        onTestCheckIn={runCheckIn}
       />
 
       {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}

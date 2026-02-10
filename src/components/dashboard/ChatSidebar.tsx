@@ -28,13 +28,14 @@ import { ReschedulePromptWidget } from './chat/ReschedulePromptWidget'
 
 /**
  * Stored message format from the Discussion model.
- * Matches StoredMessage from api.types.ts (with optional widget).
+ * Matches StoredMessage from api.types.ts (with optional widget and messageType).
  */
 interface StoredMsg {
   role: 'assistant' | 'user'
   content: string
   timestamp: string
   widget?: ChatWidget
+  messageType?: 'check-in'
 }
 
 /** Single display message (useChat or appended) with optional widget. createdAt is ISO string for consistent sort order. */
@@ -44,6 +45,7 @@ interface DisplayMessage {
   content: string
   createdAt: string
   widget?: ChatWidget
+  messageType?: 'check-in'
 }
 
 /**
@@ -93,6 +95,22 @@ interface ChatSidebarProps {
    * Should include createdAt (ISO string) for correct ordering; if missing, one is assigned at merge time.
    */
   appendedByParent?: Array<Omit<DisplayMessage, 'createdAt'> & { createdAt?: string }>
+
+  /**
+   * When set, a Harvey check-in message is shown at the bottom with this content (streaming).
+   * Cleared when check-in stream finishes; the final message then appears via appendedByParent.
+   */
+  streamingCheckIn?: string | null
+
+  /**
+   * Brief error when check-in API failed; shown in sidebar and cleared by parent after a few seconds.
+   */
+  checkInError?: string | null
+
+  /**
+   * For testing: trigger check-in with a specific time-of-day (morning / afternoon / evening).
+   */
+  onTestCheckIn?: (timeOfDay: 'morning' | 'afternoon' | 'evening') => void
 }
 
 /**
@@ -150,6 +168,9 @@ export function ChatSidebar({
   onTasksChanged,
   onAppendMessage: parentOnAppendMessage,
   appendedByParent = [],
+  streamingCheckIn = null,
+  checkInError = null,
+  onTestCheckIn,
 }: ChatSidebarProps) {
   const router = useRouter()
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -222,9 +243,9 @@ export function ChatSidebar({
   // --- AUTO-SCROLL ---
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping, appendedFeedbackMessages, appendedByParent])
+  }, [messages, isTyping, appendedFeedbackMessages, appendedByParent, streamingCheckIn])
 
-  // --- DISPLAY LIST: useChat messages (with widget from initialMessages by index) + parent-appended + widget-appended ---
+  // --- DISPLAY LIST: useChat messages (with widget from initialMessages by index) + parent-appended + widget-appended + streaming check-in ---
   // Every message gets a consistent createdAt (ISO string); missing ones get new Date().toISOString() so sort is stable.
   const displayMessages: DisplayMessage[] = [
     ...messages.map((msg, i) => ({
@@ -233,12 +254,24 @@ export function ChatSidebar({
       content: getTextFromParts(msg),
       createdAt: i < initialMessages.length ? initialMessages[i].timestamp : new Date().toISOString(),
       widget: i < initialMessages.length ? initialMessages[i].widget : undefined,
+      messageType: i < initialMessages.length ? initialMessages[i].messageType : undefined,
     })),
     ...appendedByParent.map((m) => ({
       ...m,
       createdAt: m.createdAt ?? new Date().toISOString(),
     })),
     ...appendedFeedbackMessages,
+    ...(streamingCheckIn != null
+      ? [
+          {
+            id: 'checkin-streaming',
+            role: 'assistant' as const,
+            content: streamingCheckIn,
+            createdAt: new Date().toISOString(),
+            messageType: 'check-in' as const,
+          },
+        ]
+      : []),
   ]
     .filter((m) => m.content || m.widget)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
@@ -361,6 +394,35 @@ export function ChatSidebar({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            {/* --- TEST CHECK-IN (Morning / Afternoon / Evening) --- */}
+            {onTestCheckIn && projectId && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onTestCheckIn('morning')}
+                  className="bg-sky-100 hover:bg-sky-200 text-sky-700 p-1.5 rounded text-xs font-medium"
+                  title="Test check-in: morning"
+                >
+                  AM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onTestCheckIn('afternoon')}
+                  className="bg-orange-100 hover:bg-orange-200 text-orange-700 p-1.5 rounded text-xs font-medium"
+                  title="Test check-in: afternoon"
+                >
+                  PM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onTestCheckIn('evening')}
+                  className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 p-1.5 rounded text-xs font-medium"
+                  title="Test check-in: evening"
+                >
+                  Eve
+                </button>
+              </>
+            )}
             {/* --- REBUILD BUTTON --- */}
             <button 
               onClick={() => setShowRebuildModal(true)}
@@ -394,6 +456,13 @@ export function ChatSidebar({
               <span className="material-symbols-outlined text-sm">folder</span>
               {projectTitle}
             </div>
+          </div>
+        )}
+
+        {/* Check-in error (brief, cleared by parent after a few seconds) */}
+        {checkInError && (
+          <div className="mx-6 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs">
+            {checkInError}
           </div>
         )}
 
@@ -437,14 +506,22 @@ export function ChatSidebar({
                   className={`flex flex-col gap-2 max-w-[85%] ${
                     message.role === 'user' ? 'self-end items-end' : ''
                   }`}
+                  {...(message.messageType === 'check-in' ? { 'data-message-type': 'check-in' } : {})}
                 >
                   {text ? (
                     <>
+                      {message.messageType === 'check-in' && (
+                        <span className="ml-1 text-[10px] text-[#62499c] font-medium uppercase tracking-wider">
+                          Check-in
+                        </span>
+                      )}
                       <div
                         className={`p-4 rounded-2xl shadow-sm ${
                           message.role === 'user'
                             ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
-                            : 'bg-white rounded-tl-none border border-white/50'
+                            : message.messageType === 'check-in'
+                              ? 'bg-[#895af6]/5 rounded-tl-none border border-[#895af6]/20 border-l-4 border-l-[#895af6]/50'
+                              : 'bg-white rounded-tl-none border border-white/50'
                         }`}
                       >
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
@@ -504,6 +581,23 @@ export function ChatSidebar({
                 </div>
               )
             })}
+
+          {/* "Harvey is saying hi..." when check-in has started but no chunk yet */}
+          {streamingCheckIn !== null && streamingCheckIn === '' && (
+            <div className="flex flex-col gap-2 max-w-[85%]" aria-live="polite">
+              <span className="ml-1 text-[10px] text-[#62499c] font-medium uppercase tracking-wider">
+                Check-in
+              </span>
+              <div className="p-4 rounded-2xl bg-[#895af6]/5 rounded-tl-none border border-[#895af6]/20 shadow-sm">
+                <p className="text-sm text-slate-500">Harvey is saying hi…</p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:300ms]" />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Typing Indicator */}
           {isTyping && (
