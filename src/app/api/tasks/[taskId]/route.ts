@@ -34,6 +34,13 @@ interface UpdateTaskRequest {
   status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
   title?: string
   description?: string
+  // Feedback (Feature 3)
+  actualDuration?: number
+  durationAccuracy?: 'less' | 'same' | 'more'
+  completionNotes?: string
+  startedAt?: string // ISO date string
+  skipReason?: 'too_tired' | 'ran_out_time' | 'task_unclear' | 'not_priority' | 'other'
+  skipNotes?: string
 }
 
 /**
@@ -102,7 +109,12 @@ export async function PATCH(
     // ===== STEP 3: Update Task =====
     console.log('[TaskUpdateAPI] Step 3: Updating task')
 
-    const result = await updateTask(taskId, user.id, body)
+    const { startedAt: startedAtStr, ...rest } = body
+    const updateData: Parameters<typeof updateTask>[2] = {
+      ...rest,
+      startedAt: startedAtStr != null ? new Date(startedAtStr) : undefined,
+    }
+    const result = await updateTask(taskId, user.id, updateData)
 
     if (!result.success || !result.data) {
       console.error('[TaskUpdateAPI] Failed to update task:', result.error?.message)

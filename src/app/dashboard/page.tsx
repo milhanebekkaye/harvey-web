@@ -38,6 +38,7 @@ import type { ViewMode } from '@/components/dashboard'
 
 // Import types
 import type { TaskGroups, DashboardTask } from '@/types/task.types'
+import type { ChatWidget } from '@/types/api.types'
 
 // ============================================
 // API Response Types
@@ -49,11 +50,12 @@ interface TasksApiResponse {
   projectTitle: string
 }
 
-/** Stored message format from Discussion (role, content, timestamp) */
+/** Stored message format from Discussion (role, content, timestamp, optional widget) */
 interface StoredMsg {
   role: 'assistant' | 'user'
   content: string
   timestamp: string
+  widget?: ChatWidget
 }
 
 interface DiscussionApiResponse {
@@ -113,6 +115,13 @@ export default function DashboardPage() {
    */
   const [searchQuery, setSearchQuery] = useState('')
 
+  /**
+   * Messages appended by dashboard (e.g. after Complete/Skip) so ChatSidebar can show them before refetch
+   */
+  const [appendedByDashboard, setAppendedByDashboard] = useState<
+    Array<{ id: string; role: 'assistant' | 'user'; content: string; widget?: ChatWidget }>
+  >([])
+
   // ===== DATA FETCHING =====
 
   /**
@@ -141,6 +150,7 @@ export default function DashboardPage() {
 
       const data: TasksApiResponse = await response.json()
       console.log('[Dashboard] Tasks loaded:', {
+        past: data.tasks.past.length,
         overdue: data.tasks.overdue.length,
         today: data.tasks.today.length,
         tomorrow: data.tasks.tomorrow.length,
@@ -214,6 +224,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (projectId) {
       fetchMessages(projectId)
+      setAppendedByDashboard([])
     }
   }, [projectId, fetchMessages])
 
@@ -238,6 +249,24 @@ export default function DashboardPage() {
     setExpandedTaskId(expandedTaskId === taskId ? null : taskId)
   }
 
+  /** Append message to discussion (persist and show in chat) */
+  const appendMessageToDiscussion = useCallback(
+    async (role: 'assistant' | 'user', content: string, widget?: ChatWidget) => {
+      if (!projectId) return
+      try {
+        const res = await fetch(`/api/discussions/${projectId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role, content, widget }),
+        })
+        if (!res.ok) console.error('[Dashboard] Failed to append message')
+      } catch (e) {
+        console.error('[Dashboard] appendMessageToDiscussion', e)
+      }
+    },
+    [projectId]
+  )
+
   /**
    * Handle task completion
    */
@@ -258,9 +287,21 @@ export default function DashboardPage() {
       }
 
       console.log('[Dashboard] Task completed successfully')
-
-      // Refresh tasks to update UI
       await fetchTasks()
+
+      // Append feedback message to chat (with widget)
+      const completionMsg = {
+        id: `complete-${taskId}-${Date.now()}`,
+        role: 'assistant' as const,
+        content: 'Nice work! Quick question: how long did that actually take?',
+        widget: { type: 'completion_feedback' as const, data: { taskId } },
+      }
+      setAppendedByDashboard((prev) => [...prev, completionMsg])
+      await appendMessageToDiscussion(
+        completionMsg.role,
+        completionMsg.content,
+        completionMsg.widget
+      )
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to complete task'
       console.error('[Dashboard] Error completing task:', errorMessage)
@@ -290,9 +331,17 @@ export default function DashboardPage() {
       }
 
       console.log('[Dashboard] Task skipped successfully')
-
-      // Refresh tasks to update UI
       await fetchTasks()
+
+      // Append skip feedback message to chat (with widget)
+      const skipMsg = {
+        id: `skip-${taskId}-${Date.now()}`,
+        role: 'assistant' as const,
+        content: 'No problem! Quick question: why are you skipping this?',
+        widget: { type: 'skip_feedback' as const, data: { taskId } },
+      }
+      setAppendedByDashboard((prev) => [...prev, skipMsg])
+      await appendMessageToDiscussion(skipMsg.role, skipMsg.content, skipMsg.widget)
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to skip task'
       console.error('[Dashboard] Error skipping task:', errorMessage)
@@ -318,6 +367,7 @@ function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask |
   if (!tasks) return null
   
   const allTasks = [
+    ...tasks.past,
     ...tasks.overdue,
     ...tasks.today,
     ...tasks.tomorrow,
@@ -363,6 +413,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
     return {
       ...prevTasks,
+      past: prevTasks.past.map(updateTask),
       overdue: prevTasks.overdue.map(updateTask),
       today: prevTasks.today.map(updateTask),
       tomorrow: prevTasks.tomorrow.map(updateTask),
@@ -435,6 +486,8 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         isLoading={isLoadingMessages}
         onSignOut={handleSignOut}
         onTasksChanged={fetchTasks}
+        onAppendMessage={appendMessageToDiscussion}
+        appendedByParent={appendedByDashboard}
       />
 
       {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}

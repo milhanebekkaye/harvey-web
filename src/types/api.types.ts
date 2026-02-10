@@ -74,10 +74,21 @@ export interface ChatErrorResponse {
 }
 
 /**
+ * Widget types for embedded chat UI (Feature 3)
+ */
+export type ChatWidgetType = 'completion_feedback' | 'skip_feedback' | 'reschedule_prompt'
+
+export interface ChatWidget {
+  type: ChatWidgetType
+  data?: Record<string, unknown>
+}
+
+/**
  * Stored Message Format
  *
  * How messages are stored in Discussion.messages JSON array.
  * Matches Claude API format for easy conversion.
+ * Optional widget for feedback/reschedule UI.
  */
 export interface StoredMessage {
   /**
@@ -96,6 +107,11 @@ export interface StoredMessage {
    * When the message was created (ISO 8601 string)
    */
   timestamp: string
+
+  /**
+   * Optional embedded widget (completion/skip feedback, reschedule prompt)
+   */
+  widget?: ChatWidget
 }
 
 // ============================================

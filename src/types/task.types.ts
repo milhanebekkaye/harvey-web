@@ -338,12 +338,18 @@ export interface DaySection {
  */
 export interface TaskGroups {
   /**
-   * Tasks that are past their scheduled date and not completed/skipped
+   * Completed tasks from previous days (scheduledDate < today, status = completed).
+   * Shown in a collapsible "Past" section.
+   */
+  past: DashboardTask[]
+
+  /**
+   * Tasks that are past their scheduled date and not completed/skipped (overdue)
    */
   overdue: DashboardTask[]
 
   /**
-   * Tasks scheduled for today
+   * Tasks scheduled for today (scheduledDate = today in user timezone)
    */
   today: DashboardTask[]
 

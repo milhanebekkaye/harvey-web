@@ -1,16 +1,16 @@
 /**
  * Timeline View Component
  *
- * Displays tasks grouped by date categories:
- * - OVERDUE: Tasks that are past their scheduled date (not completed/skipped)
+ * Displays tasks grouped by date categories (top to bottom):
+ * - PAST: Completed tasks from previous days (collapsible, hidden by default)
+ * - OVERDUE: Tasks past their scheduled date (pending/skipped)
  * - TODAY: Tasks scheduled for today
  * - TOMORROW: Tasks scheduled for tomorrow
- * - Individual days (WEDNESDAY, THURSDAY, etc.) for the rest of the week
- * - NEXT WEEK: Tasks scheduled for the following week
- * - LATER: Tasks scheduled more than 2 weeks out
- * - UNSCHEDULED: Tasks without a date
+ * - Individual days (WEDNESDAY, etc.) for the rest of the week
+ * - NEXT WEEK / LATER / UNSCHEDULED
  *
  * Features:
+ * - "Show past tasks (N)" toggle at top with smooth expand/collapse
  * - Task expansion on click (unified card expands vertically)
  * - Status updates (complete, skip)
  * - Empty state handling
@@ -19,6 +19,7 @@
 
 'use client'
 
+import { useState } from 'react'
 import type { DashboardTask, TaskGroups } from '@/types/task.types'
 import { TaskTile } from './TaskTile'
 import { TaskDetails } from './TaskDetails'
@@ -98,6 +99,8 @@ export function TimelineView({
   isActionLoading = false,
   isLoading = false,
 }: TimelineViewProps) {
+  const [showPast, setShowPast] = useState(false)
+
   /**
    * Render a section of tasks
    *
@@ -105,21 +108,21 @@ export function TimelineView({
    * @param sectionTasks - Tasks for this section
    * @param gridLayout - Whether to use 2-column grid (for THIS WEEK)
    * @param isOverdue - Whether this is the overdue section (red styling)
+   * @param isPast - Whether this is the past section (reduced opacity)
    */
   const renderTaskSection = (
     title: string,
     sectionTasks: DashboardTask[],
     gridLayout = false,
-    isOverdue = false
+    isOverdue = false,
+    isPast = false
   ) => {
-    // Don't render empty sections
     if (sectionTasks.length === 0) {
       return null
     }
 
     return (
       <section key={title}>
-        {/* Section Header */}
         <div className="flex items-center gap-3 py-6 mt-4 first:mt-0">
           <h2
             className={`text-sm font-black tracking-[0.15em] uppercase ${
@@ -134,7 +137,6 @@ export function TimelineView({
           </span>
         </div>
 
-        {/* Task List */}
         <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
           {sectionTasks.map((task) => {
             const isExpanded = expandedTaskId === task.id
@@ -145,6 +147,7 @@ export function TimelineView({
                 className={`
                   rounded-xl overflow-hidden
                   transition-all duration-300 ease-out
+                  ${isPast && !isExpanded ? 'opacity-60' : ''}
                   ${isExpanded
                     ? 'bg-white shadow-xl border border-[#895af6]/30 scale-[1.01]'
                     : 'hover:scale-[1.005]'
@@ -152,7 +155,6 @@ export function TimelineView({
                   ${isOverdue && !isExpanded ? 'ring-2 ring-red-200' : ''}
                 `}
               >
-                {/* Task Card - Unified container when expanded */}
                 <TaskTile
                   task={task}
                   isExpanded={isExpanded}
@@ -161,7 +163,6 @@ export function TimelineView({
                   className={isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
                 />
 
-                {/* Expanded Details (inline, part of unified card) */}
                 {isExpanded && !gridLayout && (
                   <div
                     className="px-5 pb-5 pt-4 bg-gradient-to-b from-slate-50/50 to-white animate-in slide-in-from-top-2 duration-200"
@@ -216,8 +217,8 @@ export function TimelineView({
     )
   }
 
-  // Check if all sections are empty
   const hasAnyTasks =
+    tasks.past.length > 0 ||
     tasks.overdue.length > 0 ||
     tasks.today.length > 0 ||
     tasks.tomorrow.length > 0 ||
@@ -242,12 +243,42 @@ export function TimelineView({
     )
   }
 
+  const pastCount = tasks.past.length
+
   return (
     <div className="px-8 pb-12">
+      {/* Show past tasks toggle – subtle button at top */}
+      {pastCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowPast((v) => !v)}
+          className="flex items-center gap-2 w-full py-3 text-left text-sm text-slate-500 hover:text-slate-700 transition-colors border-b border-slate-100 mb-1"
+          aria-expanded={showPast}
+        >
+          <span className="text-slate-400 select-none" aria-hidden>
+            {showPast ? '↓' : '↑'}
+          </span>
+          <span>
+            {showPast ? 'Hide past tasks' : 'Show past tasks'}
+          </span>
+          <span className="text-slate-400 font-medium">({pastCount})</span>
+        </button>
+      )}
+
+      {/* Past section – collapsible with smooth transition */}
+      {pastCount > 0 && (
+        <div
+          className="overflow-hidden transition-[max-height] duration-300 ease-out"
+          style={{ maxHeight: showPast ? '5000px' : '0' }}
+          aria-hidden={!showPast}
+        >
+          {renderTaskSection('Past', tasks.past, false, false, true)}
+        </div>
+      )}
+
       {renderTaskSection('Overdue', tasks.overdue, false, true)}
       {renderTaskSection('Today', tasks.today)}
       {renderTaskSection('Tomorrow', tasks.tomorrow)}
-      {/* Individual days for the rest of this week */}
       {tasks.weekDays.map((daySection) =>
         renderTaskSection(daySection.label, daySection.tasks)
       )}

@@ -16,7 +16,7 @@ import { prisma } from '../db/prisma'
 import type { Task, Project } from '@prisma/client'
 import type { DashboardTask, TaskGroups, DatabaseTaskStatus, DaySection } from '../../types/task.types'
 import { mapToUIStatus, formatDuration, getDayAbbreviation, parseSuccessCriteria, normalizeTaskLabel } from '../../types/task.types'
-import { getHourDecimalInTimezone } from '../timezone'
+import { getHourDecimalInTimezone, getDateStringInTimezone } from '../timezone'
 
 // ============================================
 // Types
@@ -29,6 +29,13 @@ export interface UpdateTaskData {
   title?: string
   description?: string
   status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
+  // Feedback (Feature 3)
+  actualDuration?: number
+  durationAccuracy?: 'less' | 'same' | 'more'
+  completionNotes?: string
+  startedAt?: Date
+  skipReason?: 'too_tired' | 'ran_out_time' | 'task_unclear' | 'not_priority' | 'other'
+  skipNotes?: string
 }
 
 /**
@@ -195,44 +202,57 @@ export function transformToDashboardTask(dbTask: Task, userTimezone?: string): D
 }
 
 /**
- * Group tasks by date category with individual days
+ * Add days to a YYYY-MM-DD date string (for week boundaries in user TZ).
+ */
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d + days))
+  return date.toISOString().split('T')[0]
+}
+
+/**
+ * Group tasks by date category with individual days.
+ * Uses the user's timezone for "today" so that past/today/overdue are correct.
  *
  * Categories:
- * - overdue: Tasks scheduled before today that are not completed/skipped
- * - today: Tasks scheduled for today
- * - tomorrow: Tasks scheduled for tomorrow
- * - weekDays: Individual days for the rest of this week (after tomorrow)
- * - nextWeek: Tasks scheduled for next week
- * - later: Tasks scheduled more than 2 weeks out
- * - unscheduled: Tasks without a scheduled date
+ * - past: scheduledDate < today (user TZ) AND status === 'completed'
+ * - overdue: scheduledDate < today (user TZ) AND status !== 'completed'
+ * - today: scheduledDate === today (user TZ) only
+ * - tomorrow: scheduledDate === tomorrow (user TZ)
+ * - weekDays: rest of this week (after tomorrow)
+ * - nextWeek: next week
+ * - later: more than 2 weeks out
+ * - unscheduled: no scheduled date
  */
-function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
-  // Get today's date (date-only, no time component)
+function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGroups {
   const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const tomorrowStart = addDays(todayStart, 1)
-  const tomorrowEnd = endOfDay(tomorrowStart)
-  const weekEnd = getEndOfWeek(now)
-  const nextWeekEnd = getEndOfNextWeek(now)
+  const todayStr = getDateStringInTimezone(now, userTimezone)
+  const tomorrowStr = getDateStringInTimezone(new Date(now.getTime() + 24 * 60 * 60 * 1000), userTimezone)
+  // End of current week (Sunday) in user TZ: same calendar week as today
+  const [y, m, d] = todayStr.split('-').map(Number)
+  const dayOfWeek = new Date(y, m - 1, d).getDay() // 0 = Sunday
+  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek
+  const weekEndStr = addDaysToDateStr(todayStr, daysUntilSunday)
+  const nextWeekEndStr = addDaysToDateStr(weekEndStr, 7)
 
   // Build weekDays structure for days after tomorrow until end of week
   const weekDaysMap: Map<string, DaySection> = new Map()
-
-  // Pre-populate days from day after tomorrow to end of week
-  let currentDay = addDays(tomorrowStart, 1) // Start from day after tomorrow
-  while (currentDay <= weekEnd) {
-    const dateStr = toISODateString(currentDay)
-    const dayName = getDayName(currentDay)
-    weekDaysMap.set(dateStr, {
+  let cursorStr = addDaysToDateStr(tomorrowStr, 1)
+  while (cursorStr <= weekEndStr) {
+    const [cy, cm, cd] = cursorStr.split('-').map(Number)
+    const cursorDate = new Date(cy, cm - 1, cd)
+    const dayName = getDayName(cursorDate)
+    weekDaysMap.set(cursorStr, {
       key: dayName.toLowerCase(),
       label: dayName.toUpperCase(),
-      date: dateStr,
+      date: cursorStr,
       tasks: [],
     })
-    currentDay = addDays(currentDay, 1)
+    cursorStr = addDaysToDateStr(cursorStr, 1)
   }
 
   const groups: TaskGroups = {
+    past: [],
     overdue: [],
     today: [],
     tomorrow: [],
@@ -248,33 +268,29 @@ function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
       continue
     }
 
-    // Parse scheduledDate as date-only (ignore time component)
-    const taskDateObj = new Date(task.scheduledDate)
-    const taskDate = new Date(taskDateObj.getFullYear(), taskDateObj.getMonth(), taskDateObj.getDate())
-    const taskDateStr = toISODateString(taskDate)
+    const taskDateStr = getDateStringInTimezone(new Date(task.scheduledDate), userTimezone)
 
-    // Check if task is overdue (before today and not completed/skipped)
-    if (isBefore(taskDate, todayStart) && task.status !== 'completed' && task.status !== 'skipped') {
-      groups.overdue.push(task)
-    } else if (isSameDay(taskDate, todayStart)) {
+    if (taskDateStr < todayStr) {
+      if (task.status === 'completed') {
+        groups.past.push(task)
+      } else {
+        groups.overdue.push(task)
+      }
+    } else if (taskDateStr === todayStr) {
       groups.today.push(task)
-    } else if (isSameDay(taskDate, tomorrowStart)) {
+    } else if (taskDateStr === tomorrowStr) {
       groups.tomorrow.push(task)
-    } else if (isBetween(taskDate, tomorrowEnd, weekEnd)) {
-      // This week (after tomorrow) - add to individual day
+    } else if (taskDateStr > tomorrowStr && taskDateStr <= weekEndStr) {
       const daySection = weekDaysMap.get(taskDateStr)
       if (daySection) {
         daySection.tasks.push(task)
       }
-    } else if (isBetween(taskDate, weekEnd, nextWeekEnd)) {
-      // Next week
+    } else if (taskDateStr > weekEndStr && taskDateStr <= nextWeekEndStr) {
       groups.nextWeek.push(task)
-    } else if (isAfter(taskDate, nextWeekEnd)) {
-      // Later (beyond next week)
+    } else if (taskDateStr > nextWeekEndStr) {
       groups.later.push(task)
     } else {
-      // Past completed/skipped tasks - add to today (for reference)
-      groups.today.push(task)
+      groups.nextWeek.push(task)
     }
   }
 
@@ -286,20 +302,18 @@ function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
   // Sort by start time, treating early morning (0-6am) as "overnight continuation"
   // that should come AFTER evening tasks (18:00-23:59)
   const sortByTime = (a: DashboardTask, b: DashboardTask) => {
-    // Adjust times for overnight sorting:
-    // Tasks starting 0:00-6:00 are treated as if they start at 24:00-30:00
-    // This ensures they sort AFTER tasks starting 18:00-23:59
     const adjustedA = a.startTime < 6 ? a.startTime + 24 : a.startTime
     const adjustedB = b.startTime < 6 ? b.startTime + 24 : b.startTime
-    
     return adjustedA - adjustedB
   }
 
-  // Sort overdue by date (oldest first), then by time
-  groups.overdue.sort((a, b) => {
+  const sortByDateThenTime = (a: DashboardTask, b: DashboardTask) => {
     const dateCompare = (a.scheduledDate || '').localeCompare(b.scheduledDate || '')
     return dateCompare !== 0 ? dateCompare : sortByTime(a, b)
-  })
+  }
+
+  groups.past.sort(sortByDateThenTime)
+  groups.overdue.sort(sortByDateThenTime)
   groups.today.sort(sortByTime)
   groups.tomorrow.sort(sortByTime)
 
@@ -307,11 +321,6 @@ function groupTasksByDate(tasks: DashboardTask[]): TaskGroups {
   groups.weekDays.sort((a, b) => a.date.localeCompare(b.date))
   groups.weekDays.forEach((section) => section.tasks.sort(sortByTime))
 
-  // Sort nextWeek and later by date first, then by time
-  const sortByDateThenTime = (a: DashboardTask, b: DashboardTask) => {
-    const dateCompare = (a.scheduledDate || '').localeCompare(b.scheduledDate || '')
-    return dateCompare !== 0 ? dateCompare : sortByTime(a, b)
-  }
   groups.nextWeek.sort(sortByDateThenTime)
   groups.later.sort(sortByDateThenTime)
 
@@ -487,10 +496,11 @@ export async function getGroupedTasks(
     // Transform to dashboard format (UTC → user local for display)
     const dashboardTasks = tasksResult.data.map((t) => transformToDashboardTask(t, userTimezone))
 
-    // Group by date
-    const groupedTasks = groupTasksByDate(dashboardTasks)
+    // Group by date (user timezone for today/past/overdue)
+    const groupedTasks = groupTasksByDate(dashboardTasks, userTimezone)
 
     console.log('[TaskService] Grouped tasks:', {
+      past: groupedTasks.past.length,
       overdue: groupedTasks.overdue.length,
       today: groupedTasks.today.length,
       tomorrow: groupedTasks.tomorrow.length,
@@ -631,6 +641,97 @@ export async function updateTaskChecklist(
 }
 
 /**
+ * Today's task progress (Feature 3).
+ * Counts completed, skipped, pending for tasks scheduled today in user's timezone.
+ *
+ * @param userId - User ID
+ * @returns { completed, skipped, pending, total, percentage } or error
+ */
+export interface TodayProgress {
+  completed: number
+  skipped: number
+  pending: number
+  total: number
+  percentage: number
+  /** First pending task today by start time (for "Next up: [task]" message) */
+  nextTask?: { id: string; title: string; startTime: string | null }
+}
+
+export async function getTodayProgress(
+  userId: string
+): Promise<TaskServiceResponse<TodayProgress>> {
+  try {
+    const projectResult = await getActiveProject(userId)
+    if (!projectResult.success || !projectResult.data) {
+      return {
+        success: false,
+        error: projectResult.error || { message: 'No active project' },
+      }
+    }
+
+    const tasksResult = await getTasksForProject(projectResult.data.id, userId)
+    if (!tasksResult.success || !tasksResult.data) {
+      return {
+        success: false,
+        error: tasksResult.error || { message: 'Failed to fetch tasks' },
+      }
+    }
+
+    const dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    })
+    const userTimezone = dbUser?.timezone || 'Europe/Paris'
+    const now = new Date()
+    const todayStr = getDateStringInTimezone(now, userTimezone)
+
+    const todayTasks = tasksResult.data.filter(
+      (t) =>
+        t.scheduledDate != null &&
+        getDateStringInTimezone(t.scheduledDate, userTimezone) === todayStr
+    )
+
+    const completed = todayTasks.filter((t) => t.status === 'completed').length
+    const skipped = todayTasks.filter((t) => t.status === 'skipped').length
+    const pending = todayTasks.filter(
+      (t) => t.status === 'pending' || t.status === 'in_progress'
+    ).length
+    const total = todayTasks.length
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0
+
+    const sortedToday = todayTasks.sort(
+      (a, b) =>
+        (a.scheduledStartTime?.getTime() ?? 0) -
+        (b.scheduledStartTime?.getTime() ?? 0)
+    )
+    const firstPending = sortedToday.find(
+      (t) => t.status === 'pending' || t.status === 'in_progress'
+    )
+    const nextTask = firstPending
+      ? {
+          id: firstPending.id,
+          title: firstPending.title,
+          startTime: firstPending.scheduledStartTime?.toISOString() ?? null,
+        }
+      : undefined
+
+    return {
+      success: true,
+      data: { completed, skipped, pending, total, percentage, nextTask },
+    }
+  } catch (error: unknown) {
+    console.error('[TaskService] getTodayProgress error:', error)
+    return {
+      success: false,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to get today progress',
+        details: error,
+      },
+    }
+  }
+}
+
+/**
  * Find all task IDs that depend on the given task (downstream dependents).
  * Used when skipping a task so Harvey can cascade skip or inform the user.
  *
@@ -723,6 +824,14 @@ export async function updateTask(
         updateData.skippedAt = null
       }
     }
+
+    // Feedback fields (Feature 3) — apply only when provided
+    if (data.actualDuration !== undefined) updateData.actualDuration = data.actualDuration
+    if (data.durationAccuracy !== undefined) updateData.durationAccuracy = data.durationAccuracy
+    if (data.completionNotes !== undefined) updateData.completionNotes = data.completionNotes
+    if (data.startedAt !== undefined) updateData.startedAt = data.startedAt
+    if (data.skipReason !== undefined) updateData.skipReason = data.skipReason
+    if (data.skipNotes !== undefined) updateData.skipNotes = data.skipNotes
 
     const task = await prisma.task.update({
       where: { id: taskId },

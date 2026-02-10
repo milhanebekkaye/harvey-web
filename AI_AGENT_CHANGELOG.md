@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-10 – Timeline “Past” section and timezone-aware today/overdue
+
+- **Agent / context**: Cursor AI – Feature: add a “Past” section to the Timeline view so completed tasks from previous days no longer appear under TODAY; use user timezone for today/past/overdue.
+- **Summary**:
+  - **Past section**: Tasks with `scheduledDate < today` (in user TZ) and `status === 'completed'` are grouped into a new `past` array. Section order is now Past → Overdue → Today → Tomorrow → This Week → Next Week → Later → Unscheduled.
+  - **Today fix**: “Today” shows only tasks where `scheduledDate` equals today’s date in the user’s timezone (no more completed/skipped tasks from past days in TODAY). Overdue = past-date and not completed (pending/skipped).
+  - **UI**: Past section is hidden by default. A top-of-timeline button “↑ Show past tasks (N)” toggles visibility with a smooth max-height transition. Past section header uses same style as TODAY/TOMORROW; past task cards use `opacity-60` when collapsed.
+- **Files touched**: `src/types/task.types.ts` (TaskGroups.past), `src/lib/tasks/task-service.ts` (groupTasksByDate with userTimezone, past/overdue/today logic via getDateStringInTimezone), `src/components/dashboard/TimelineView.tsx` (showPast state, toggle, Past section, isPast styling), `src/app/dashboard/page.tsx` (findTaskById and checklist optimistic update include past), `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/dashboard/README.md`.
+- **Motivation**: Completed tasks from last Monday were incorrectly shown under TODAY; overdue was correct. User timezone was not used for “today” in grouping, causing wrong sections for non-UTC users.
+- **Risks / notes**: `groupTasksByDate` now takes `userTimezone`; week boundaries (weekDays, nextWeek) are derived from today/tomorrow in user TZ via date-string helpers. API response shape gains `tasks.past`; existing clients that ignore unknown keys are fine.
+- **Related docs**: `ARCHITECTURE.md` (task-service, TimelineView), `docs/dashboard/README.md` (grouping, Timeline).
+
 ### 2026-02-08 – regenerate_schedule: clearer output, dependency respect, logging
 
 - **Agent / context**: Cursor AI – Improvement: when Harvey regenerates the schedule, output should be clear (what changed, why), dependencies must be respected (part 1 before part 2), and detailed logging should help debugging.

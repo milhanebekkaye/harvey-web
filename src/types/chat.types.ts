@@ -5,6 +5,8 @@
  * These types are designed to be flexible for AI integration later.
  */
 
+import type { ChatWidget } from './api.types'
+
 /**
  * Who sent the message
  * - 'assistant': Harvey (the AI bot)
@@ -26,6 +28,7 @@ export type MessageStatus = 'sending' | 'streaming' | 'complete' | 'error'
  *
  * Used for displaying messages in the chat UI.
  * Designed to work with both hardcoded messages and AI-generated ones.
+ * Optional widget for embedded feedback/reschedule UI (Feature 3).
  */
 export interface ChatMessage {
   /**
@@ -56,6 +59,11 @@ export interface ChatMessage {
    * Default: 'complete' for static messages
    */
   status?: MessageStatus
+
+  /**
+   * Optional embedded widget (completion/skip feedback, reschedule prompt)
+   */
+  widget?: ChatWidget
 }
 
 /**

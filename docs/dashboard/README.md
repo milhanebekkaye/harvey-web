@@ -9,7 +9,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/ChatSidebar.tsx`
   - Displays conversation history and includes “Rebuild schedule” action.
 - `src/components/dashboard/TimelineView.tsx`
-  - Renders tasks grouped by date sections and handles expansion.
+  - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service).
 - `src/components/dashboard/TaskTile.tsx`
   - Compact task card, clickable to expand.
 - `src/components/dashboard/TaskDetails.tsx`
@@ -83,8 +83,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Fetches tasks for a project with ownership check.
 - `transformToDashboardTask(dbTask)`
   - Converts DB task to UI display format.
-- `groupTasksByDate(tasks)`
-  - Groups tasks into overdue, today, tomorrow, weekDays, nextWeek, later, unscheduled.
+- `groupTasksByDate(tasks, userTimezone)`
+  - Groups tasks into past, overdue, today, tomorrow, weekDays, nextWeek, later, unscheduled. Uses user timezone for “today” so Past (completed from previous days), Overdue, and Today are correct.
 - `getGroupedTasks(userId)`
   - Orchestrates active project lookup + task fetch + transform + grouping.
 - `updateTask(taskId, userId, data)`

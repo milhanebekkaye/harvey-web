@@ -161,7 +161,7 @@ Dashboard UI for authenticated users:
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views.
-- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time.
+- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`).
 - **`ViewToggle.tsx`**: Control for toggling between different dashboard views (e.g. Calendar vs Timeline).
 
 ### `src/components/onboarding/`
@@ -214,7 +214,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/tasks/`
 
-- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. Used heavily by task-related API routes and dashboard UI.
+- **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). **Task grouping** (`groupTasksByDate(tasks, userTimezone)`) uses the user’s timezone for “today” so that Past (completed tasks from previous days), Overdue (past-date, not completed), and Today (scheduledDate = today in user TZ) are correct. When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. Used heavily by task-related API routes and dashboard UI.
 
 ### `src/lib/chat/`
 

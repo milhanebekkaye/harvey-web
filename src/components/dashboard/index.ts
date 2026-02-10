@@ -73,7 +73,7 @@ export { ChatSidebar } from './ChatSidebar'
 
 /**
  * TimelineView - Timeline display of tasks grouped by date
- * TODAY, TOMORROW, THIS WEEK sections
+ * Past (collapsible), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled
  */
 export { TimelineView } from './TimelineView'
 

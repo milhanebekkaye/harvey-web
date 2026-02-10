@@ -32,16 +32,17 @@ interface DiscussionApiResponse {
 /**
  * Transform StoredMessage to ChatMessage for frontend
  *
- * StoredMessage has: role, content, timestamp (ISO string)
- * ChatMessage needs: id, role, content, timestamp (Date), status
+ * StoredMessage has: role, content, timestamp (ISO string), optional widget
+ * ChatMessage needs: id, role, content, timestamp (Date), status, optional widget
  */
 function transformToClientMessages(storedMessages: StoredMessage[]): ChatMessage[] {
   return storedMessages.map((msg, index) => ({
     id: `msg-${index}`,
     role: msg.role,
     content: msg.content,
-    timestamp: new Date(msg.timestamp), // Convert ISO string to Date
+    timestamp: new Date(msg.timestamp),
     status: 'complete' as const,
+    ...(msg.widget != null ? { widget: msg.widget } : {}),
   }))
 }
 

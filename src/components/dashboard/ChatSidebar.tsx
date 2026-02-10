@@ -16,20 +16,33 @@
 
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
+import type { ChatWidget } from '@/types/api.types'
+import { CompletionFeedbackWidget } from './chat/CompletionFeedbackWidget'
+import { SkipFeedbackWidget } from './chat/SkipFeedbackWidget'
+import { ReschedulePromptWidget } from './chat/ReschedulePromptWidget'
 
 /**
  * Stored message format from the Discussion model.
- * Matches StoredMessage from api.types.ts.
+ * Matches StoredMessage from api.types.ts (with optional widget).
  */
 interface StoredMsg {
   role: 'assistant' | 'user'
   content: string
   timestamp: string
+  widget?: ChatWidget
+}
+
+/** Single display message (useChat or appended) with optional widget */
+interface DisplayMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  widget?: ChatWidget
 }
 
 /**
@@ -67,6 +80,17 @@ interface ChatSidebarProps {
    * Dashboard uses this to refetch the task list.
    */
   onTasksChanged?: () => void
+
+  /**
+   * Callback when a message is appended from a widget (e.g. feedback).
+   * Parent should persist via POST /api/discussions/[projectId]/messages.
+   */
+  onAppendMessage?: (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => void
+
+  /**
+   * Messages appended by parent (e.g. after Complete/Skip) so they show immediately.
+   */
+  appendedByParent?: DisplayMessage[]
 }
 
 /**
@@ -122,6 +146,8 @@ export function ChatSidebar({
   isLoading = false,
   onSignOut,
   onTasksChanged,
+  onAppendMessage: parentOnAppendMessage,
+  appendedByParent = [],
 }: ChatSidebarProps) {
   const router = useRouter()
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -134,9 +160,21 @@ export function ChatSidebar({
   // --- STATE ---
   const [showRebuildModal, setShowRebuildModal] = useState(false)
   const [isRebuilding, setIsRebuilding] = useState(false)
+  const [appendedFeedbackMessages, setAppendedFeedbackMessages] = useState<DisplayMessage[]>([])
 
   // --- LOCAL INPUT STATE (useChat doesn't provide input/setInput) ---
   const [inputValue, setInputValue] = useState('')
+
+  /** Append a message (from widget flow); add locally and notify parent to persist */
+  const handleAppendMessage = useCallback(
+    (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => {
+      const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+      setAppendedFeedbackMessages((prev) => [...prev, { id, role, content, widget }])
+      parentOnAppendMessage?.(role, content, widget)
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    },
+    [parentOnAppendMessage]
+  )
 
   // --- CHAT HOOK ---
   const {
@@ -181,7 +219,19 @@ export function ChatSidebar({
   // --- AUTO-SCROLL ---
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping])
+  }, [messages, isTyping, appendedFeedbackMessages])
+
+  // --- DISPLAY LIST: useChat messages (with widget from initialMessages by index) + parent-appended + widget-appended ---
+  const displayMessages: DisplayMessage[] = [
+    ...messages.map((msg, i) => ({
+      id: msg.id || `msg-${i}`,
+      role: msg.role as 'user' | 'assistant',
+      content: getTextFromParts(msg),
+      widget: i < initialMessages.length ? initialMessages[i].widget : undefined,
+    })),
+    ...appendedByParent,
+    ...appendedFeedbackMessages,
+  ].filter((m) => m.content || m.widget)
 
   // --- HANDLERS ---
 
@@ -363,39 +413,78 @@ export function ChatSidebar({
             </div>
           )}
 
-          {/* Messages — rendered from useChat's messages array */}
+          {/* Messages — useChat messages + appended feedback, with optional widgets */}
           {!isLoading &&
-            messages.map((message, index) => {
-              const text = getTextFromParts(message)
-              if (!text) return null // Skip empty messages (e.g., tool-only)
+            displayMessages.map((message, index) => {
+              const text = message.content
+              const fromUseChat = index < messages.length
+              const uiMsg = fromUseChat ? messages[index] : null
+              const showToolCall =
+                uiMsg && message.role === 'assistant' && hasToolCall(uiMsg)
 
               return (
                 <div
-                  key={message.id || `msg-${index}`}
+                  key={message.id}
                   className={`flex flex-col gap-2 max-w-[85%] ${
                     message.role === 'user' ? 'self-end items-end' : ''
                   }`}
                 >
-                  {/* Message Bubble */}
-                  <div
-                    className={`p-4 rounded-2xl shadow-sm ${
-                      message.role === 'user'
-                        ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
-                        : 'bg-white rounded-tl-none border border-white/50'
-                    }`}
-                  >
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
-                  </div>
-
-                  {/* Tool call indicator (if message has tool invocations) */}
-                  {message.role === 'assistant' && hasToolCall(message) && (
-                    <div className="flex items-center gap-1 ml-1 text-[10px] text-emerald-600 font-medium">
-                      <span className="material-symbols-outlined text-xs">check_circle</span>
-                      Action completed
+                  {text ? (
+                    <>
+                      <div
+                        className={`p-4 rounded-2xl shadow-sm ${
+                          message.role === 'user'
+                            ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
+                            : 'bg-white rounded-tl-none border border-white/50'
+                        }`}
+                      >
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{text}</p>
+                      </div>
+                      {showToolCall && (
+                        <div className="flex items-center gap-1 ml-1 text-[10px] text-emerald-600 font-medium">
+                          <span className="material-symbols-outlined text-xs">check_circle</span>
+                          Action completed
+                        </div>
+                      )}
+                    </>
+                  ) : null}
+                  {message.widget && projectId ? (
+                    <div className="ml-1">
+                      {message.widget.type === 'completion_feedback' &&
+                      message.widget.data &&
+                      'taskId' in message.widget.data ? (
+                        <CompletionFeedbackWidget
+                          taskId={String(message.widget.data.taskId)}
+                          projectId={projectId}
+                          onAppendMessage={handleAppendMessage}
+                          onTasksChanged={onTasksChanged}
+                        />
+                      ) : null}
+                      {message.widget.type === 'skip_feedback' &&
+                      message.widget.data &&
+                      'taskId' in message.widget.data ? (
+                        <SkipFeedbackWidget
+                          taskId={String(message.widget.data.taskId)}
+                          projectId={projectId}
+                          onAppendMessage={handleAppendMessage}
+                          onTasksChanged={onTasksChanged}
+                        />
+                      ) : null}
+                      {message.widget.type === 'reschedule_prompt' &&
+                      message.widget.data &&
+                      'taskId' in message.widget.data &&
+                      'suggestedDate' in message.widget.data &&
+                      'suggestedTime' in message.widget.data ? (
+                        <ReschedulePromptWidget
+                          taskId={String(message.widget.data.taskId)}
+                          suggestedDate={String(message.widget.data.suggestedDate)}
+                          suggestedTime={String(message.widget.data.suggestedTime)}
+                          onAppendMessage={(role, content) => handleAppendMessage(role, content)}
+                          onTasksChanged={onTasksChanged}
+                        />
+                      ) : null}
                     </div>
-                  )}
-
-                  {/* Sender label */}
+                  ) : null}
                   <span
                     className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${
                       message.role === 'user' ? 'mr-1' : 'ml-1'

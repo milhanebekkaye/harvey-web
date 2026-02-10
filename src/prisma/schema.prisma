@@ -102,10 +102,11 @@ model Task {
   depends_on   String[]  @default([]) // task IDs this task depends on
   label        String?
   
-  // Feedback fields (for Feature 3 prep, added now to avoid double migration)
+  // Feedback fields (Feature 3)
   actualDuration    Int?       // minutes — how long the task actually took
+  durationAccuracy  String?    // "less" | "same" | "more" — completion feedback
   completionNotes   String?    // optional notes the user adds on completion
-  skipReason        String?    // "too_tired" | "ran_out_of_time" | "task_unclear" | "not_priority" | "other"
+  skipReason        String?    // "too_tired" | "ran_out_time" | "task_unclear" | "not_priority" | "other"
   skipNotes         String?    // free text explanation for skip
   startedAt         DateTime?  // when user started working on this task
   
