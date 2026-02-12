@@ -9,10 +9,12 @@
 
 import { anthropic, CLAUDE_CONFIG } from '../ai/claude-client'
 import type {
+  CommuteShape,
   ExtractedConstraints,
   ParsedTask,
   ParseResult,
   TimeBlock,
+  WorkScheduleShape,
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
 
@@ -35,24 +37,30 @@ SCHEDULING (required):
 5. Other preferences (gym timing, break preferences, energy levels, skill level)
 6. Feature exclusions - things user explicitly said NO to or doesn't want
 
+USER LIFE CONSTRAINTS (for User.workSchedule and User.commute — extract when inferrable):
+7. work_schedule: When they work a regular job/classes. workDays: array of 0-6 (0=Sunday, 1=Monday, ... 6=Saturday). startTime and endTime: 24h "HH:MM". Infer from blocked_time entries labeled "Work" or "Classes" or similar, or from explicit "I work Mon-Fri 9-5".
+8. commute: Optional. morning: { durationMinutes: number, startTime: "HH:MM" }, evening: { durationMinutes: number, startTime: "HH:MM" }. Omit if not mentioned.
+
 ENRICHMENT (include when inferrable):
-7. target_deadline: Any deadline or target date mentioned. ISO 8601 string or null.
-8. skill_level: Inferred from tools used and how they describe experience. "beginner" | "intermediate" | "advanced".
-9. tools_and_stack: Any specific frameworks, tools, or technologies mentioned (array of strings).
-10. project_type: One of "web app", "mobile app", "SaaS", "content", "script/automation", "other".
-11. weekly_hours_commitment: Hours per week they commit to this project (integer).
-12. motivation: One sentence, in the user's own words where possible — why they're building this.
-13. phases: If they described phases or milestones, use format below. If single-phase, one entry with status "active". Each phase: id (number), title, goal (string or null), deadline (ISO or null), status ("completed" | "active" | "future").
-14. project_notes: 0–5 entries. Meaningful context that doesn't fit structured fields — constraints, deadlines, preferences Harvey should remember about this project. Each note: complete, self-contained sentence. Format: [{ "note": "...", "extracted_at": "ISO timestamp" }]. Use current UTC time for extracted_at.
-15. preferred_session_length: How long they like to work in one sitting (minutes). Default 120 if not mentioned.
-16. communication_style: Inferred from writing style and explicit preferences. "direct" | "encouraging" | "detailed". Default "encouraging".
-17. user_notes: 0–3 entries. Behavioral observations about the person relevant across any project — patterns, tendencies, working style. Only user-level, not project-specific. Format same as project_notes.
+9. target_deadline: Any deadline or target date mentioned. ISO 8601 string or null.
+10. skill_level: Inferred from tools used and how they describe experience. "beginner" | "intermediate" | "advanced".
+11. tools_and_stack: Any specific frameworks, tools, or technologies mentioned (array of strings).
+12. project_type: One of "web app", "mobile app", "SaaS", "content", "script/automation", "other".
+13. weekly_hours_commitment: Hours per week they commit to this project (integer).
+14. motivation: One sentence, in the user's own words where possible — why they're building this.
+15. phases: If they described phases or milestones, use format below. If single-phase, one entry with status "active". Each phase: id (number), title, goal (string or null), deadline (ISO or null), status ("completed" | "active" | "future").
+16. project_notes: 0–5 entries. Meaningful context that doesn't fit structured fields — constraints, deadlines, preferences Harvey should remember about this project. Each note: complete, self-contained sentence. Format: [{ "note": "...", "extracted_at": "ISO timestamp" }]. Use current UTC time for extracted_at.
+17. preferred_session_length: How long they like to work in one sitting (minutes). Default 120 if not mentioned.
+18. communication_style: Inferred from writing style and explicit preferences. "direct" | "encouraging" | "detailed". Default "encouraging".
+19. user_notes: 0–3 entries. Behavioral observations about the person relevant across any project — patterns, tendencies, working style. Only user-level, not project-specific. Format same as project_notes.
 
 CRITICAL: Avoid overlapping time blocks! If someone says "I have classes 8-5" and "I workout 11-12", the workout is DURING classes, not in addition.
 
 Output ONLY valid JSON, no other text:
 {
   "schedule_duration_weeks": 2,
+  "work_schedule": { "workDays": [1, 2, 3, 4, 5], "startTime": "09:00", "endTime": "17:30" },
+  "commute": { "morning": { "durationMinutes": 30, "startTime": "08:30" }, "evening": { "durationMinutes": 30, "startTime": "17:30" } },
   "blocked_time": [
     {"day": "monday", "start": "08:00", "end": "17:00", "label": "Classes"},
     {"day": "tuesday", "start": "08:00", "end": "17:00", "label": "Classes"}
@@ -310,6 +318,61 @@ function getDefaultConstraints(): ExtractedConstraints {
   }
 }
 
+/**
+ * Derive work_schedule and commute from blocked_time when extraction did not output them.
+ * Used so User.workSchedule and User.commute can be persisted even when Claude omits them.
+ */
+function deriveUserLifeConstraints(
+  constraints: ExtractedConstraints
+): ExtractedConstraints {
+  const result = { ...constraints }
+  const blocked = constraints.blocked_time || []
+
+  const dayNameToNum: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  }
+
+  if (!result.work_schedule && blocked.length > 0) {
+    // Find blocks that look like work (label contains work, classes, job, office) with same start/end
+    const workLabels = /work|classes|job|office|full.?time/i
+    const workBlocks = blocked.filter(
+      (b) => b.label && workLabels.test(b.label)
+    )
+    if (workBlocks.length > 0) {
+      const startTime = workBlocks[0].start
+      const endTime = workBlocks[0].end
+      const workDays = [...new Set(workBlocks.map((b) => dayNameToNum[b.day.toLowerCase()] ?? -1).filter((d) => d >= 0))].sort((a, b) => a - b)
+      if (workDays.length > 0) {
+        result.work_schedule = { workDays, startTime, endTime }
+      }
+    }
+    // If no labeled work blocks, use first recurring block pattern (same start/end on multiple weekdays)
+    if (!result.work_schedule && blocked.length >= 3) {
+      const byKey = new Map<string, { day: string; start: string; end: string }[]>()
+      for (const b of blocked) {
+        const key = `${b.start}-${b.end}`
+        if (!byKey.has(key)) byKey.set(key, [])
+        byKey.get(key)!.push(b)
+      }
+      const best = [...byKey.entries()].sort((a, b) => b[1].length - a[1].length)[0]
+      if (best && best[1].length >= 3) {
+        const [startTime, endTime] = best[0].split('-')
+        const workDays = [...new Set(best[1].map((b) => dayNameToNum[b.day.toLowerCase()] ?? -1).filter((d) => d >= 0))].sort((a, b) => a - b)
+        result.work_schedule = { workDays, startTime, endTime }
+      }
+    }
+  }
+
+  // commute: leave null if not extracted; we don't infer from blocked_time by default
+  return result
+}
+
 // ============================================
 // Main Functions
 // ============================================
@@ -390,6 +453,9 @@ export async function extractConstraints(
         return getDefaultConstraints() 
       }
     }
+
+    // Derive work_schedule and commute from blocked_time if extraction did not provide them
+    constraints = deriveUserLifeConstraints(constraints)
 
     console.log(
       '[ScheduleGeneration] Extracted constraints:',

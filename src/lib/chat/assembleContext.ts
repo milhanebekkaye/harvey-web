@@ -200,7 +200,6 @@ function buildSystemPrompt(
 ): string {
   const contextData = (project.contextData as unknown as ContextData) || {
     available_time: [],
-    blocked_time: [],
     preferences: {},
   }
 
@@ -271,7 +270,7 @@ ${projectNotesSection}
 ${userNotesSection}
 
 ## User constraints
-${formatConstraints(contextData)}
+${formatConstraints(contextData, user as unknown as UserLifeConstraints)}
 
 ## Current schedule (today + next 7 days; all times ${userTimezone})
 ${formatTasks(stats.todayTasks, 'today', userTimezone)}
@@ -369,22 +368,49 @@ function formatNotesSection(notes: unknown, kind: 'project' | 'user'): string {
   return `## ${title}\nNo notes yet.\n\n`
 }
 
+/** User work schedule / commute shape (from User model). */
+interface UserLifeConstraints {
+  workSchedule?: { workDays?: number[]; startTime?: string; endTime?: string } | null
+  commute?: {
+    morning?: { durationMinutes?: number; startTime?: string }
+    evening?: { durationMinutes?: number; startTime?: string }
+  } | null
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 /**
- * Format user constraints (availability, blocked time, one-off blocks) for the system prompt.
+ * Format user constraints (availability, work schedule, commute, one-off blocks) for the system prompt.
+ * Blocked time comes from User.workSchedule and User.commute, not contextData.
  */
-function formatConstraints(contextData: ContextData): string {
+function formatConstraints(contextData: ContextData, user?: UserLifeConstraints | null): string {
   let result = ''
 
-  if (contextData.available_time?.length) {
-    result += 'Available time:\n'
-    contextData.available_time.forEach((slot) => {
-      result += `  - ${slot.day}: ${slot.start}–${slot.end}${slot.label ? ` (${slot.label})` : ''}\n`
+  const ws = user?.workSchedule
+  if (Array.isArray(ws?.blocks) && ws.blocks.length > 0) {
+    result += 'Work schedule:\n'
+    ws.blocks.forEach((b) => {
+      const days = (Array.isArray(b.days) && b.days.length > 0 ? b.days : ws.workDays ?? [1, 2, 3, 4, 5])
+        .map((d) => DAY_NAMES[d] ?? d)
+        .join(', ')
+      result += `  ${days}: ${b.startTime}–${b.endTime}\n`
     })
+  } else if (ws?.workDays?.length && ws.startTime && ws.endTime) {
+    const days = ws.workDays.map((d) => DAY_NAMES[d] ?? d).join(', ')
+    result += `Work schedule: ${days} ${ws.startTime}–${ws.endTime}\n`
+  }
+  if (user?.commute?.morning || user?.commute?.evening) {
+    if (user.commute.morning) {
+      result += `Commute (morning): ${user.commute.morning.startTime}, ${user.commute.morning.durationMinutes} min\n`
+    }
+    if (user.commute.evening) {
+      result += `Commute (evening): ${user.commute.evening.startTime}, ${user.commute.evening.durationMinutes} min\n`
+    }
   }
 
-  if (contextData.blocked_time?.length) {
-    result += 'Blocked time:\n'
-    contextData.blocked_time.forEach((slot) => {
+  if (contextData.available_time?.length) {
+    result += 'Available time (for this project):\n'
+    contextData.available_time.forEach((slot) => {
       result += `  - ${slot.day}: ${slot.start}–${slot.end}${slot.label ? ` (${slot.label})` : ''}\n`
     })
   }

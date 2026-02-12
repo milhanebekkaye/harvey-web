@@ -18,6 +18,7 @@ import {
   formatHoursToTime,
   getDayName,
   addDays,
+  getEffectiveAvailableTimeBlocks,
 } from '../../schedule/task-scheduler'
 import {
   extractConstraints,
@@ -211,10 +212,24 @@ export async function executeRegenerateSchedule(
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
     const userTimezone = user?.timezone || 'Europe/Paris'
-    const contextData: ContextData = (project.contextData as unknown as ContextData) || {
+    const rawContext: ContextData = (project.contextData as unknown as ContextData) || {
       available_time: [],
-      blocked_time: [],
       preferences: {},
+    }
+    // Blocked time is derived from User.workSchedule and User.commute; subtract from available_time for scheduling
+    const userBlocked = user
+      ? {
+          workSchedule: (user as { workSchedule?: import('@/types/api.types').WorkScheduleShape | null }).workSchedule ?? null,
+          commute: (user as { commute?: import('@/types/api.types').CommuteShape | null }).commute ?? null,
+        }
+      : null
+    const effectiveAvailable = getEffectiveAvailableTimeBlocks(
+      rawContext.available_time || [],
+      userBlocked
+    )
+    const contextData: ContextData = {
+      ...rawContext,
+      available_time: effectiveAvailable.length > 0 ? effectiveAvailable : (rawContext.available_time || []),
     }
 
     // Increment generation count
@@ -351,12 +366,7 @@ export async function executeRegenerateSchedule(
       const constraints = contextData.available_time?.length
         ? {
             schedule_duration_weeks: contextData.schedule_duration_weeks || 2,
-            blocked_time: contextData.blocked_time.map((b) => ({
-              day: b.day,
-              start: b.start,
-              end: b.end,
-              label: b.label,
-            })),
+            blocked_time: [] as Array<{ day: string; start: string; end: string; label?: string }>,
             available_time: contextData.available_time.map((a) => ({
               day: a.day,
               start: a.start,
@@ -377,12 +387,13 @@ export async function executeRegenerateSchedule(
 
       const startDate = calculateStartDate(constraints, userTimezone)
       const durationWeeks = constraints.schedule_duration_weeks || 2
-      const scheduleResult = assignTasksToSchedule(
+      const scheduleResult =       assignTasksToSchedule(
         parsedTasks,
         constraints,
         startDate,
         durationWeeks,
-        userTimezone
+        userTimezone,
+        userBlocked as import('../../schedule/task-scheduler').UserBlockedInput | null
       )
 
       // Log scheduled order (dependencies respected by task-scheduler)

@@ -17,6 +17,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -433,9 +434,13 @@ export function ChatSidebar({
               <span className="material-symbols-outlined">refresh</span>
             </button>
 
-            <button className="bg-primary/10 hover:bg-primary/20 text-[#895af6] p-2 rounded-lg transition-colors">
+            <Link
+              href="/dashboard/settings"
+              className="bg-primary/10 hover:bg-primary/20 text-[#895af6] p-2 rounded-lg transition-colors inline-flex items-center justify-center"
+              title="Settings"
+            >
               <span className="material-symbols-outlined">settings</span>
-            </button>
+            </Link>
 
             {onSignOut && (
               <button

@@ -14,12 +14,14 @@ import type { Task, Project, User } from '@prisma/client'
 /**
  * A recurring time block (one entry per day-slot).
  * Matches existing TimeBlock from api.types.ts.
+ * type: for availability blocks only (work = dedicated work time, personal = personal project time).
  */
 export interface TimeBlockEntry {
   day: string    // lowercase: "monday", "tuesday", etc.
   start: string  // "20:00" — 24h format
   end: string    // "23:00" — 24h format
   label?: string // "Classes", "Work", etc.
+  type?: 'work' | 'personal'
 }
 
 /**
@@ -38,11 +40,12 @@ export interface OneOffBlock {
 
 /**
  * Full contextData structure stored on Project.contextData (JSON).
- * Extends the existing ExtractedConstraints format with one_off_blocks.
+ * Blocked time (work, commute) lives on User; contextData holds only project allocations.
  */
 export interface ContextData {
   schedule_duration_weeks?: number
-  blocked_time: TimeBlockEntry[]
+  /** @deprecated No longer written; blocked time is derived from User.workSchedule and User.commute */
+  blocked_time?: TimeBlockEntry[]
   available_time: TimeBlockEntry[]
   one_off_blocks?: OneOffBlock[]
   preferences: Record<string, unknown>

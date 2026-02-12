@@ -184,11 +184,10 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] ✅ Extracted constraints:', JSON.stringify(constraints, null, 2))
 
-    // ===== STEP 5.5: Save scheduling subset to contextData; enrichment to Project and User =====
+    // ===== STEP 5.5: Save project allocations to contextData (no blocked_time); User life constraints to User =====
     const constraintsAny = constraints as unknown as Record<string, unknown>
     const contextDataSubset = {
       schedule_duration_weeks: constraints.schedule_duration_weeks,
-      blocked_time: constraints.blocked_time,
       available_time: constraints.available_time,
       preferences: constraints.preferences,
       exclusions: constraints.exclusions,
@@ -204,7 +203,7 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     })
-    console.log('[GenerateScheduleAPI] ✅ Saved constraints to Project.contextData')
+    console.log('[GenerateScheduleAPI] ✅ Saved project contextData (available_time, preferences; no blocked_time)')
 
     // Project enrichment (only defined values; fail gracefully)
     const projectEnrichment: Record<string, unknown> = {}
@@ -233,8 +232,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // User enrichment (only defined values; fail gracefully)
+    // User: life constraints (workSchedule, commute) + enrichment (preferred_session_length, communication_style, userNotes)
     const userEnrichment: Record<string, unknown> = {}
+    if (constraints.work_schedule != null && constraints.work_schedule.workDays?.length) {
+      userEnrichment.workSchedule = constraints.work_schedule
+    }
+    if (constraints.commute != null && (constraints.commute.morning || constraints.commute.evening)) {
+      userEnrichment.commute = constraints.commute
+    }
     if (constraints.preferred_session_length != null) userEnrichment.preferred_session_length = constraints.preferred_session_length
     if (constraints.communication_style != null && constraints.communication_style !== '') userEnrichment.communication_style = constraints.communication_style
     if (constraints.user_notes != null && constraints.user_notes.length > 0) userEnrichment.userNotes = constraints.user_notes
@@ -242,9 +247,9 @@ export async function POST(request: NextRequest) {
     if (Object.keys(userEnrichment).length > 0) {
       try {
         await updateUser(user.id, userEnrichment as Parameters<typeof updateUser>[1])
-        console.log('[GenerateScheduleAPI] ✅ Saved user enrichment')
+        console.log('[GenerateScheduleAPI] ✅ Saved user (workSchedule, commute, enrichment)')
       } catch (err) {
-        console.error('[GenerateScheduleAPI] ⚠️ User enrichment update failed (non-fatal):', err)
+        console.error('[GenerateScheduleAPI] ⚠️ User update failed (non-fatal):', err)
       }
     }
 
@@ -295,8 +300,20 @@ export async function POST(request: NextRequest) {
     console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)
     console.log(`[GenerateScheduleAPI] Duration: ${durationWeeks} weeks`)
 
-    // Run the scheduling algorithm (slot times in user TZ, stored as UTC)
-    const scheduleResult = assignTasksToSchedule(tasks, constraints, startDate, durationWeeks, userTimezone)
+    // Run the scheduling algorithm (slot times in user TZ, stored as UTC).
+    // Blocked time is derived from User workSchedule/commute and subtracted from available_time.
+    const userBlocked =
+      constraints.work_schedule || constraints.commute?.morning || constraints.commute?.evening
+        ? { workSchedule: constraints.work_schedule ?? null, commute: constraints.commute ?? null }
+        : null
+    const scheduleResult = assignTasksToSchedule(
+      tasks,
+      constraints,
+      startDate,
+      durationWeeks,
+      userTimezone,
+      userBlocked
+    )
 
     console.log(`[GenerateScheduleAPI] ✅ Scheduled ${scheduleResult.scheduledTasks.length} task blocks`)
     console.log(`[GenerateScheduleAPI]   Total hours scheduled: ${scheduleResult.totalHoursScheduled.toFixed(1)}`)

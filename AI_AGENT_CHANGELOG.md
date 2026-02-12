@@ -50,6 +50,64 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-12 – Availability blocks persistence (store in same place as fetch)
+
+- **Agent / context**: Cursor AI – Fix availability blocks not being stored in the DB when user adds a block and clicks Save.
+- **Summary**:
+  - **API** (`POST /api/settings/update`): Persist `available_time` to `Project.contextData.available_time` (same place `GET /api/settings` reads from). Build `newContextData` from a plain object copy of existing contextData so Prisma serializes correctly; sort blocks by day then start time before saving; always set `available_time` and `preferences` when updating project context.
+  - **Settings page**: Send `projectId` when project exists (`data.project?.id`); send `available_time` from `data.project?.contextData?.available_time ?? []`. After successful save, refetch `/api/settings` in the background and set state from the response so the UI shows exactly what was persisted.
+- **Files touched**: `src/app/api/settings/update/route.ts`, `src/app/dashboard/settings/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: User reported that adding an availability block and saving did not persist to the database.
+- **Risks / notes**: Refetch after save updates the whole settings state from the server; if another tab changed settings, that will overwrite. Acceptable for single-user settings page.
+- **Related docs**: `docs/settings.md` (Persistence and logging).
+
+### 2026-02-12 – Work schedule: per-block days and build fix
+
+- **Agent / context**: Cursor AI – Fix “Expression expected” build error in settings update route; add per-block days to work schedule so each block can have different days (e.g. Mon 9–12 and 15–17, Thu 8–13 only).
+- **Summary**:
+  - **Build fix**: Work schedule validation in `POST /api/settings/update` was refactored into a `validateWorkSchedule(ws)` helper to resolve a parse error at the `} else {` branch (Turbopack/Next.js 16).
+  - **Per-block days**: `WorkScheduleShape.blocks` entries now include `days: number[]` (0–6). Each “Add work block” row has its own day checkboxes and start/end time. Overlap validation: two blocks that share a day must not have overlapping times.
+  - **UI**: WorkScheduleSection shows one card per block: “Days” (Sun–Sat checkboxes) + start time “to” end time + Remove. No global work days; legacy payload (workDays + startTime/endTime) is still loaded and shown as one block.
+  - **Scheduler and grid**: task-scheduler and AvailabilitySection build blocked slots from each block’s `days` and times. assembleContext formats work schedule with per-block days in the system prompt.
+- **Files touched**: `src/app/api/settings/update/route.ts`, `src/types/api.types.ts`, `src/components/settings/WorkScheduleSection.tsx`, `src/components/settings/AvailabilitySection.tsx`, `src/lib/schedule/task-scheduler.ts`, `src/lib/chat/assembleContext.ts`, `docs/settings.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: User needs different time blocks for different days (e.g. Monday class 9–12 and 3–5, Thursday 8–1 only). Build was failing when saving settings.
+- **Risks / notes**: Legacy work schedule (no `blocks`) still supported; API defaults missing `days` to [1,2,3,4,5] for backward compatibility.
+- **Related docs**: `docs/settings.md` (Work schedule data model, per-block days).
+
+### 2026-02-12 – Settings fixes: persistence, energy preference, multiple work blocks
+
+- **Agent / context**: Cursor AI – Fix three critical issues before Feature C: availability blocks and energy preferences not persisting; work schedule limited to one block per day.
+- **Summary**:
+  - **Issue 3 – Availability blocks persist**: Confirmed save path (page sends `available_time` and `projectId`; API writes to `Project.contextData.available_time`). Added sorting of blocks by day then start time before save. Added API and client logging (request body, saved contextData) for debugging.
+  - **Issue 2 – Energy preferences persist**: Validated flow (PreferencesSection → updateProjectContext → save payload). Added API validation: `preferences.energy_peak` must be one of `mornings` | `afternoons` | `evenings`. Preferences are merged into existing contextData; no bug found in write path; logging added.
+  - **Issue 1 – Multiple work blocks per day**: `WorkScheduleShape` (api.types) now supports optional `blocks: Array<{ startTime, endTime }>`; legacy `startTime`/`endTime` retained. WorkScheduleSection UI: list of time blocks with “Add work block”, per-block start/end/Remove; work days apply to all blocks. API validates blocks (end &gt; start, no overlap). Task-scheduler `buildBlockedSlotsFromUser` iterates over `workSchedule.blocks` when present, else uses single start/end. AvailabilitySection grid builds `workBlocksByDay` from blocks or legacy. Chat assembleContext formats multiple blocks in system prompt.
+- **Files touched**: `src/app/api/settings/update/route.ts`, `src/app/dashboard/settings/page.tsx`, `src/types/api.types.ts`, `src/components/settings/WorkScheduleSection.tsx`, `src/components/settings/AvailabilitySection.tsx`, `src/lib/schedule/task-scheduler.ts`, `src/lib/chat/assembleContext.ts`, `docs/settings.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users reported availability blocks and energy preference not saving; users need multiple work blocks (e.g. morning class + afternoon class) for realistic schedules.
+- **Risks / notes**: Existing users with legacy work schedule keep it until next save; then UI may send `blocks` (one or more). Schedule-generation still outputs legacy work_schedule; task-scheduler and UI accept both. Keep API logging for Feature C debugging; can reduce later.
+- **Related docs**: `docs/settings.md` (work schedule data model, validation, persistence and logging).
+
+### 2026-02-12 – Overnight availability blocks (cross-midnight)
+
+- **Agent / context**: Cursor AI – Fix validation and grid display for availability blocks that cross midnight (e.g. Friday 23:00 – Saturday 02:00).
+- **Summary**:
+  - **API validation** (`POST /api/settings/update`): Overnight blocks are now valid (`end` &lt; `start` means “continues into next day”). Reject only when `end === start`. Overlap check expanded: each block’s segment on a given day is normalized (overnight ⇒ [start, 24:00) on block day and [00:00, end) on next day); overlaps are checked across all segments on each day so overnight blocks do not falsely conflict and real overlaps (e.g. Friday 23:00–02:00 vs Saturday 00:00–01:00) are detected.
+  - **AvailabilitySection**: `addBlock` allows `end` &lt; `start` (overnight); only rejects when `end === start`. Grid uses display segments: each block is expanded into one or two (day, start, end) segments for rendering; overnight blocks show on two days (e.g. Friday 23:00–23:59 and Saturday 00:00–02:00). List shows overnight blocks as “23:00 – Sat 02:00 (overnight)”. Add-form shows hint “This block crosses midnight and will appear on two days” when end &lt; start. Optional dev console logs when adding or rendering overnight blocks.
+- **Files touched**: `src/app/api/settings/update/route.ts`, `src/components/settings/AvailabilitySection.tsx`, `docs/settings.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users could not add blocks like Friday 23:00–02:00; validation wrongly required end &gt; start and the grid did not render overnight blocks.
+- **Risks / notes**: Day order is Monday→…→Sunday→Monday. Edge cases: 22:00–00:00 is treated as overnight (two segments: until midnight, then 00:00–00:00 empty next-day segment—effectively one visible segment; getDisplaySegments returns [0, 0] for next day which shows no cell; we may want to treat 00:00 as 24:00 for “until midnight” in a follow-up). Full overnight (00:00–23:59) is valid; overlap logic handles it. No regression on same-day blocks.
+- **Related docs**: `docs/settings.md` (Availability Windows, overnight data model).
+
+### 2026-02-12 – Settings page (Feature B) and data architecture refactor
+
+- **Agent / context**: Cursor AI – Implement Feature B (Settings page) and refactor constraints so User holds life constraints and Project.contextData holds only project allocations.
+- **Summary**:
+  - **Data refactor (Step 0):** (1) Extraction and generate-schedule now write **User.workSchedule** and **User.commute** from onboarding; **Project.contextData** no longer stores `blocked_time` (only available_time, preferences, etc.). (2) Task-scheduler and all tools (regenerate_schedule, add_task, update_constraints, smart-reschedule) derive blocked time from User and use **getEffectiveAvailableTimeBlocks** where needed. (3) ContextData type has `blocked_time` optional/deprecated; TimeBlock and TimeBlockEntry have optional `type: 'work' | 'personal'`. (4) ARCHITECTURE.md documents User vs Project separation.
+  - **Settings page (Step 1):** New route `/dashboard/settings`, GET `/api/settings`, POST `/api/settings/update`. Components: WorkScheduleSection, AvailabilitySection (week grid + block list), PreferencesSection, Project placeholder with TODO for Feature C. Dashboard header: Settings gear links to `/dashboard/settings`. Docs: `docs/settings.md`; ARCHITECTURE updated.
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/schedule/task-scheduler.ts`, `src/lib/chat/tools/updateConstraints.ts`, `src/lib/chat/tools/regenerateSchedule.ts`, `src/lib/chat/tools/addTask.ts`, `src/lib/tasks/smart-reschedule.ts`, `src/lib/chat/assembleContext.ts`, `src/lib/chat/types.ts`, `src/types/api.types.ts`, `src/app/api/settings/route.ts`, `src/app/api/settings/update/route.ts`, `src/app/dashboard/settings/page.tsx`, `src/components/settings/*`, `src/components/dashboard/ChatSidebar.tsx`, `src/types/settings.types.ts`, `ARCHITECTURE.md`, `docs/settings.md`.
+- **Motivation**: Release blocker: users could not edit constraints after onboarding. Plan required fixing data ownership (User = life, Project = allocations) before building Settings.
+- **Risks / notes**: Existing projects may have contextData.blocked_time in DB; code treats it as optional and no longer writes it. Schedule generation and rescheduling now depend on User.workSchedule/commute; ensure onboarding or first generation populates them (extraction + deriveUserLifeConstraints).
+- **Related docs**: `ARCHITECTURE.md` (Constraints data: User vs Project; schedule, Settings API), `docs/settings.md`, `Harvey_Sprint_Roadmap_MVP_Launch.md` Task B.
+
 ### 2026-02-11 – Project and User enrichment (schema, extraction, context assembly)
 
 - **Agent / context**: Cursor AI – Add structured Project/User enrichment fields, extend single extraction at schedule generation, update onboarding prompt and chat context assembly.

@@ -171,12 +171,40 @@ export interface GenerateScheduleResponse {
  * Time Block
  *
  * Represents a block of time (blocked or available).
+ * type is used for project availability blocks (work = dedicated work time, personal = personal project time).
  */
 export interface TimeBlock {
   day: string // monday, tuesday, etc. (lowercase)
   start: string // 24-hour format: "08:00", "17:30"
   end: string // 24-hour format: "08:00", "17:30"
   label?: string // e.g., "Classes", "Work", "Class break"
+  type?: 'work' | 'personal' // for availability blocks only
+}
+
+/**
+ * User work schedule (life constraint, stored on User).
+ * workDays: 0 = Sunday, 1 = Monday, ... 6 = Saturday.
+ *
+ * Supports two formats:
+ * - Legacy: workDays + startTime + endTime (single block for all selected days).
+ * - Per-block days: `blocks` array; each block has its own `days` (0–6), startTime, endTime (e.g. Mon/Wed 9–12, Thu 8–13).
+ */
+export interface WorkScheduleShape {
+  /** Legacy: used when blocks is absent or empty. */
+  workDays?: number[]
+  /** Legacy single block. */
+  startTime?: string // 24h "09:00"
+  endTime?: string // 24h "17:30"
+  /** Blocks with per-block days: each applies only to its selected days. */
+  blocks?: Array<{ days: number[]; startTime: string; endTime: string }>
+}
+
+/**
+ * User commute (life constraint, stored on User).
+ */
+export interface CommuteShape {
+  morning?: { durationMinutes: number; startTime: string }
+  evening?: { durationMinutes: number; startTime: string }
 }
 
 /**
@@ -254,6 +282,10 @@ export interface ExtractedConstraints {
    * e.g., ["messaging", "payment integration"]
    */
   exclusions?: string[]
+
+  // --- User life constraints (written to User.workSchedule / User.commute) ---
+  work_schedule?: WorkScheduleShape | null
+  commute?: CommuteShape | null
 
   // --- Enrichment (optional; written to Project / User at schedule generation) ---
   target_deadline?: string | null

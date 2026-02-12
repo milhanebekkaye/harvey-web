@@ -13,11 +13,16 @@ export interface User {
   timezone: string
   createdAt: Date
   updatedAt: Date
-  
-  // Preference objects (empty {} until filled in onboarding)
+
+  // Life constraints (work schedule, commute)
   availabilityWindows: any | null
   workSchedule: any | null
   commute: any | null
+
+  // Enrichment
+  preferred_session_length?: number | null
+  communication_style?: string | null
+  userNotes?: unknown
 }
 
 /**

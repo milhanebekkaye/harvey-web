@@ -17,8 +17,20 @@
  * 4. Return scheduled tasks with dates/times
  */
 
-import type { ExtractedConstraints, ParsedTask, TimeBlock } from '../../types/api.types'
+import type {
+  CommuteShape,
+  ExtractedConstraints,
+  ParsedTask,
+  TimeBlock,
+  WorkScheduleShape,
+} from '../../types/api.types'
 import { localTimeInTimezoneToUTC } from '../timezone'
+
+/** User life constraints: work schedule and commute. Blocked time is derived from these on-the-fly. */
+export interface UserBlockedInput {
+  workSchedule?: WorkScheduleShape | null
+  commute?: CommuteShape | null
+}
 
 // ============================================
 // Types
@@ -226,23 +238,100 @@ function createDateTimeInTimezone(date: Date, hours: number, userTimezone: strin
   return localTimeInTimezoneToUTC(dateStr, hour, minute, userTimezone)
 }
 
-/**
- * Build availability map from constraints
- * Groups available time by day of week
- * 
- * Handles overnight slots (e.g., 21:00-02:00) by splitting them:
- * - Day 1: 21:00-24:00 (until midnight)
- * - Day 2: 00:00-02:00 (after midnight)
- *
- * @param constraints - Extracted constraints
- * @returns Map of day → array of time slots
- */
-function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, TimeSlot[]> {
-  const availability = new Map<string, TimeSlot[]>()
+const DAY_NUM_TO_NAME = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
-  // Day name mapping for calculating next day
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-  const dayToIndex = new Map(dayNames.map((name, i) => [name, i]))
+/**
+ * Build blocked time slots from User.workSchedule and User.commute.
+ * Used to subtract work/commute from available_time so scheduling only uses free slots.
+ * Supports multiple work blocks per day (workSchedule.blocks) or legacy single startTime/endTime.
+ */
+function buildBlockedSlotsFromUser(userBlocked: UserBlockedInput): Map<string, TimeSlot[]> {
+  const blocked = new Map<string, TimeSlot[]>()
+
+  const addSlot = (day: string, startHours: number, endHours: number) => {
+    if (!blocked.has(day)) blocked.set(day, [])
+    blocked.get(day)!.push({ day, startHours, endHours })
+  }
+
+  const ws = userBlocked.workSchedule
+  if (!ws) return blocked
+
+  if (Array.isArray(ws.blocks) && ws.blocks.length > 0) {
+    for (const b of ws.blocks) {
+      const days = Array.isArray(b.days) && b.days.length > 0 ? b.days : [1, 2, 3, 4, 5]
+      const startHours = parseTimeToHours(b.startTime)
+      const endHours = parseTimeToHours(b.endTime)
+      if (endHours <= startHours) continue
+      for (const d of days) {
+        if (d >= 0 && d <= 6) addSlot(DAY_NUM_TO_NAME[d], startHours, endHours)
+      }
+    }
+  } else if (ws.workDays?.length && ws.startTime && ws.endTime) {
+    const startHours = parseTimeToHours(ws.startTime)
+    const endHours = parseTimeToHours(ws.endTime)
+    for (const d of ws.workDays) {
+      if (d >= 0 && d <= 6) addSlot(DAY_NUM_TO_NAME[d], startHours, endHours)
+    }
+  }
+
+  if (userBlocked.commute?.morning) {
+    const { durationMinutes, startTime } = userBlocked.commute.morning
+    const startHours = parseTimeToHours(startTime)
+    const endHours = startHours + durationMinutes / 60
+    for (const day of DAY_NUM_TO_NAME) addSlot(day, startHours, endHours)
+  }
+  if (userBlocked.commute?.evening) {
+    const { durationMinutes, startTime } = userBlocked.commute.evening
+    const startHours = parseTimeToHours(startTime)
+    const endHours = startHours + durationMinutes / 60
+    for (const day of DAY_NUM_TO_NAME) addSlot(day, startHours, endHours)
+  }
+
+  for (const [day, slots] of blocked) {
+    slots.sort((a, b) => a.startHours - b.startHours)
+    blocked.set(day, slots)
+  }
+  return blocked
+}
+
+/**
+ * Subtract blocked ranges from a list of available slots on one day.
+ * Returns new slots that don't overlap blocked.
+ */
+function subtractBlockedFromSlots(
+  slots: TimeSlot[],
+  blockedSlots: TimeSlot[]
+): TimeSlot[] {
+  if (blockedSlots.length === 0) return slots
+  const result: TimeSlot[] = []
+  for (const slot of slots) {
+    let sStart = slot.startHours
+    const sEnd = slot.endHours
+    for (const b of blockedSlots) {
+      if (b.endHours <= sStart || b.startHours >= sEnd) continue
+      const bStart = Math.max(b.startHours, sStart)
+      const bEnd = Math.min(b.endHours, sEnd)
+      if (sStart < bStart) result.push({ ...slot, startHours: sStart, endHours: bStart })
+      sStart = bEnd
+    }
+    if (sStart < sEnd) result.push({ ...slot, startHours: sStart, endHours: sEnd })
+  }
+  return result.sort((a, b) => a.startHours - b.startHours)
+}
+
+/**
+ * Build availability map from constraints (available_time) and subtract User work/commute.
+ * Groups available time by day of week; blocks from User.workSchedule and User.commute are excluded.
+ *
+ * @param constraints - Extracted constraints (available_time from Project.contextData)
+ * @param userBlocked - Optional User life constraints; blocked time is derived from these
+ * @returns Map of day → array of time slots (free to schedule)
+ */
+function buildAvailabilityMap(
+  constraints: ExtractedConstraints,
+  userBlocked?: UserBlockedInput | null
+): Map<string, TimeSlot[]> {
+  const availability = new Map<string, TimeSlot[]>()
 
   for (const block of constraints.available_time || []) {
     const day = block.day.toLowerCase()
@@ -253,24 +342,15 @@ function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, Ti
       availability.set(day, [])
     }
 
-    // Check if slot crosses midnight (end time < start time)
     if (endHours < startHours) {
-      console.log(`[TaskScheduler] Detected overnight slot: ${day} ${block.start}-${block.end}`)
-      
-      // Keep as ONE continuous slot using hours > 24 to represent next day
-      // Example: 21:00-02:00 becomes startHours=21, endHours=26 (24 + 2)
       const adjustedEndHours = 24.0 + endHours
-      
       availability.get(day)!.push({
         day,
         startHours: startHours,
         endHours: adjustedEndHours,
         label: block.label,
       })
-
-      console.log(`  → Overnight slot: ${day} ${formatHoursToTime(startHours)}-${formatHoursToTime(adjustedEndHours)} (continuous)`)
     } else {
-      // Normal slot within same day
       availability.get(day)!.push({
         day,
         startHours: startHours,
@@ -280,13 +360,60 @@ function buildAvailabilityMap(constraints: ExtractedConstraints): Map<string, Ti
     }
   }
 
-  // Sort each day's slots by start time
+  // Subtract User work/commute blocked slots
+  const hasWorkSchedule =
+    userBlocked?.workSchedule &&
+    (userBlocked.workSchedule.workDays?.length ||
+      (Array.isArray(userBlocked.workSchedule.blocks) && userBlocked.workSchedule.blocks.length > 0))
+  if (userBlocked && (hasWorkSchedule || userBlocked.commute?.morning || userBlocked.commute?.evening)) {
+    const blockedMap = buildBlockedSlotsFromUser(userBlocked)
+    for (const [day, slots] of availability) {
+      const blockedSlots = blockedMap.get(day) || []
+      const subtracted = subtractBlockedFromSlots(slots, blockedSlots)
+      availability.set(day, subtracted.filter((s) => s.endHours - s.startHours >= 0.5))
+    }
+  }
+
   for (const [day, slots] of availability) {
     slots.sort((a, b) => a.startHours - b.startHours)
     availability.set(day, slots)
   }
 
   return availability
+}
+
+/**
+ * Build effective available_time (available_time minus User work/commute) for tools that need it.
+ * Returns array of { day, start, end } suitable for contextData.available_time shape.
+ *
+ * @param availableTime - From Project.contextData.available_time
+ * @param userBlocked - From User.workSchedule and User.commute
+ * @returns Effective available time blocks (work/commute subtracted)
+ */
+export function getEffectiveAvailableTimeBlocks(
+  availableTime: TimeBlock[],
+  userBlocked?: UserBlockedInput | null
+): TimeBlock[] {
+  if (!availableTime?.length) return []
+  const constraints: ExtractedConstraints = {
+    schedule_duration_weeks: 2,
+    blocked_time: [],
+    available_time: availableTime,
+    preferences: {},
+  }
+  const map = buildAvailabilityMap(constraints, userBlocked ?? null)
+  const result: TimeBlock[] = []
+  for (const [day, slots] of map) {
+    for (const s of slots) {
+      if (s.endHours - s.startHours < 0.5) continue
+      result.push({
+        day,
+        start: formatHoursToTime(s.startHours),
+        end: formatHoursToTime(s.endHours >= 24 ? s.endHours - 24 : s.endHours),
+      })
+    }
+  }
+  return result
 }
 
 /**
@@ -423,12 +550,14 @@ function sortIndicesByDependencies(tasks: ParsedTask[]): number[] {
  * This is the main scheduling algorithm, adapted from the Telegram bot.
  * Respects task dependencies: tasks with depends_on are scheduled after their dependencies.
  * When userTimezone is provided, slot times (e.g. 9–17) are interpreted in that zone and stored as UTC.
+ * Blocked time (work, commute) is derived from userBlocked (User.workSchedule, User.commute) and subtracted from available_time.
  *
  * @param tasks - Array of parsed tasks with hours and priority
- * @param constraints - User's scheduling constraints
+ * @param constraints - Project constraints (available_time from contextData)
  * @param startDate - When to start scheduling
  * @param durationWeeks - How many weeks to schedule
  * @param userTimezone - User's IANA timezone (e.g. Europe/Paris) so times are stored in UTC
+ * @param userBlocked - Optional User life constraints (workSchedule, commute); blocked time is subtracted from available slots
  * @returns Schedule result with assigned tasks
  */
 export function assignTasksToSchedule(
@@ -436,7 +565,8 @@ export function assignTasksToSchedule(
   constraints: ExtractedConstraints,
   startDate: Date,
   durationWeeks: number,
-  userTimezone: string = 'UTC'
+  userTimezone: string = 'UTC',
+  userBlocked?: UserBlockedInput | null
 ): ScheduleResult {
   console.log(
     `[TaskScheduler] Starting scheduling: ${tasks.length} tasks, ${durationWeeks} weeks, starting ${startDate.toISOString().split('T')[0]}`
@@ -445,8 +575,8 @@ export function assignTasksToSchedule(
   const scheduledTasks: ScheduledTaskAssignment[] = []
   let totalHoursScheduled = 0
 
-  // Build availability map (day → slots)
-  const availability = buildAvailabilityMap(constraints)
+  // Build availability map from available_time, subtracting User work/commute
+  const availability = buildAvailabilityMap(constraints, userBlocked)
 
   console.log('[TaskScheduler] Availability map:')
   for (const [day, slots] of availability) {

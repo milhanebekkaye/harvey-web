@@ -79,7 +79,8 @@ Additional route groups:
 - **`loading/page.tsx`**: A route that provides a loading/placeholder experience, likely displayed while the main experience or data loads.
 - **`onboarding/page.tsx`**: `/onboarding` route. Manages the onboarding experience and initial user setup, using components from `src/components/onboarding`.
 - **`signin/page.tsx`**: `/signin` route. Handles email-based sign-in and integration with Supabase auth.
-- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure). **Daily check-in**: on load, when the user has an active project and existing tasks, triggers a contextual check-in message (rate-limited to every 3 hours or new calendar day via localStorage); the message streams at the bottom of the chat and is persisted with `messageType: 'check-in'`.
+- **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components.
+- **`dashboard/settings/page.tsx`**: `/dashboard/settings` route. Full-page Settings: work schedule, availability windows, preferences, and Project link. Data from GET `/api/settings`; save via POST `/api/settings/update`. See `docs/settings.md`. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure). **Daily check-in**: on load, when the user has an active project and existing tasks, triggers a contextual check-in message (rate-limited to every 3 hours or new calendar day via localStorage); the message streams at the bottom of the chat and is persisted with `messageType: 'check-in'`.
 
 Auth callback:
 
@@ -128,6 +129,11 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating).
   - Uses `src/lib/tasks/task-service.ts` for domain logic.
 
+- **`settings/route.ts`**
+  - GET `/api/settings`. Returns current user (workSchedule, commute, preferred_session_length, communication_style, timezone) and active project (id, contextData.available_time, contextData.preferences) for the Settings page.
+- **`settings/update/route.ts`**
+  - POST `/api/settings/update`. Persists Settings form: User (workSchedule, commute, preferred_session_length, communication_style) and Project.contextData (available_time, preferences). No blocked_time. Validates times and overlapping blocks.
+
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.
   - Handles single-task operations (fetch, update, delete) based on `taskId`. PATCH returns the updated task and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
@@ -172,6 +178,14 @@ Dashboard UI for authenticated users:
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views.
 - **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
 - **`ViewToggle.tsx`**: Control for toggling between different dashboard views (e.g. Calendar vs Timeline).
+
+### `src/components/settings/`
+
+Settings page sections (Feature B):
+
+- **`WorkScheduleSection.tsx`**: Work days (Mon–Sun), work start/end time, optional commute (morning/evening duration + start). Reads/writes User only.
+- **`AvailabilitySection.tsx`**: Week-view grid (work grey, commute lighter, availability blocks colored by type), list of blocks with add/edit/delete, total hours per week, empty state. Reads/writes Project.contextData.available_time; displays User work/commute for grid.
+- **`PreferencesSection.tsx`**: Energy pattern, rest days, preferred session length (presets + custom), communication style. User and Project preferences.
 
 ### `src/components/onboarding/`
 
@@ -218,8 +232,13 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/schedule/`
 
-- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Each generated task includes **2–4 success criteria** (prompt and parser output multi-line SUCCESS section; `convertSuccessCriteriaToJson` turns it into the JSON checklist format). **Constraint extraction** (`extractConstraints`): single Claude call with extended prompt returns scheduling fields (schedule_duration_weeks, blocked_time, available_time, preferences, exclusions) plus enrichment (target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation, phases, project_notes, preferred_session_length, communication_style, user_notes). Uses max_tokens 4096; `repairJSON` handles truncated JSON. The generate-schedule route passes the **last 15 messages** for extraction (full conversation used for task generation) and writes scheduling subset to `Project.contextData`, enrichment to Project and User.
-- **`task-scheduler.ts`**: Pure scheduling algorithms and helpers (e.g. assigning tasks to slots, respecting dependencies and constraints). Orders tasks by dependency (topological sort) then priority so dependents are scheduled after their dependencies.
+- **`schedule-generation.ts`**: Core logic for generating a schedule based on tasks, timelines, and AI suggestions. Each generated task includes **2–4 success criteria** (prompt and parser output multi-line SUCCESS section; `convertSuccessCriteriaToJson` turns it into the JSON checklist format). **Constraint extraction** (`extractConstraints`): single Claude call returns scheduling fields (schedule_duration_weeks, available_time, preferences, exclusions), **User life constraints** (work_schedule, commute), and enrichment (target_deadline, skill_level, etc.). The generate-schedule route writes **User** (workSchedule, commute, preferred_session_length, communication_style, userNotes) and **Project.contextData** (available_time, preferences, schedule_duration_weeks, exclusions, one_off_blocks only — **no blocked_time**). See "Constraints data: User vs Project" below.
+- **`task-scheduler.ts`**: Pure scheduling algorithms. **assignTasksToSchedule** builds availability from `available_time` and optionally subtracts **User** work/commute (`userBlocked`). **getEffectiveAvailableTimeBlocks** returns available_time minus User work/commute for tools (regenerate_schedule, add_task, smart-reschedule). Orders tasks by dependency (topological sort) then priority.
+
+**Constraints data: User vs Project**
+
+- **User** (life constraints, shared across all projects): `workSchedule` (workDays; either legacy startTime/endTime or `blocks`: array of { startTime, endTime } for multiple blocks per day), `commute` (morning/evening duration + startTime), `timezone`, `preferred_session_length`, `communication_style`. Work and commute are facts about the user's life and do not change per project.
+- **Project.contextData** (project-specific allocations): `available_time` (when the user allocates time to *this* project; optional `type`: 'work' | 'personal'), `preferences` (e.g. energy_peak, rest_days), `schedule_duration_weeks`, `exclusions`, `one_off_blocks`. **Blocked time is not stored in contextData** — it is derived on-the-fly from User.workSchedule and User.commute when building the availability map (task-scheduler, regenerate_schedule, add_task, smart-reschedule).
 
 ### `src/lib/tasks/`
 
@@ -262,7 +281,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 > Note: There is also a generated Prisma client under `src/node_modules/.prisma/`. That generated code should not be modified directly.
 
-- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **User** model includes `timezone`, availability JSON fields (`availabilityWindows`, `workSchedule`, `commute`), and enrichment fields: `preferred_session_length`, `communication_style`, `userNotes Json?` (append-only array of observations about the person across projects). The **Project** model includes `contextData Json?` (scheduling-only: schedule_duration_weeks, blocked_time, available_time, preferences, exclusions, one_off_blocks), enrichment fields (`target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`, `phases Json?`), `projectNotes Json?` (append-only array of project-specific observations), and `generationCount Int`. The **Task** model includes `depends_on String[]` and `batchNumber Int`. The **Discussion** model includes `type String` ("project" | "onboarding" | "task") and `taskId String?`.
+- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **User** model includes `timezone`, **life constraints** (`workSchedule` Json: workDays, startTime, endTime; `commute` Json: morning/evening duration + startTime), `availabilityWindows` Json (legacy/optional), and enrichment: `preferred_session_length`, `communication_style`, `userNotes Json?`. The **Project** model includes `contextData Json?` (project allocations only: schedule_duration_weeks, **available_time**, preferences, exclusions, one_off_blocks — **blocked_time is not stored**; scheduling derives it from User), enrichment fields (`target_deadline`, `skill_level`, etc.), `projectNotes Json?`, and `generationCount Int`. The **Task** model includes `depends_on String[]` and `batchNumber Int`. The **Discussion** model includes `type String` ("project" | "onboarding" | "task") and `taskId String?`.
 
 - **`migrations/`**: Auto-generated migration history:
   - **`20260211120000_add_project_user_enrichment_fields/`**

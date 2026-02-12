@@ -82,15 +82,22 @@ export async function executeUpdateConstraints(
 
     const contextData: ContextData = (project.contextData as unknown as ContextData) || {
       available_time: [],
-      blocked_time: [],
       preferences: {},
     }
 
-    // Ensure arrays exist
+    // Ensure arrays exist (blocked_time is no longer stored; use Settings for work schedule/commute)
     if (!contextData.available_time) contextData.available_time = []
-    if (!contextData.blocked_time) contextData.blocked_time = []
     if (!contextData.one_off_blocks) contextData.one_off_blocks = []
     if (!contextData.preferences) contextData.preferences = {}
+
+    // Permanent work/commute changes: direct user to Settings
+    if (change_type === 'permanent' && constraint_type === 'blocked_time') {
+      return {
+        success: true,
+        message: "To change your work schedule or commute, please go to Settings (gear icon in the dashboard) and update the Work Schedule section. I've noted your preference for the conversation.",
+        affected_tasks_count: 0,
+      }
+    }
 
     // 2. Handle one-off blocks
     if (change_type === 'one_off') {
@@ -138,42 +145,12 @@ export async function executeUpdateConstraints(
             }
           }
         }
-      } else if (constraint_type === 'available_time' || constraint_type === 'blocked_time') {
-        const targetArray = constraint_type === 'available_time'
-          ? contextData.available_time
-          : contextData.blocked_time
-        const otherArray = constraint_type === 'available_time'
-          ? contextData.blocked_time
-          : contextData.available_time
-
+      } else if (constraint_type === 'available_time') {
         if (action === 'remove' && days.length > 0) {
-          // Remove the specified days from the target constraint type
-          // For available_time: filter entries that match the day(s)
-          if (constraint_type === 'available_time') {
-            contextData.available_time = contextData.available_time.filter(
-              (entry) => !days.includes(entry.day.toLowerCase())
-            )
-            // Also add these days as blocked if not already
-            for (const day of days) {
-              const alreadyBlocked = contextData.blocked_time.some(
-                (b) => b.day.toLowerCase() === day
-              )
-              if (!alreadyBlocked) {
-                contextData.blocked_time.push({
-                  day,
-                  start: '00:00',
-                  end: '23:59',
-                  label: `Blocked (${description})`,
-                })
-              }
-            }
-          } else {
-            contextData.blocked_time = contextData.blocked_time.filter(
-              (entry) => !days.includes(entry.day.toLowerCase())
-            )
-          }
+          contextData.available_time = contextData.available_time.filter(
+            (entry) => !days.includes(entry.day.toLowerCase())
+          )
         } else if (action === 'add') {
-          // Add new time entries
           if (days.length > 0 && params.time_start && params.time_end) {
             for (const day of days) {
               const newEntry: TimeBlockEntry = {
@@ -182,49 +159,30 @@ export async function executeUpdateConstraints(
                 end: params.time_end,
                 label: description.substring(0, 50),
               }
-              targetArray.push(newEntry)
+              contextData.available_time.push(newEntry)
             }
           } else if (days.length > 0) {
-            // Days specified but no time — block/free entire day
             for (const day of days) {
-              if (constraint_type === 'available_time') {
-                targetArray.push({ day, start: '09:00', end: '22:00', label: description.substring(0, 50) })
-              } else {
-                targetArray.push({ day, start: '00:00', end: '23:59', label: description.substring(0, 50) })
-              }
+              contextData.available_time.push({ day, start: '09:00', end: '22:00', label: description.substring(0, 50) })
             }
           } else {
             return {
               success: false,
-              message: "I couldn't figure out which days to change. Can you be more specific? For example: 'Block Fridays' or 'Add Saturday morning 10am-2pm'.",
+              message: "I couldn't figure out which days to change. Can you be more specific? For example: 'Add Saturday morning 10am-2pm'.",
               affected_tasks_count: 0,
             }
           }
         } else if (action === 'modify' && days.length > 0) {
-          // Modify existing entries for the specified days
-          if (constraint_type === 'available_time') {
-            contextData.available_time = contextData.available_time.map((entry) => {
-              if (days.includes(entry.day.toLowerCase())) {
-                return {
-                  ...entry,
-                  start: params.time_start || entry.start,
-                  end: params.time_end || entry.end,
-                }
+          contextData.available_time = contextData.available_time.map((entry) => {
+            if (days.includes(entry.day.toLowerCase())) {
+              return {
+                ...entry,
+                start: params.time_start || entry.start,
+                end: params.time_end || entry.end,
               }
-              return entry
-            })
-          } else {
-            contextData.blocked_time = contextData.blocked_time.map((entry) => {
-              if (days.includes(entry.day.toLowerCase())) {
-                return {
-                  ...entry,
-                  start: params.time_start || entry.start,
-                  end: params.time_end || entry.end,
-                }
-              }
-              return entry
-            })
-          }
+            }
+            return entry
+          })
         }
       }
     }

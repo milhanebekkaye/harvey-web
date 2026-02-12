@@ -6,7 +6,7 @@
 
 import { prisma } from '../db/prisma'
 import type { ContextData } from '../chat/types'
-import { addDays, parseTimeToHours } from '../schedule/task-scheduler'
+import { addDays, parseTimeToHours, getEffectiveAvailableTimeBlocks } from '../schedule/task-scheduler'
 import {
   localTimeInTimezoneToUTC,
   getHourDecimalInTimezone,
@@ -48,7 +48,7 @@ export async function getSmartRescheduleSuggestion(
 
   const user = await prisma.user.findUnique({
     where: { id: task.userId },
-    select: { timezone: true },
+    select: { timezone: true, workSchedule: true, commute: true },
   })
   const userTimezone = user?.timezone || 'Europe/Paris'
 
@@ -58,10 +58,20 @@ export async function getSmartRescheduleSuggestion(
   })
   if (!project) return null
 
-  const contextData: ContextData = (project.contextData as unknown as ContextData) || {
+  const rawContext: ContextData = (project.contextData as unknown as ContextData) || {
     available_time: [],
-    blocked_time: [],
     preferences: {},
+  }
+  const userBlocked = user
+    ? { workSchedule: user.workSchedule as import('@/types/api.types').WorkScheduleShape | null, commute: user.commute as import('@/types/api.types').CommuteShape | null }
+    : null
+  const effectiveAvailable = getEffectiveAvailableTimeBlocks(
+    rawContext.available_time || [],
+    userBlocked
+  )
+  const contextData: ContextData = {
+    ...rawContext,
+    available_time: effectiveAvailable.length > 0 ? effectiveAvailable : (rawContext.available_time || []),
   }
 
   const now = new Date()
