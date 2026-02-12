@@ -26,6 +26,7 @@ import type { ChatWidget } from '@/types/api.types'
 import { CompletionFeedbackWidget } from './chat/CompletionFeedbackWidget'
 import { SkipFeedbackWidget } from './chat/SkipFeedbackWidget'
 import { ReschedulePromptWidget } from './chat/ReschedulePromptWidget'
+import { ProjectDropdownMenu } from './ProjectDropdownMenu'
 
 /**
  * Stored message format from the Discussion model.
@@ -183,6 +184,8 @@ export function ChatSidebar({
 
   // --- STATE ---
   const [showRebuildModal, setShowRebuildModal] = useState(false)
+  const [showProjectMenu, setShowProjectMenu] = useState(false)
+  const projectPillRef = useRef<HTMLButtonElement>(null)
   const [isRebuilding, setIsRebuilding] = useState(false)
   const [appendedFeedbackMessages, setAppendedFeedbackMessages] = useState<DisplayMessage[]>([])
 
@@ -454,13 +457,26 @@ export function ChatSidebar({
           </div>
         </div>
 
-        {/* Project Info Pill */}
+        {/* Project Info Pill — click opens dropdown */}
         {projectTitle && (
-          <div className="px-6 pb-4">
-            <div className="inline-flex items-center gap-2 bg-[#895af6] text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-md">
+          <div className="relative px-6 pb-4">
+            <button
+              ref={projectPillRef}
+              type="button"
+              onClick={() => setShowProjectMenu((prev) => !prev)}
+              className="inline-flex items-center gap-2 bg-[#895af6] text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-md hover:bg-[#7849d9] transition-colors"
+              aria-expanded={showProjectMenu}
+              aria-haspopup="true"
+            >
               <span className="material-symbols-outlined text-sm">folder</span>
               {projectTitle}
-            </div>
+            </button>
+            <ProjectDropdownMenu
+              open={showProjectMenu}
+              onClose={() => setShowProjectMenu(false)}
+              projectId={projectId}
+              anchorRef={projectPillRef}
+            />
           </div>
         )}
 

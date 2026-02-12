@@ -46,6 +46,7 @@ export type UpdateProjectData = Partial<{
   title: string
   description: string | null
   goals: string | null
+  status: string
   target_deadline: Date | null
   skill_level: string | null
   tools_and_stack: string[]

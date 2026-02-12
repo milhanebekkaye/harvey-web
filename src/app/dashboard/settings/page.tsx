@@ -15,7 +15,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [projectComingSoon, setProjectComingSoon] = useState(false)
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -223,22 +222,16 @@ export default function SettingsPage() {
               <p className="text-slate-500 text-sm mb-4">
                 View and edit what Harvey knows about your project (goals, deadline, tools).
               </p>
-              {projectComingSoon && (
-                <p className="text-sm text-[#62499c] mb-2">Coming soon – Feature C in progress</p>
+              {data.project ? (
+                <Link
+                  href={`/dashboard/project/${data.project.id}`}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50"
+                >
+                  View Project Details
+                </Link>
+              ) : (
+                <p className="text-sm text-slate-500">Complete onboarding to add a project.</p>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  // TODO: Feature C - Replace this placeholder with navigation to Project Details page
-                  // Should open /dashboard/project-details or a side panel showing project context
-                  // See Harvey_Sprint_Roadmap_MVP_Launch.md - Task C
-                  setProjectComingSoon(true)
-                  setTimeout(() => setProjectComingSoon(false), 3000)
-                }}
-                className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50"
-              >
-                View Project Details
-              </button>
             </section>
           </div>
         )}

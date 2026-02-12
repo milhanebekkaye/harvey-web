@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-12 – Feature C: Project Details page
+
+- **Agent / context**: Cursor AI – Implement Feature C of the Harvey MVP Sprint: dedicated Project Details page for viewing and editing project-level context.
+- **Summary**:
+  - **Navigation**: Purple project pill in ChatSidebar is now clickable; opens **ProjectDropdownMenu** with “Project Details” (→ `/dashboard/project/[projectId]`) and “User Settings” (→ `/dashboard/settings`). Placeholders for Archive / Switch Project. Settings page “View Project Details” replaced with real link when project exists; Project Details page has “Back to Dashboard” and “User Settings” (with unsaved-changes confirm when dirty).
+  - **Route & page**: New route `/dashboard/project/[projectId]`. Server page (auth, `getProjectById`, redirect if not found) passes serialized project to client **ProjectDetailsForm**. Loading state via `loading.tsx`.
+  - **API**: New **GET** and **PATCH** `/api/projects/[projectId]`. GET returns project for authenticated owner; PATCH accepts partial updates (title, description, goals, status, target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation) with validation (e.g. weekly_hours 1–168, status active/paused/completed). Uses `project-service.getProjectById` and `updateProject`; **status** added to `UpdateProjectData` in project-service.
+  - **Components**: **EditableField** (reusable): display/edit toggle, types text/textarea/date/select/tags/number, placeholder, maxLength, options, min/max/step, maxTags. **ProjectDetailsForm**: two cards (Project Info: description, goals, target deadline, project type; Your Context: skill level, tools & stack, weekly hours, motivation), editable title, status badge, Save when dirty, PATCH + toast + “Last updated” refresh, **beforeunload** and confirm on navigation when unsaved.
+- **Files touched**: `src/app/api/projects/[projectId]/route.ts`, `src/app/dashboard/project/[projectId]/page.tsx`, `src/app/dashboard/project/[projectId]/loading.tsx`, `src/components/dashboard/ProjectDropdownMenu.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `src/components/dashboard/EditableField.tsx`, `src/components/dashboard/ProjectDetailsForm.tsx`, `src/app/dashboard/settings/page.tsx`, `src/lib/projects/project-service.ts`, `ARCHITECTURE.md`, `docs/project-details-feature.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users need to see and correct what Harvey knows about their project (transparency and control); project-level context is separate from user-level Settings.
+- **Risks / notes**: Archive and Delete buttons are UI-only (no API yet). Project type options use lowercase values (e.g. `web app`) to match schema; display labels are title case.
+- **Related docs**: `ARCHITECTURE.md` (dashboard/project route, projects API, dashboard components), `docs/project-details-feature.md`.
+
 ### 2026-02-12 – Availability blocks persistence (store in same place as fetch)
 
 - **Agent / context**: Cursor AI – Fix availability blocks not being stored in the DB when user adds a block and clicks Save.
