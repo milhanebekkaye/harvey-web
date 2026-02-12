@@ -193,10 +193,38 @@ export interface UserPreferences {
 }
 
 /**
+ * Phase entry for project phases (extracted or added later).
+ */
+export interface ExtractedPhase {
+  id: number
+  title: string
+  goal?: string | null
+  deadline?: string | null
+  status: string // "completed" | "active" | "future"
+}
+
+/**
+ * Phases container (stored in Project.phases).
+ */
+export interface ExtractedPhases {
+  phases: ExtractedPhase[]
+  active_phase_id: number
+}
+
+/**
+ * Note with timestamp (projectNotes / userNotes).
+ */
+export interface ExtractedNote {
+  note: string
+  extracted_at: string // ISO
+}
+
+/**
  * Extracted Constraints
  *
  * Structured constraints extracted from onboarding conversation.
- * Stored in Project.contextData.
+ * Scheduling subset stored in Project.contextData; enrichment fields
+ * written to Project and User models.
  */
 export interface ExtractedConstraints {
   /**
@@ -226,6 +254,19 @@ export interface ExtractedConstraints {
    * e.g., ["messaging", "payment integration"]
    */
   exclusions?: string[]
+
+  // --- Enrichment (optional; written to Project / User at schedule generation) ---
+  target_deadline?: string | null
+  skill_level?: string | null
+  tools_and_stack?: string[]
+  project_type?: string | null
+  weekly_hours_commitment?: number | null
+  motivation?: string | null
+  phases?: ExtractedPhases | null
+  project_notes?: ExtractedNote[]
+  preferred_session_length?: number | null
+  communication_style?: string | null
+  user_notes?: ExtractedNote[]
 }
 
 /**

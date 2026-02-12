@@ -11,6 +11,7 @@
  */
 
 import { prisma } from '../db/prisma'
+import type { Prisma } from '@prisma/client'
 
 /**
  * Data needed to create a new project
@@ -37,6 +38,23 @@ export interface CreateProjectData {
    */
   goals?: string
 }
+
+/**
+ * Data for updating project (including enrichment from extraction).
+ */
+export type UpdateProjectData = Partial<{
+  title: string
+  description: string | null
+  goals: string | null
+  target_deadline: Date | null
+  skill_level: string | null
+  tools_and_stack: string[]
+  project_type: string | null
+  weekly_hours_commitment: number | null
+  motivation: string | null
+  phases: unknown
+  projectNotes: unknown
+}>
 
 /**
  * Response wrapper for project operations
@@ -153,17 +171,17 @@ export async function getProjectById(
  * Update project details
  *
  * Used after AI extracts project info from conversation
- * to update title, description, goals, etc.
+ * to update title, description, goals, enrichment fields, etc.
  *
  * @param projectId - Project UUID
  * @param userId - User ID for ownership validation
- * @param data - Fields to update
+ * @param data - Fields to update (partial)
  * @returns Updated project or error
  */
 export async function updateProject(
   projectId: string,
   userId: string,
-  data: Partial<Pick<CreateProjectData, 'title' | 'description' | 'goals'>>
+  data: UpdateProjectData
 ): Promise<ProjectServiceResponse> {
   try {
     console.log('[ProjectService] Updating project:', projectId)
@@ -185,7 +203,7 @@ export async function updateProject(
       data: {
         ...data,
         updatedAt: new Date(),
-      },
+      } as Prisma.ProjectUpdateInput,
     })
 
     console.log('[ProjectService] Project updated')

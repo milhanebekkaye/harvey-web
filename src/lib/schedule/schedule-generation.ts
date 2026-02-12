@@ -21,12 +21,13 @@ import { normalizeTaskLabel } from '../../types/task.types'
 // ============================================
 
 /**
- * System prompt for extracting scheduling constraints from conversation.
- * Exact copy from Telegram bot's extract_constraints_from_conversation().
+ * System prompt for extracting scheduling constraints and enrichment from conversation.
+ * Single API call populates both contextData (scheduling) and Project/User enrichment fields.
  */
-const EXTRACTION_SYSTEM_PROMPT = `You are extracting scheduling constraints from a conversation.
+const EXTRACTION_SYSTEM_PROMPT = `You are extracting scheduling constraints and project/user context from a conversation.
 Read this conversation and extract:
 
+SCHEDULING (required):
 1. Blocked time (work, classes, sleep) - when person is UNAVAILABLE
 2. Available time - when person CAN work on project
 3. Schedule duration requested (1 week? 2 weeks? 3 weeks? Full project timeline?)
@@ -34,7 +35,20 @@ Read this conversation and extract:
 5. Other preferences (gym timing, break preferences, energy levels, skill level)
 6. Feature exclusions - things user explicitly said NO to or doesn't want
 
-CRITICAL: Avoid overlapping time blocks! If someone says "I have classes 8-5" and "I workout 11-12", the workout is DURING classes, not in addition. Don't create overlapping blocked times.
+ENRICHMENT (include when inferrable):
+7. target_deadline: Any deadline or target date mentioned. ISO 8601 string or null.
+8. skill_level: Inferred from tools used and how they describe experience. "beginner" | "intermediate" | "advanced".
+9. tools_and_stack: Any specific frameworks, tools, or technologies mentioned (array of strings).
+10. project_type: One of "web app", "mobile app", "SaaS", "content", "script/automation", "other".
+11. weekly_hours_commitment: Hours per week they commit to this project (integer).
+12. motivation: One sentence, in the user's own words where possible — why they're building this.
+13. phases: If they described phases or milestones, use format below. If single-phase, one entry with status "active". Each phase: id (number), title, goal (string or null), deadline (ISO or null), status ("completed" | "active" | "future").
+14. project_notes: 0–5 entries. Meaningful context that doesn't fit structured fields — constraints, deadlines, preferences Harvey should remember about this project. Each note: complete, self-contained sentence. Format: [{ "note": "...", "extracted_at": "ISO timestamp" }]. Use current UTC time for extracted_at.
+15. preferred_session_length: How long they like to work in one sitting (minutes). Default 120 if not mentioned.
+16. communication_style: Inferred from writing style and explicit preferences. "direct" | "encouraging" | "detailed". Default "encouraging".
+17. user_notes: 0–3 entries. Behavioral observations about the person relevant across any project — patterns, tendencies, working style. Only user-level, not project-specific. Format same as project_notes.
+
+CRITICAL: Avoid overlapping time blocks! If someone says "I have classes 8-5" and "I workout 11-12", the workout is DURING classes, not in addition.
 
 Output ONLY valid JSON, no other text:
 {
@@ -55,19 +69,40 @@ Output ONLY valid JSON, no other text:
     "skill_level": "beginner",
     "break_preference": "self-managed"
   },
-  "exclusions": ["messaging", "payment integration", "social features"]
+  "exclusions": ["messaging", "payment integration", "social features"],
+  "target_deadline": "2024-04-01T00:00:00.000Z",
+  "skill_level": "intermediate",
+  "tools_and_stack": ["Next.js", "Supabase", "Cursor"],
+  "project_type": "web app",
+  "weekly_hours_commitment": 10,
+  "motivation": "Building Harvey to solve my own decision paralysis and use it as a portfolio piece.",
+  "phases": {
+    "phases": [
+      { "id": 1, "title": "MVP", "goal": "Ship to first users", "deadline": "2024-04-01", "status": "active" }
+    ],
+    "active_phase_id": 1
+  },
+  "project_notes": [
+    { "note": "User has a demo on March 15th — treat as hard deadline", "extracted_at": "2024-02-11T10:00:00.000Z" }
+  ],
+  "preferred_session_length": 120,
+  "communication_style": "encouraging",
+  "user_notes": [
+    { "note": "User tends to underestimate task duration; encourage buffer.", "extracted_at": "2024-02-11T10:00:00.000Z" }
+  ]
 }
 
-RULES:
+RULES (scheduling):
 - Use lowercase day names: monday, tuesday, etc.
 - Use 24-hour time format: "08:00", "17:30"
-- Schedule duration: Look for phrases like "2 weeks", "two weeks", "14 days", "next 2 weeks", "for 2 weeks". If explicitly mentioned, use that number. If not mentioned, default to 2 weeks.
-- Start preference: Look for when they want to START working. Values: "tomorrow", "next_monday", or a specific date like "2024-02-05". If they say "ASAP" or "immediately", use "tomorrow". If not mentioned, default to "tomorrow".
-- If available time not specified, infer from blocked time (opposite of work/sleep)
-- Weekend days: If not mentioned, assume available 09:00-18:00
-- Be conservative: If unclear, mark as blocked rather than available
+- Schedule duration: Look for "2 weeks", "two weeks", etc. Default 2 weeks if not mentioned.
+- Start preference: "tomorrow", "next_monday", or specific date. "ASAP" → "tomorrow". Default "tomorrow".
+- If available time not specified, infer from blocked time. Weekend: assume 09:00-18:00 if not mentioned.
+- Be conservative: if unclear, mark as blocked rather than available.
 
-IMPORTANT: Pay close attention to how long the user wants the schedule to be. If they say "2 weeks" or "two weeks", set schedule_duration_weeks to 2. If they say "1 week", set it to 1. If they say "3 weeks", set it to 3.
+RULES (enrichment):
+- Omit any enrichment key if you cannot infer it (use null or omit). Do not invent details.
+- project_notes and user_notes: extracted_at must be ISO 8601 UTC string.
 
 Now extract from this conversation:`
 
@@ -298,6 +333,7 @@ export async function extractConstraints(
   console.log('[ScheduleGeneration] Extracting constraints from conversation...')
 
   try {
+    // Claude Sonnet preferred for extraction (constraints + enrichment); CLAUDE_CONFIG may be Haiku for cost. Quality matters for schedule and context.
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
       max_tokens: 4096,

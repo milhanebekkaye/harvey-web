@@ -25,14 +25,13 @@ If you expect UI entry points or additional services to trigger this flow, they 
 1. Client calls `POST /api/schedule/generate-schedule` with `{ projectId }`.
 2. API authenticates the user via Supabase server client.
 3. API loads the `Discussion` for the project, then formats messages as `ROLE: content` blocks.
-4. `extractConstraints(conversationText)` calls Claude with `EXTRACTION_SYSTEM_PROMPT` and parses JSON into `ExtractedConstraints`.
-5. `generateTasks(conversationText, constraints)` builds a dynamic system prompt and calls Claude to produce task text.
+4. **Extraction** (last 15 messages only): `extractConstraints(conversationTextForExtraction)` calls Claude with extended prompt; parses JSON into `ExtractedConstraints` (scheduling + enrichment). API saves scheduling subset to `Project.contextData`; writes enrichment to Project and User via `updateProject`/`updateUser` (only defined values; failures non-fatal).
+5. `generateTasks(conversationTextFull, constraints)` uses **full** conversation; Claude produces task text.
 6. `parseTasks(claudeResponse)` converts Claude output into `ParsedTask[]` and optional milestones.
-7. API stores constraints in `Project.contextData`.
-8. `calculateStartDate(constraints, userTimezone)` picks a schedule start date.
-9. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)` assigns tasks to time slots and splits them as needed.
-10. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma.
-11. API returns `{ success, taskCount, milestones }`.
+7. `calculateStartDate(constraints, userTimezone)` picks a schedule start date.
+8. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)` assigns tasks to time slots and splits them as needed.
+9. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma.
+10. API returns `{ success, taskCount, milestones }`.
 
 Reset flow:
 1. Client calls `POST /api/schedule/reset-schedule` with `{ projectId }`.
@@ -51,7 +50,7 @@ Reset flow:
 - `getDefaultConstraints()`
   - Returns a 2-week default constraint set with weekday evenings and full weekend availability.
 - `extractConstraints(conversationText)`
-  - Calls Claude with `EXTRACTION_SYSTEM_PROMPT` (max_tokens 4096 to avoid truncation). Strips markdown; if the response does not look truncated, isolates JSON with first `{` to last `}`; then parses or repairs and returns `ExtractedConstraints`. On parsing failure after repair, returns defaults.
+  - Calls Claude with extended `EXTRACTION_SYSTEM_PROMPT` (max_tokens 4096). Returns scheduling fields plus enrichment (target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation, phases, project_notes, preferred_session_length, communication_style, user_notes). Strips markdown; parses or repairs JSON; on failure returns defaults. The **caller** (generate-schedule route) passes only the last 15 messages for extraction; full conversation is used for `generateTasks`.
 - `repairJSON(jsonText)`
   - Heuristic cleanup for Claude JSON: removes trailing commas, closes truncated final string value if needed, then adds missing `]` before `}` (brackets before braces) so user constraints are preferred over defaults when output is cut off.
 - `generateTasks(conversationText, constraints)`

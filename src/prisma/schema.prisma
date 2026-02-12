@@ -20,6 +20,11 @@ model User {
   workSchedule        Json?
   commute             Json?
 
+  // Enrichment (from onboarding extraction)
+  preferred_session_length Int?    // minutes — how long user likes to work in one sitting
+  communication_style      String? // "direct", "encouraging", "detailed"
+  userNotes                Json?   // append-only array: [{ "note": string, "extracted_at": string }]
+
   // Relations
   projects    Project[]
   discussions Discussion[]
@@ -42,8 +47,16 @@ model Project {
   // Stores: schedule_duration_weeks, blocked_time, available_time, preferences, exclusions
   contextData Json?
 
-  // Harvey's qualitative notes about the user/project (plain text, NOT JSON)
-  projectNotes    String?
+  // Enrichment (from onboarding extraction)
+  target_deadline         DateTime? // extracted from conversation
+  skill_level            String?   // "beginner", "intermediate", "advanced"
+  tools_and_stack        String[]  @default([]) // e.g. ["Next.js", "Supabase", "Cursor"]
+  project_type           String?   // "web app", "mobile app", "SaaS", "content", "script/automation", "other"
+  weekly_hours_commitment Int?     // hours per week the user commits
+  motivation             String?   // one-sentence why they're building this — drives coaching tone
+  phases                 Json?     // { phases: [{ id, title, goal, deadline, status }], active_phase_id }; status: completed|active|future
+  // Append-only array of observations: [{ "note": string, "extracted_at": string }]
+  projectNotes    Json?
   // How many schedule generations have occurred
   generationCount Int      @default(1)
 

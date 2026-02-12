@@ -64,6 +64,9 @@ export interface UpdateUserData {
   availabilityWindows?: any    // Update availability only
   workSchedule?: any           // Update work schedule only
   commute?: any                // Update commute only
+  preferred_session_length?: number   // minutes
+  communication_style?: string       // "direct", "encouraging", "detailed"
+  userNotes?: unknown          // [{ note, extracted_at }] — append-only array
 }
 
 /**

@@ -16,6 +16,7 @@
  */
 
 import { prisma } from '../db/prisma'
+import type { Prisma } from '@prisma/client'
 import type { CreateUserData, UpdateUserData, UserServiceResponse, User } from '../../types/user.types'
 
 /**
@@ -171,7 +172,7 @@ export async function updateUser(
       data: {
         ...data,
         updatedAt: new Date(), // Explicitly update timestamp
-      },
+      } as Prisma.UserUpdateInput,
     })
 
     console.log('[UserService] User updated successfully')

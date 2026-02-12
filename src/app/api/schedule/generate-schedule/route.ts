@@ -42,6 +42,8 @@ import {
   parseTasks,
   convertSuccessCriteriaToJson,
 } from '@/lib/schedule/schedule-generation'
+import { updateProject } from '@/lib/projects/project-service'
+import { updateUser } from '@/lib/users/user-service'
 import {
   assignTasksToSchedule,
   calculateStartDate,
@@ -151,19 +153,24 @@ export async function POST(request: NextRequest) {
     // Cast Prisma JSON to StoredMessage array
     const messages = (discussion.messages as unknown as StoredMessage[]) || []
 
-    // Format as "ROLE: content" for Claude
-    const conversationText = messages
+    // Full conversation for task generation
+    const conversationTextFull = messages
+      .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+      .join('\n\n')
+    // Last 15 messages for extraction (cost constraint)
+    const messagesForExtraction = messages.slice(-15)
+    const conversationTextForExtraction = messagesForExtraction
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join('\n\n')
 
-    console.log('[GenerateScheduleAPI] Conversation has', messages.length, 'messages')
+    console.log('[GenerateScheduleAPI] Conversation has', messages.length, 'messages (extraction uses last', messagesForExtraction.length, ')')
 
     // ===== STEP 5: Extract Constraints =====
     console.log('[GenerateScheduleAPI] Step 5: 🔍 Extracting constraints from conversation...')
 
     let constraints: ExtractedConstraints
     try {
-      constraints = await extractConstraints(conversationText)
+      constraints = await extractConstraints(conversationTextForExtraction)
     } catch (constraintError) {
       console.error('[GenerateScheduleAPI] ❌ Failed to extract constraints:', constraintError)
       return NextResponse.json(
@@ -177,10 +184,74 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] ✅ Extracted constraints:', JSON.stringify(constraints, null, 2))
 
+    // ===== STEP 5.5: Save scheduling subset to contextData; enrichment to Project and User =====
+    const constraintsAny = constraints as unknown as Record<string, unknown>
+    const contextDataSubset = {
+      schedule_duration_weeks: constraints.schedule_duration_weeks,
+      blocked_time: constraints.blocked_time,
+      available_time: constraints.available_time,
+      preferences: constraints.preferences,
+      exclusions: constraints.exclusions,
+      ...(constraintsAny.one_off_blocks != null && {
+        one_off_blocks: constraintsAny.one_off_blocks,
+      }),
+    }
+
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        contextData: contextDataSubset as unknown as Parameters<typeof prisma.project.update>[0]['data']['contextData'],
+        updatedAt: new Date(),
+      },
+    })
+    console.log('[GenerateScheduleAPI] ✅ Saved constraints to Project.contextData')
+
+    // Project enrichment (only defined values; fail gracefully)
+    const projectEnrichment: Record<string, unknown> = {}
+    if (constraints.target_deadline != null && constraints.target_deadline !== '') {
+      projectEnrichment.target_deadline = new Date(constraints.target_deadline)
+    }
+    if (constraints.skill_level != null && constraints.skill_level !== '') projectEnrichment.skill_level = constraints.skill_level
+    if (constraints.tools_and_stack != null && constraints.tools_and_stack.length > 0) projectEnrichment.tools_and_stack = constraints.tools_and_stack
+    if (constraints.project_type != null && constraints.project_type !== '') projectEnrichment.project_type = constraints.project_type
+    if (constraints.weekly_hours_commitment != null) projectEnrichment.weekly_hours_commitment = constraints.weekly_hours_commitment
+    if (constraints.motivation != null && constraints.motivation !== '') projectEnrichment.motivation = constraints.motivation
+    if (constraints.phases != null) projectEnrichment.phases = constraints.phases
+    // TODO: Before Feature 8 (Schedule Regeneration), change this to MERGE
+    // existing projectNotes with new extraction results rather than overwriting.
+    // Current behavior (overwrite) is safe only on first generation.
+    if (constraints.project_notes != null && constraints.project_notes.length > 0) {
+      projectEnrichment.projectNotes = constraints.project_notes
+    }
+
+    if (Object.keys(projectEnrichment).length > 0) {
+      try {
+        await updateProject(projectId, user.id, projectEnrichment as Parameters<typeof updateProject>[2])
+        console.log('[GenerateScheduleAPI] ✅ Saved project enrichment')
+      } catch (err) {
+        console.error('[GenerateScheduleAPI] ⚠️ Project enrichment update failed (non-fatal):', err)
+      }
+    }
+
+    // User enrichment (only defined values; fail gracefully)
+    const userEnrichment: Record<string, unknown> = {}
+    if (constraints.preferred_session_length != null) userEnrichment.preferred_session_length = constraints.preferred_session_length
+    if (constraints.communication_style != null && constraints.communication_style !== '') userEnrichment.communication_style = constraints.communication_style
+    if (constraints.user_notes != null && constraints.user_notes.length > 0) userEnrichment.userNotes = constraints.user_notes
+
+    if (Object.keys(userEnrichment).length > 0) {
+      try {
+        await updateUser(user.id, userEnrichment as Parameters<typeof updateUser>[1])
+        console.log('[GenerateScheduleAPI] ✅ Saved user enrichment')
+      } catch (err) {
+        console.error('[GenerateScheduleAPI] ⚠️ User enrichment update failed (non-fatal):', err)
+      }
+    }
+
     // ===== STEP 6: Generate Tasks =====
     console.log('[GenerateScheduleAPI] Step 6: 🎯 Generating tasks...')
 
-    const tasksResponse = await generateTasks(conversationText, constraints)
+    const tasksResponse = await generateTasks(conversationTextFull, constraints)
 
     // ===== STEP 7: Parse Tasks =====
     console.log('[GenerateScheduleAPI] Step 7: Parsing tasks')
@@ -204,21 +275,8 @@ export async function POST(request: NextRequest) {
       console.log(milestones)
     }
 
-    // ===== STEP 8: Save Constraints to Project.contextData =====
-    console.log('[GenerateScheduleAPI] Step 8: Saving constraints to Project.contextData')
-
-    await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        contextData: constraints as any,
-        updatedAt: new Date(),
-      },
-    })
-
-    console.log('[GenerateScheduleAPI] ✅ Saved constraints to Project.contextData')
-
-    // ===== STEP 9: Schedule Tasks =====
-    console.log('[GenerateScheduleAPI] Step 9: 📅 Scheduling tasks to specific dates/times...')
+    // ===== STEP 8: Schedule Tasks =====
+    console.log('[GenerateScheduleAPI] Step 8: 📅 Scheduling tasks to specific dates/times...')
 
     // Calculate start date based on user preference (or default to tomorrow/next Monday)
     // Get user's timezone from database
@@ -246,8 +304,8 @@ export async function POST(request: NextRequest) {
       console.log(`[GenerateScheduleAPI]   ⚠️ ${scheduleResult.unscheduledTaskIndices.length} tasks couldn't fit in available time`)
     }
 
-    // ===== STEP 10: Create Task Records in Database =====
-    console.log('[GenerateScheduleAPI] Step 10: Creating task records from scheduled assignments')
+    // ===== STEP 9: Create Task Records in Database =====
+    console.log('[GenerateScheduleAPI] Step 9: Creating task records from scheduled assignments')
 
     // Map priority string to integer (high=1, medium=3, low=5)
     const priorityMap: Record<string, number> = {
@@ -363,7 +421,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database (including split parts)`)
 
-    // ===== STEP 10.5: Create project discussion with Harvey greeting =====
+    // ===== STEP 9.5: Create project discussion with Harvey greeting =====
     const harveyGreeting: StoredMessage = {
       role: 'assistant',
       content:
@@ -387,8 +445,8 @@ export async function POST(request: NextRequest) {
       console.log('[GenerateScheduleAPI] Project discussion already exists, skipping creation')
     }
 
-    // ===== STEP 11: Return Success Response =====
-    console.log('[GenerateScheduleAPI] Step 11: Preparing response')
+    // ===== STEP 10: Return Success Response =====
+    console.log('[GenerateScheduleAPI] Step 10: Preparing response')
     console.log('[GenerateScheduleAPI] ========== Schedule generation complete ==========')
 
     const response: GenerateScheduleResponse = {

@@ -1,7 +1,7 @@
 # Onboarding (Chat Intake, Discussion Storage)
 
 ## What this feature is about
-Onboarding is a chat-style intake where Harvey gathers project details and scheduling constraints. Messages are stored in a `Discussion` record and later used to generate tasks and schedules.
+Onboarding is a chat-style intake where Harvey gathers project details and scheduling constraints. Harvey is guided (via the onboarding system prompt) to naturally surface motivation, technical background and tools, phases vs single deadline, what success looks like and by when, and how long the user can focus in one sitting — these topics emerge in conversation rather than as a checklist. Messages are stored in a `Discussion` record and later used to generate tasks and schedules; at schedule generation, a single extraction call populates both scheduling constraints and Project/User enrichment from the conversation.
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/page.tsx`
@@ -94,7 +94,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `getProjectById(projectId, userId)`
   - Fetches project with ownership validation.
 - `updateProject(projectId, userId, data)`
-  - Updates title/description/goals.
+  - Updates project; data may include title, description, goals, and enrichment fields (target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation, phases, projectNotes).
 
 ### `src/lib/ai/claude-client.ts`
 - `getChatCompletion(systemPrompt, messages)` – used by non-streaming flows (e.g. schedule generation).
@@ -104,7 +104,8 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Strips completion marker from response.
 
 ## Data models used (from Prisma schema)
-- `Project`: created on first message; holds `title`, `description`, `contextData` (schedule constraints).
+- `Project`: created on first message; holds `title`, `description`, `goals`, `contextData` (schedule constraints), and enrichment fields (`target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`, `phases`, `projectNotes`). Enrichment is populated at schedule generation from the same extraction that fills `contextData`.
+- `User`: holds `preferred_session_length`, `communication_style`, `userNotes` (populated at schedule generation).
 - `Discussion`: `messages` is a JSON array of `{ role, content, timestamp }`.
 
 ## Early project title & description extraction

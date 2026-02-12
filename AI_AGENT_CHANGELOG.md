@@ -50,6 +50,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-11 – Project and User enrichment (schema, extraction, context assembly)
+
+- **Agent / context**: Cursor AI – Add structured Project/User enrichment fields, extend single extraction at schedule generation, update onboarding prompt and chat context assembly.
+- **Summary**:
+  - **Prisma schema**: Project has `target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`, `phases` (Json); `projectNotes` is now `Json?` (append-only array). User has `preferred_session_length`, `communication_style`, `userNotes` (Json). Migration converts existing `projectNotes` string to single-entry JSON array.
+  - **Extraction**: `extractConstraints()` extended to return enrichment fields in same call. Conversation for extraction uses last 15 messages; full conversation used for task generation.
+  - **Generate-schedule route**: Saves scheduling subset to `Project.contextData`; writes enrichment to Project and User (only defined values; failures non-fatal). TODO: before Feature 8, merge projectNotes with extraction.
+  - **Onboarding prompt**: Harvey guided to surface motivation, technical background/tools, phases, deadline/success, preferred session length naturally.
+  - **Context assembly**: System prompt includes Project Context (type, phase, deadline, skill level, stack, weekly commitment, motivation), project notes, and user notes sections; nulls omitted.
+- **Files touched**: `src/prisma/schema.prisma`, migrations, `src/types/api.types.ts`, `src/types/user.types.ts`, `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/projects/project-service.ts`, `src/lib/ai/prompts.ts`, `src/lib/chat/assembleContext.ts`, `ARCHITECTURE.md`, `docs/task-generation/README.md`, `docs/onboarding/README.md`.
+- **Motivation**: Downstream features need structured project/user fields; one extraction at schedule generation keeps cost under control.
+- **Risks / notes**: projectNotes overwrite on first generation only; Feature 8 should merge.
+- **Related docs**: `ARCHITECTURE.md`, `docs/task-generation/README.md`, `docs/onboarding/README.md`.
+
 ### 2026-02-10 – Complete skipped tasks later (task detail “Complete” button)
 
 - **Agent / context**: Cursor AI – Allow completing a task after it was skipped.

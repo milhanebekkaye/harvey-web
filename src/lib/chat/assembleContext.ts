@@ -225,6 +225,23 @@ function buildSystemPrompt(
   const beyondLine =
     tasksBeyondWindow > 0 ? `\n(${tasksBeyondWindow} tasks beyond this window)` : ''
 
+  const projectWithEnrichment = project as Project & {
+    target_deadline?: Date | null
+    skill_level?: string | null
+    tools_and_stack?: string[]
+    project_type?: string | null
+    weekly_hours_commitment?: number | null
+    motivation?: string | null
+    phases?: { phases: Array<{ title?: string; goal?: string | null }>; active_phase_id?: number } | null
+    projectNotes?: unknown
+    generationCount?: number
+  }
+  const userWithNotes = user as User & { userNotes?: unknown }
+
+  const projectContextSection = formatProjectContext(projectWithEnrichment)
+  const projectNotesSection = formatNotesSection(projectWithEnrichment.projectNotes, 'project')
+  const userNotesSection = formatNotesSection(userWithNotes.userNotes, 'user')
+
   return `
 You are Harvey, an AI project coach. You help ${user.name || 'the user'} stay on track with their project by managing their schedule, providing advice, and acting as an accountability partner.
 
@@ -241,12 +258,17 @@ You are Harvey, an AI project coach. You help ${user.name || 'the user'} stay on
 - Current time in user's timezone: ${currentTimeStr}
 - User: ${user.name || 'User'}
 
+${projectContextSection}
+
 ## Project information
 - Title: ${project.title}
 - Description: ${project.description || 'No description'}
 - Goals: ${project.goals || 'No specific goals set'}
 - Status: ${project.status}
-- Current schedule batch: #${stats.currentBatch} (${(project as Project & { generationCount?: number }).generationCount || 1} total generations)
+- Current schedule batch: #${stats.currentBatch} (${projectWithEnrichment.generationCount || 1} total generations)
+
+${projectNotesSection}
+${userNotesSection}
 
 ## User constraints
 ${formatConstraints(contextData)}
@@ -261,9 +283,6 @@ ${formatAllTasks(scheduleTasks, userTimezone)}${beyondLine}
 - Pending: ${stats.pending} tasks
 ${stats.avgAccuracy ? `- Time estimation accuracy: tasks take ${Math.round(stats.avgAccuracy * 100)}% of estimated time on average` : ''}
 ${Object.keys(stats.skipReasons).length > 0 ? `- Common skip reasons: ${Object.entries(stats.skipReasons).map(([reason, count]) => `${reason} (${count}x)`).join(', ')}` : ''}
-
-## Harvey's notes about this user
-${(project as Project & { projectNotes?: string }).projectNotes || 'No notes yet — this is a new user.'}
 
 ## Your capabilities
 You can respond in two ways:
@@ -287,6 +306,68 @@ IMPORTANT: When calling update_project_notes, only do so when you learn somethin
 // ============================================
 // Helper Formatting Functions
 // ============================================
+
+/**
+ * Format project context (enrichment fields) for the system prompt.
+ * Omits any line whose value is null/undefined/empty.
+ */
+function formatProjectContext(project: {
+  project_type?: string | null
+  phases?: { phases: Array<{ title?: string; goal?: string | null }>; active_phase_id?: number } | null
+  target_deadline?: Date | null
+  skill_level?: string | null
+  tools_and_stack?: string[]
+  weekly_hours_commitment?: number | null
+  motivation?: string | null
+}): string {
+  const lines: string[] = []
+  if (project.project_type != null && project.project_type !== '') {
+    lines.push(`- Type: ${project.project_type}`)
+  }
+  if (project.phases?.phases?.length) {
+    const activeId = project.phases.active_phase_id
+    const phasesWithId = project.phases.phases as Array<{ id?: number; title?: string; goal?: string | null }>
+    const active = phasesWithId.find((p) => p.id === activeId) ?? phasesWithId[0]
+    if (active?.title) lines.push(`- Phase: ${active.title}${active.goal ? ` — ${active.goal}` : ''}`)
+  }
+  if (project.target_deadline != null) {
+    const d = project.target_deadline instanceof Date ? project.target_deadline : new Date(project.target_deadline)
+    lines.push(`- Deadline: ${d.toISOString().split('T')[0]}`)
+  }
+  if (project.skill_level != null && project.skill_level !== '') {
+    lines.push(`- Skill level: ${project.skill_level}`)
+  }
+  if (project.tools_and_stack != null && project.tools_and_stack.length > 0) {
+    lines.push(`- Stack: ${project.tools_and_stack.join(', ')}`)
+  }
+  if (project.weekly_hours_commitment != null) {
+    lines.push(`- Weekly commitment: ${project.weekly_hours_commitment}h/week`)
+  }
+  if (project.motivation != null && project.motivation !== '') {
+    lines.push(`- Motivation: ${project.motivation}`)
+  }
+  if (lines.length === 0) return ''
+  return `## Project Context\n${lines.join('\n')}\n`
+}
+
+/**
+ * Format projectNotes or userNotes (JSON array or legacy string) as bullet list.
+ */
+function formatNotesSection(notes: unknown, kind: 'project' | 'user'): string {
+  const title = kind === 'project' ? 'What Harvey knows about this project' : 'What Harvey knows about this person'
+  if (notes == null) return `## ${title}\nNo notes yet.\n\n`
+  if (Array.isArray(notes) && notes.length > 0) {
+    const bullets = notes
+      .map((entry) => (typeof entry === 'object' && entry != null && 'note' in entry ? String((entry as { note: string }).note) : null))
+      .filter((n): n is string => n != null && n !== '')
+    if (bullets.length === 0) return `## ${title}\nNo notes yet.\n\n`
+    return `## ${title}\n${bullets.map((b) => `- ${b}`).join('\n')}\n\n`
+  }
+  if (typeof notes === 'string' && notes.trim() !== '') {
+    return `## ${title}\n- ${notes}\n\n`
+  }
+  return `## ${title}\nNo notes yet.\n\n`
+}
 
 /**
  * Format user constraints (availability, blocked time, one-off blocks) for the system prompt.
