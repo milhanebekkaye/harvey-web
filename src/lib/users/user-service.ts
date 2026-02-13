@@ -40,27 +40,60 @@ export async function createUser(data: CreateUserData): Promise<UserServiceRespo
   try {
     console.log('[UserService] Creating user with Supabase Auth ID:', data.id)
     console.log('[UserService] Email:', data.email)
-    
-    // Create user in database
-    const user = await prisma.user.create({
-      data: {
-        // ⭐ IMPORTANT: Use Supabase Auth user ID as primary key
-        // This keeps auth and database users synchronized
-        id: data.id,
-        
-        // Basic user info from signup
-        email: data.email,
-        name: data.name || null,
-        timezone: data.timezone || 'Europe/Paris',
-        
-        // ⭐ Create EMPTY objects (not null) for preferences
-        // This way we don't need null checks everywhere
-        // Will be filled during onboarding
-        availabilityWindows: {},  // Empty object, ready to be filled
-        workSchedule: {},         // Empty object, ready to be filled
-        commute: {},              // Empty object, ready to be filled
-      },
-    })
+
+    // Workaround: Prisma 7 + @prisma/adapter-pg + @@map("users") can trigger
+    // P2022 "column (not available) does not exist" on prisma.user.create().
+    // Use raw SQL insert so the user is created reliably.
+    const timezone = data.timezone ?? 'Europe/Paris'
+    const name = data.name ?? null
+    const emptyJson = JSON.stringify({})
+    const now = new Date()
+
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string
+        email: string
+        name: string | null
+        timezone: string
+        createdAt: Date
+        updatedAt: Date
+        availabilityWindows: unknown
+        workSchedule: unknown
+        commute: unknown
+      }>
+    >`
+      INSERT INTO "users" (
+        "id", "email", "name", "timezone",
+        "createdAt", "updatedAt",
+        "availabilityWindows", "workSchedule", "commute"
+      )
+      VALUES (
+        ${data.id}, ${data.email}, ${name}, ${timezone},
+        ${now}, ${now},
+        ${emptyJson}::jsonb, ${emptyJson}::jsonb, ${emptyJson}::jsonb
+      )
+      RETURNING
+        "id", "email", "name", "timezone",
+        "createdAt", "updatedAt",
+        "availabilityWindows", "workSchedule", "commute"
+    `
+
+    const row = rows[0]
+    if (!row) {
+      throw new Error('Insert did not return a row')
+    }
+
+    const user: User = {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      timezone: row.timezone,
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+      updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
+      availabilityWindows: row.availabilityWindows ?? {},
+      workSchedule: row.workSchedule ?? {},
+      commute: row.commute ?? {},
+    }
 
     console.log('[UserService] ✅ User created successfully!')
     console.log('[UserService] Database ID:', user.id)
@@ -74,7 +107,13 @@ export async function createUser(data: CreateUserData): Promise<UserServiceRespo
     console.error('[UserService] ❌ Error creating user:', error)
     
     // Handle duplicate error (user already exists)
-    if (error.code === 'P2002') {
+    // P2002 = Prisma unique constraint; 23505 = PostgreSQL unique_violation
+    const isDuplicate =
+      error.code === 'P2002' ||
+      error.code === '23505' ||
+      /unique|duplicate/i.test(String(error.message ?? ''))
+
+    if (isDuplicate) {
       console.error('[UserService] User with this email already exists')
       return {
         success: false,
