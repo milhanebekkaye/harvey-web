@@ -6,6 +6,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { updateUser } from '@/lib/users/user-service'
 import { getActiveProject } from '@/lib/tasks/task-service'
@@ -267,7 +268,7 @@ export async function POST(request: Request) {
 
       await prisma.project.update({
         where: { id: projectId },
-        data: { contextData: newContextData, updatedAt: new Date() },
+        data: { contextData: newContextData as Prisma.InputJsonValue, updatedAt: new Date() },
       })
     }
 
