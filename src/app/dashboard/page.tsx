@@ -116,6 +116,9 @@ export default function DashboardPage() {
    */
   const [searchQuery, setSearchQuery] = useState('')
 
+  /** Test extract button: loading state */
+  const [isExtractLoading, setIsExtractLoading] = useState(false)
+
   /** Only auto-expand first task once on initial load; avoids refetch when expandedTaskId changes */
   const hasAutoExpandedRef = useRef(false)
 
@@ -512,6 +515,37 @@ export default function DashboardPage() {
   }
 
   /**
+   * Test button: call onboarding extract API. Result is logged in the server terminal.
+   * Temporary – remove after testing.
+   */
+  const handleTestExtract = async () => {
+    if (!projectId) {
+      alert('No project loaded.')
+      return
+    }
+    setIsExtractLoading(true)
+    try {
+      const res = await fetch('/api/onboarding/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ projectId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(`Extract failed (${res.status}): ${data.error ?? res.statusText}`)
+        return
+      }
+      alert('OK – check the terminal where npm run dev is running for the full result.')
+    } catch (e) {
+      console.error('[Dashboard] Test extract error:', e)
+      alert('Request failed – see console.')
+    } finally {
+      setIsExtractLoading(false)
+    }
+  }
+
+  /**
  * Helper: Find task by ID across all groups
  */
 function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask | null {
@@ -691,13 +725,26 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
       {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}
       <main className="w-[60%] h-full overflow-y-auto flex flex-col">
-        {/* View Toggle & Search */}
-        <ViewToggle
-          view={view}
-          onViewChange={setView}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
+        {/* View Toggle & Search + Test extract (temporary) */}
+        <div className="flex items-center justify-between gap-2 shrink-0 px-4 pt-3 pb-1">
+          <ViewToggle
+            view={view}
+            onViewChange={setView}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+          {projectId && (
+            <button
+              type="button"
+              onClick={handleTestExtract}
+              disabled={isExtractLoading}
+              className="shrink-0 text-xs text-slate-500 hover:text-[#895af6] disabled:opacity-50"
+              title="Call POST /api/onboarding/extract – result in terminal"
+            >
+              {isExtractLoading ? 'Extract…' : 'Test extract'}
+            </button>
+          )}
+        </div>
 
         {/* Timeline View */}
         {view === 'timeline' && (

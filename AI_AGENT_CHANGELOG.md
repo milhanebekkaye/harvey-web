@@ -50,6 +50,31 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-13 – Feature D (Shadow Panel) Step 3: Save extraction to database
+
+- **Agent / context**: Cursor AI – Extend onboarding extract endpoint to persist extracted user and project fields to the database (Feature D – Shadow Panel, Step 3).
+- **Summary**:
+  - **Merge logic**: After extraction and validation, build `userUpdates` and `projectUpdates` only for fields that are non-null in the extraction result, so existing data is not overwritten with null.
+  - **Field mapping**: User (timezone, workSchedule, commute, availabilityWindows, preferred_session_length, communication_style, userNotes) and Project (title, description, goals, project_type, target_deadline as Date, weekly_hours_commitment, tools_and_stack, skill_level, motivation, phases, projectNotes). Arrays (availabilityWindows, tools_and_stack) are replaced entirely.
+  - **DB writes**: Use existing `updateUser(userId, userUpdates)` and `updateProject(projectId, userId, projectUpdates)`; wrap in try/catch and return 500 with "Failed to save extracted data" on failure.
+  - **Response**: Now returns `{ success: true, extracted: { user, project }, saved: { user: userUpdates | null, project: projectUpdates | null } }` so the frontend knows what was stored.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Shadow Panel and downstream features need extracted onboarding data persisted; merge logic avoids wiping existing values when extraction returns null for a field.
+- **Risks / notes**: Idempotent: calling again overwrites only extracted non-null fields. projectNotes/userNotes replace entirely (no append merge in this step).
+- **Related docs**: `ARCHITECTURE.md` (onboarding/extract), `docs/onboarding/README.md` (extraction endpoint).
+
+### 2026-02-13 – Feature D (Shadow Panel) Step 2: Onboarding extraction endpoint
+
+- **Agent / context**: Cursor AI – Implement standalone extraction endpoint for onboarding conversation (Feature D – Shadow Panel, Step 2).
+- **Summary**:
+  - **New route**: `POST /api/onboarding/extract` – accepts `{ projectId }`, authenticates via Supabase, loads onboarding discussion via `getOnboardingDiscussion(projectId, userId)`, builds full conversation text (User/Harvey lines), calls Anthropic Haiku (`claude-haiku-4-20250514`) with a structured extraction prompt, then parses and validates the JSON response.
+  - **Response**: Returns `{ user: {...}, project: {...} }` with extracted fields (timezone, workSchedule, commute, availabilityWindows, preferred_session_length, communication_style, userNotes; title, description, goals, project_type, target_deadline, weekly_hours_commitment, tools_and_stack, skill_level, motivation, phases, projectNotes). Read-only – does not persist to DB (persistence is Step 3).
+  - **Defensive handling**: `parseIfString()` for array/object fields that may come back stringified; validation that `availabilityWindows` and `tools_and_stack` are arrays; coercion of `preferred_session_length` and `weekly_hours_commitment` to numbers; strip markdown code blocks from Haiku output before `JSON.parse`.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts` (new), `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Shadow Panel needs a way to run extraction on the full onboarding conversation and get clean JSON for comparison/display; this endpoint is the standalone extraction step before any DB write.
+- **Risks / notes**: Empty or missing onboarding discussion returns 404. Haiku extraction failures are logged and return 500. Uses same auth and project-ownership pattern as other API routes.
+- **Related docs**: `ARCHITECTURE.md` (API routes – onboarding/extract), `docs/onboarding/README.md` (Extraction endpoint).
+
 ### 2026-02-12 – Feature C: Project Details page
 
 - **Agent / context**: Cursor AI – Implement Feature C of the Harvey MVP Sprint: dedicated Project Details page for viewing and editing project-level context.

@@ -137,27 +137,69 @@ export async function createUser(data: CreateUserData): Promise<UserServiceRespo
 }
 
 /**
+ * Raw SQL fetch for user by ID.
+ * Used to avoid Prisma P2022 "column (not available)" with Prisma 7 + adapter-pg
+ * when reading the users table (findUnique has the same bug as update).
+ */
+async function getUserByIdRaw(userId: string): Promise<User | null> {
+  const rows = await prisma.$queryRawUnsafe<
+    Array<{
+      id: string
+      email: string
+      name: string | null
+      timezone: string
+      createdAt: Date
+      updatedAt: Date
+      availabilityWindows: unknown
+      workSchedule: unknown
+      commute: unknown
+      preferred_session_length: number | null
+      communication_style: string | null
+      userNotes: unknown
+    }>
+  >(
+    `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
+            "availabilityWindows", "workSchedule", "commute",
+            "preferred_session_length", "communication_style", "userNotes"
+     FROM "users" WHERE "id" = $1`,
+    userId
+  )
+  const row = rows[0]
+  if (!row) return null
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    timezone: row.timezone,
+    createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
+    availabilityWindows: row.availabilityWindows ?? null,
+    workSchedule: row.workSchedule ?? null,
+    commute: row.commute ?? null,
+    preferred_session_length: row.preferred_session_length ?? undefined,
+    communication_style: row.communication_style ?? undefined,
+    userNotes: row.userNotes ?? undefined,
+  }
+}
+
+/**
  * Get user by ID
- * 
+ *
  * Fetches user data from database.
  * Used to check if user exists and get their profile.
- * 
+ * Uses raw SQL to avoid Prisma P2022 with Prisma 7 + adapter-pg.
+ *
  * @param userId - User's ID (matches Supabase Auth ID)
  * @returns Promise<User | null> - User data or null if not found
  */
 export async function getUserById(userId: string): Promise<User | null> {
   try {
     console.log('[UserService] Fetching user:', userId)
-    
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    })
-
+    const user = await getUserByIdRaw(userId)
     if (!user) {
       console.log('[UserService] User not found:', userId)
       return null
     }
-
     console.log('[UserService] User found:', user.email)
     return user
   } catch (error) {
@@ -191,10 +233,13 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
 /**
  * Update user profile
- * 
+ *
  * Updates user data (name, timezone, preferences, etc.)
  * Used during onboarding to fill in workSchedule, availability, etc.
- * 
+ *
+ * Uses raw SQL to avoid Prisma P2022 "column (not available)" with Prisma 7 + adapter-pg
+ * (same workaround as createUser). Only updates columns present in data.
+ *
  * @param userId - User's ID
  * @param data - Fields to update (partial)
  * @returns Promise<UserServiceResponse> - Updated user or error
@@ -205,28 +250,78 @@ export async function updateUser(
 ): Promise<UserServiceResponse> {
   try {
     console.log('[UserService] Updating user:', userId, data)
-    
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...data,
-        updatedAt: new Date(), // Explicitly update timestamp
-      } as Prisma.UserUpdateInput,
-    })
+
+    const updates: string[] = []
+    const values: unknown[] = []
+    let paramIndex = 1
+
+    if (data.name !== undefined) {
+      updates.push(`"name" = $${paramIndex}`)
+      values.push(data.name)
+      paramIndex++
+    }
+    if (data.timezone !== undefined) {
+      updates.push(`"timezone" = $${paramIndex}`)
+      values.push(data.timezone)
+      paramIndex++
+    }
+    if (data.workSchedule !== undefined) {
+      updates.push(`"workSchedule" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.workSchedule))
+      paramIndex++
+    }
+    if (data.commute !== undefined) {
+      updates.push(`"commute" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.commute))
+      paramIndex++
+    }
+    if (data.availabilityWindows !== undefined) {
+      updates.push(`"availabilityWindows" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.availabilityWindows))
+      paramIndex++
+    }
+    if (data.preferred_session_length !== undefined) {
+      updates.push(`"preferred_session_length" = $${paramIndex}`)
+      values.push(data.preferred_session_length)
+      paramIndex++
+    }
+    if (data.communication_style !== undefined) {
+      updates.push(`"communication_style" = $${paramIndex}`)
+      values.push(data.communication_style)
+      paramIndex++
+    }
+    if (data.userNotes !== undefined) {
+      updates.push(`"userNotes" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.userNotes))
+      paramIndex++
+    }
+
+    if (updates.length === 0) {
+      const user = await getUserByIdRaw(userId)
+      return user ? { success: true, user } : { success: false, error: { message: 'User not found' } }
+    }
+
+    updates.push(`"updatedAt" = $${paramIndex}`)
+    values.push(new Date())
+    paramIndex++
+    values.push(userId)
+
+    const sql = `UPDATE "users" SET ${updates.join(', ')} WHERE "id" = $${paramIndex}`
+    await prisma.$executeRawUnsafe(sql, ...values)
+
+    const user = await getUserByIdRaw(userId)
+    if (!user) {
+      return { success: false, error: { message: 'User not found after update' } }
+    }
 
     console.log('[UserService] User updated successfully')
-
-    return {
-      success: true,
-      user,
-    }
-  } catch (error: any) {
+    return { success: true, user }
+  } catch (error: unknown) {
     console.error('[UserService] Error updating user:', error)
-    
     return {
       success: false,
       error: {
-        message: error.message || 'Failed to update user',
+        message: error instanceof Error ? error.message : 'Failed to update user',
         details: error,
       },
     }

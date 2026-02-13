@@ -98,6 +98,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
   - Saves messages to Discussion on stream finish. During onboarding, runs early project title/description extraction via `extractProjectInfo()` and updates Project when data is available. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
 
+- **`onboarding/extract/route.ts`**
+  - Endpoint under `/api/onboarding/extract`.
+  - **Feature D (Shadow Panel) Step 2 + 3**: Extraction + persistence. POST body: `{ projectId }`. Authenticates user, verifies project ownership, loads onboarding discussion via `getOnboardingDiscussion`, builds full conversation text, calls Anthropic Haiku (CLAUDE_CONFIG.model) with a structured extraction prompt, parses and validates JSON. **Merge logic**: only non-null extracted fields are written (no overwriting with null). Uses `updateUser` and `updateProject` to persist; returns `{ success: true, extracted: { user, project }, saved: { user, project } }`. See `docs/onboarding/README.md`.
+
 - **`chat/project/route.ts`**
   - Endpoint under `/api/chat/project`.
   - **Post-onboarding project chat**: streaming endpoint with 7 AI tools for schedule management. Uses **Claude Haiku** (`claude-haiku-4-5-20251001`) during MVP testing to reduce cost; can be switched back to Sonnet for paid users (see `AI_AGENT_CHANGELOG.md`).
