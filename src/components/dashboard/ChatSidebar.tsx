@@ -232,10 +232,16 @@ export function ChatSidebar({
 
   const isTyping = status === 'streaming' || status === 'submitted'
 
-  // --- DEBUG: useChat error ---
+  // --- DEBUG: useChat error (parse API JSON so dev shows actual server error) ---
   useEffect(() => {
     if (chatError) {
-      console.error('[ChatSidebar] ChatSidebar.tsx useChat error:', chatError?.message ?? String(chatError))
+      const raw = chatError?.message ?? String(chatError)
+      try {
+        const parsed = JSON.parse(raw) as { error?: string; code?: string; details?: string }
+        console.error('[ChatSidebar] useChat error:', parsed.error ?? raw, parsed.details ? `\n${parsed.details}` : '')
+      } catch {
+        console.error('[ChatSidebar] useChat error:', raw)
+      }
     }
   }, [chatError])
 

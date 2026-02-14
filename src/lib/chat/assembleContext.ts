@@ -49,14 +49,32 @@ export async function assembleProjectChatContext(
     tasksLength: project.tasks.length,
   })
 
-  // 2. Fetch user (for timezone, name)
-  const user = await prisma.user.findUnique({
+  // 2. Fetch user (for timezone, name, constraints)
+  // Use explicit select so we only query columns that exist in the base schema.
+  // Enrichment columns (preferred_session_length, communication_style, userNotes) may be missing
+  // if migration 20260211120000_add_project_user_enrichment_fields has not been applied.
+  let user = await prisma.user.findUnique({
     where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      timezone: true,
+      workSchedule: true,
+      commute: true,
+    },
   })
 
   if (!user) {
-    throw new Error(`User not found: ${userId}`)
+    console.warn('[assembleContext] User not found in DB, using minimal context for', userId.slice(0, 8))
+    user = {
+      id: userId,
+      name: null,
+      timezone: 'Europe/Paris',
+      workSchedule: null,
+      commute: null,
+    }
   }
+  // userNotes not selected above (may not exist in DB); buildSystemPrompt treats undefined as no notes
   console.log('[assembleContext] assembleContext.ts user found', {
     userId: user.id,
     userName: (user as { name?: string | null }).name ?? undefined,

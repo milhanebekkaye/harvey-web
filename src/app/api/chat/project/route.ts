@@ -47,6 +47,7 @@ import {
   appendMessages,
 } from '@/lib/discussions/discussion-service'
 import { getProjectById } from '@/lib/projects/project-service'
+import { userExists, createUser } from '@/lib/users/user-service'
 import type { StoredMessage } from '@/types/api.types'
 
 /** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
@@ -145,6 +146,25 @@ export async function POST(request: NextRequest) {
       )
     }
     console.log('[ProjectChat] route.ts project validated', { projectId, projectTitle: project.title })
+
+    // ===== STEP 3b: Ensure user exists in DB (assembleProjectChatContext requires it) =====
+    const userInDb = await userExists(user.id)
+    if (!userInDb) {
+      const createResult = await createUser({
+        id: user.id,
+        email: user.email ?? '',
+        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+        timezone: 'Europe/Paris',
+      })
+      if (!createResult.success) {
+        console.error('[ProjectChat] Failed to ensure user in DB:', createResult.error?.message)
+        return NextResponse.json(
+          { error: 'Failed to initialize user', code: 'INTERNAL_ERROR' },
+          { status: 500 }
+        )
+      }
+      console.log('[ProjectChat] User record created for chat context')
+    }
 
     // ===== STEP 4: Get or Create Project Discussion =====
     let discussion = await getProjectDiscussion(projectId, user.id)
@@ -378,11 +398,15 @@ export async function POST(request: NextRequest) {
 
     return createUIMessageStreamResponse({ stream })
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const errorStack = error instanceof Error ? error.stack : String(error)
-    console.error('[ProjectChat] route.ts Unexpected error:', errorMessage, errorStack)
+    const err = error instanceof Error ? error : new Error(String(error))
+    console.error('[ProjectChat] route.ts Unexpected error:', err.message, err.stack)
+    const isDev = process.env.NODE_ENV === 'development'
     return NextResponse.json(
-      { error: 'Internal server error', code: 'INTERNAL_ERROR' },
+      {
+        error: isDev ? err.message : 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        ...(isDev && { details: err.stack }),
+      },
       { status: 500 }
     )
   }

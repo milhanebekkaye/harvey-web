@@ -50,6 +50,35 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-14 – Schedule generation analysis (no code changes)
+
+- **Agent / context**: Codex – Reviewed schedule generation pipeline and prompts to explain behavior for user request.
+- **Summary**:
+  - Audited schedule generation flow, prompts, parsing, and scheduling logic to produce a detailed walkthrough.
+  - No runtime or data changes; explanation delivered in chat response.
+- **Files touched**: None (read-only review). Key files inspected: `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/types/api.types.ts`, `src/types/task.types.ts`, `docs/task-generation/README.md`.
+- **Motivation**: Provide a clear explanation of how schedule generation works, including prompts, data passed to Claude, and scheduling/dependency mechanics.
+- **Risks / notes**: None (no code changes).
+- **Related docs**: `docs/task-generation/README.md`, `ARCHITECTURE.md`.
+
+### 2026-02-14 – Rescheduling implementation analysis (no code changes)
+
+- **Agent / context**: Codex – Read-only analysis request: explain current rescheduling behavior, identify incoherence sources, and outline fixes.
+- **Summary**: Reviewed rescheduling flow across skip feedback, smart suggestion, single-task reschedule API, and regenerate_schedule (remaining/full rebuild). Identified key logic gaps (end-time not updated on reschedule, dependency ordering bug, timezone/day alignment issues, and overnight-slot handling).
+- **Files touched**: None (read-only review). Key files inspected: `src/lib/tasks/smart-reschedule.ts`, `src/app/api/tasks/[taskId]/suggestion/route.ts`, `src/app/api/tasks/[taskId]/reschedule/route.ts`, `src/lib/chat/tools/modifySchedule.ts`, `src/lib/chat/tools/regenerateSchedule.ts`, `src/lib/schedule/task-scheduler.ts`, `src/components/dashboard/chat/SkipFeedbackWidget.tsx`, `src/components/dashboard/chat/ReschedulePromptWidget.tsx`, `src/lib/tasks/task-service.ts`, `src/app/api/tasks/[taskId]/route.ts`.
+- **Motivation**: Provide a precise, file-specific explanation before implementing fixes.
+- **Risks / notes**: None (no code changes).
+- **Related docs**: `ARCHITECTURE.md` (chat tools + schedule).
+
+### 2026-02-14 – Onboarding implementation walkthrough (no code changes)
+
+- **Agent / context**: Codex – Read-only analysis request: explain current onboarding implementation and extraction flow.
+- **Summary**: Reviewed onboarding chat flow, extraction endpoints, prompts, and schema usage to produce a detailed walkthrough; no code or schema changes made.
+- **Files touched**: None (read-only review). Key files inspected: `src/app/onboarding/page.tsx`, `src/app/api/chat/route.ts`, `src/app/api/onboarding/extract/route.ts`, `src/lib/ai/prompts.ts`, `src/components/onboarding/ProjectShadowPanel.tsx`, `src/lib/schedule/schedule-generation.ts`, `src/types/api.types.ts`, `src/prisma/schema.prisma`, `src/app/api/onboarding/restore/route.ts`.
+- **Motivation**: Provide the user with an accurate, file-specific explanation before making improvements.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (onboarding + API routes), `docs/onboarding/README.md`.
+
 ### 2026-02-14 – Feature D (Shadow Panel) Batch 5: Harvey-controlled completion (confidence-based progress)
 
 - **Agent / context**: Cursor AI – Replace mechanical field-count progress with Harvey’s self-assessed confidence. Progress bar and button state now use Harvey’s confidence (0–100) plus a hidden field-completeness minimum (40%).
