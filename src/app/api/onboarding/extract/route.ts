@@ -41,7 +41,7 @@ Output format:
     "tools_and_stack": string[] | null,
     "skill_level": string | null,
     "motivation": string | null,
-    "phases": object | null,
+    "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string (ISO) | null }], "active_phase_id": number | null } | null,
     "projectNotes": string | null
   }
 }
@@ -61,6 +61,7 @@ Field-Specific Guidance:
 - skill_level: Look for "beginner", "intermediate", "advanced" or infer from context
 - communication_style: Infer from how user communicates (brief = "direct", detailed = "detailed")
 - weekly_hours_commitment: How many hours per week they'll work on THIS project
+- phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
 
 Conversation:
 `
@@ -92,6 +93,66 @@ function parseValidDate(value: unknown): Date | null {
   if (!str) return null
   const d = new Date(str)
   return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Canonical phases shape we store in DB and return to the client. */
+type CanonicalPhases = {
+  phases: Array<{ id: number; title: string; goal: string; status: string; deadline: string | null }>
+  active_phase_id: number | null
+}
+
+/** Normalize whatever the model returns (e.g. phase_1: "string" or legacy formats) into { phases: [...], active_phase_id }. */
+function normalizePhasesToCanonical(raw: unknown): CanonicalPhases | null {
+  if (raw == null) return null
+  if (typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+
+  // Already canonical: has phases array
+  if (Array.isArray(o.phases) && o.phases.length > 0) {
+    const phases = (o.phases as unknown[]).map((p, i) => {
+      const x = (p ?? {}) as Record<string, unknown>
+      return {
+        id: typeof x.id === 'number' ? x.id : i + 1,
+        title: String(x.title ?? x.name ?? ''),
+        goal: String(x.goal ?? x.description ?? ''),
+        status: String(x.status ?? 'future'),
+        deadline: x.deadline != null && x.deadline !== '' ? String(x.deadline) : null,
+      }
+    })
+    const activeId = typeof o.active_phase_id === 'number' ? o.active_phase_id : (phases[0]?.id ?? null)
+    return { phases, active_phase_id: activeId }
+  }
+
+  // Flat format: phase_1: "string", phase_2: "string" (or phase_N: { title, goal } )
+  const entries = Object.entries(o).filter(([k]) => k.startsWith('phase_'))
+  if (entries.length > 0) {
+    const phases = entries.map(([, v], i) => {
+      let title = ''
+      let goal = ''
+      if (typeof v === 'string') {
+        title = v
+      } else if (v != null && typeof v === 'object') {
+        const x = v as Record<string, unknown>
+        title = String(x.title ?? x.name ?? '')
+        goal = String(x.goal ?? x.description ?? '')
+      }
+      return {
+        id: i + 1,
+        title,
+        goal,
+        status: 'future' as const,
+        deadline: null as string | null,
+      }
+    })
+    return { phases, active_phase_id: 1 }
+  }
+
+  // Empty array
+  if (Array.isArray(o.phases) && o.phases.length === 0) {
+    return { phases: [], active_phase_id: null }
+  }
+
+  return null
 }
 
 function computeWeeklyHoursFromAvailabilityWindows(
@@ -232,6 +293,8 @@ export async function POST(request: Request) {
     }
     if (extracted.project.phases != null) {
       extracted.project.phases = parseIfString(extracted.project.phases)
+      const canonicalPhases = normalizePhasesToCanonical(extracted.project.phases)
+      if (canonicalPhases != null) extracted.project.phases = canonicalPhases
     }
 
     // Validate array fields are actually arrays

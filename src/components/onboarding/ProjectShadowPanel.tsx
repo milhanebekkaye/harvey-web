@@ -7,7 +7,7 @@
 
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 
 const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DAYS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -54,6 +54,110 @@ function dayMatches(dayLabel: string, blockDay: string): boolean {
   return blockLower === labelLower || blockLower.startsWith(labelLower) || labelLower.startsWith(blockLower)
 }
 
+/** Normalized phase for display/edit. Harvey may extract phases as array, { phases: [] }, or { phase_1: {}, ... }. */
+export type PhaseItem = { id: string; name: string; description: string; status: string; deadline: string | null }
+
+type PhasesFormat = 'array' | 'nested' | 'object' | 'empty'
+
+function detectPhasesFormat(raw: unknown): PhasesFormat {
+  if (raw == null) return 'empty'
+  if (Array.isArray(raw)) return raw.length > 0 ? 'array' : 'empty'
+  if (typeof raw !== 'object') return 'empty'
+  const o = raw as Record<string, unknown>
+  if (Array.isArray(o.phases)) return o.phases.length > 0 ? 'nested' : 'empty'
+  const phaseKeys = Object.keys(o).filter((k) => k.startsWith('phase_') || k === 'phases')
+  const contentKeys = Object.keys(o).filter((k) => k.startsWith('phase_'))
+  if (contentKeys.length > 0) return 'object'
+  return 'empty'
+}
+
+function normalizePhasesToArray(raw: unknown): PhaseItem[] {
+  if (raw == null) return []
+  const deadlineFrom = (x: Record<string, unknown>): string | null => {
+    const d = x.deadline
+    if (d == null || d === '') return null
+    const s = String(d)
+    return s.length >= 10 ? s.slice(0, 10) : s
+  }
+  if (Array.isArray(raw)) {
+    return raw.map((p, i) => {
+      const x = p as Record<string, unknown>
+      return {
+        id: String((x.id ?? x.name ?? i) ?? i),
+        name: String(x.name ?? x.title ?? ''),
+        description: String(x.description ?? x.goal ?? ''),
+        status: String(x.status ?? 'future'),
+        deadline: deadlineFrom(x),
+      }
+    })
+  }
+  if (typeof raw !== 'object') return []
+  const o = raw as Record<string, unknown>
+  if (Array.isArray(o.phases)) {
+    return (o.phases as unknown[]).map((p, i) => {
+      const x = p as Record<string, unknown>
+      return {
+        id: String((x.id ?? x.name ?? i) ?? i),
+        name: String(x.name ?? x.title ?? ''),
+        description: String(x.description ?? x.goal ?? ''),
+        status: String(x.status ?? 'future'),
+        deadline: deadlineFrom(x),
+      }
+    })
+  }
+  const entries = Object.entries(o).filter(([k]) => k.startsWith('phase_'))
+  return entries.map(([, v], i) => {
+    if (typeof v === 'string') {
+      return { id: `phase-${i}`, name: v, description: '', status: 'future', deadline: null }
+    }
+    const x = (v ?? {}) as Record<string, unknown>
+    return {
+      id: String(x.id ?? x.name ?? i ?? i),
+      name: String(x.name ?? x.title ?? ''),
+      description: String(x.description ?? x.goal ?? ''),
+      status: String(x.status ?? 'future'),
+      deadline: deadlineFrom(x),
+    }
+  })
+}
+
+function convertPhasesToFormat(items: PhaseItem[], format: PhasesFormat): unknown {
+  const slice = items.map(({ name, description, status }) => ({ name, description, status }))
+  if (format === 'empty' || items.length === 0) return format === 'nested' ? { phases: [] } : format === 'object' ? {} : []
+  if (format === 'nested') return { phases: slice }
+  if (format === 'object') {
+    const out: Record<string, { name: string; description: string; status: string }> = {}
+    items.forEach((item, i) => {
+      out[`phase_${i + 1}`] = { name: item.name, description: item.description, status: item.status }
+    })
+    return out
+  }
+  return slice
+}
+
+/** Canonical shape for DB: always save phases in this format so the panel and extraction stay in sync. */
+function phasesToCanonical(items: PhaseItem[]): { phases: Array<{ id: number; title: string; goal: string; status: string; deadline: string | null }>; active_phase_id: number | null } {
+  if (items.length === 0) return { phases: [], active_phase_id: null }
+  const phases = items.map((item, i) => ({
+    id: i + 1,
+    title: item.name,
+    goal: item.description,
+    status: item.status,
+    deadline: item.deadline ?? null,
+  }))
+  return { phases, active_phase_id: 1 }
+}
+
+/** Used for display and completion: true only when phases has actual content. */
+export function hasPhasesContent(raw: unknown): boolean {
+  if (raw == null) return false
+  if (Array.isArray(raw)) return raw.length > 0
+  if (typeof raw !== 'object') return false
+  const o = raw as Record<string, unknown>
+  if (Array.isArray(o.phases)) return o.phases.length > 0
+  return Object.keys(o).some((k) => k.startsWith('phase_'))
+}
+
 export interface ProjectShadowPanelProps {
   fields: {
     user: Record<string, unknown>
@@ -72,7 +176,6 @@ export function ProjectShadowPanel({
   projectId = null,
   onFieldUpdate,
 }: ProjectShadowPanelProps) {
-  const [phasesExpanded, setPhasesExpanded] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<unknown>(null)
   const [saving, setSaving] = useState(false)
@@ -83,7 +186,14 @@ export function ProjectShadowPanel({
   const startEditing = useCallback((fieldKey: string, currentValue: unknown) => {
     console.log('[ShadowPanel] Start editing:', fieldKey, currentValue)
     setEditingField(fieldKey)
-    setEditValue(currentValue !== undefined && currentValue !== null ? currentValue : '')
+    if (fieldKey === 'project:phases') {
+      const raw = currentValue !== undefined && currentValue !== null ? currentValue : null
+      const format = detectPhasesFormat(raw)
+      const items = normalizePhasesToArray(raw).map((p, i) => ({ ...p, id: p.id || `phase-${i}` }))
+      setEditValue({ _format: format, _items: items })
+    } else {
+      setEditValue(currentValue !== undefined && currentValue !== null ? currentValue : '')
+    }
   }, [])
 
   const cancelEditing = useCallback(() => {
@@ -102,7 +212,14 @@ export function ProjectShadowPanel({
 
   const saveField = useCallback(
     async (fieldKey: string, scope: 'user' | 'project') => {
-      console.log('[ShadowPanel] Saving field:', fieldKey, editValue)
+      const valueToSave =
+        fieldKey === 'phases' &&
+        editValue != null &&
+        typeof editValue === 'object' &&
+        '_items' in editValue
+          ? phasesToCanonical((editValue as { _items: PhaseItem[] })._items)
+          : editValue
+      console.log('[ShadowPanel] Saving field:', fieldKey, valueToSave !== editValue ? '[phases converted]' : editValue)
       if (!projectId) {
         console.error('[ShadowPanel] No projectId')
         return
@@ -117,7 +234,7 @@ export function ProjectShadowPanel({
             projectId,
             scope,
             field: fieldKey,
-            value: editValue,
+            value: valueToSave,
           }),
         })
         if (!response.ok) {
@@ -125,7 +242,7 @@ export function ProjectShadowPanel({
           throw new Error((err as { error?: string }).error ?? 'Update failed')
         }
         console.log('[ShadowPanel] Field saved successfully')
-        onFieldUpdate?.(scope, fieldKey, editValue)
+        onFieldUpdate?.(scope, fieldKey, valueToSave)
         setEditingField(null)
         setEditValue(null)
       } catch (error) {
@@ -161,6 +278,19 @@ export function ProjectShadowPanel({
     const key = editKey(scope, fieldKey)
     const isEditing = editingField === key
     const isDisabled = editingField !== null && !isEditing
+    const editAreaRef = useRef<HTMLDivElement>(null)
+
+    // Click outside edit area cancels editing (same as Cancel button)
+    useEffect(() => {
+      if (!isEditing) return
+      const handleMouseDown = (e: MouseEvent) => {
+        if (editAreaRef.current && !editAreaRef.current.contains(e.target as Node)) {
+          cancelEditing()
+        }
+      }
+      document.addEventListener('mousedown', handleMouseDown)
+      return () => document.removeEventListener('mousedown', handleMouseDown)
+    }, [isEditing, cancelEditing])
 
     return (
       <div
@@ -183,7 +313,7 @@ export function ProjectShadowPanel({
               )}
             </div>
             {isEditing ? (
-              <div>
+              <div ref={editAreaRef}>
                 <div className="mb-2">{renderEdit(editValue, setEditValue)}</div>
                 <div className="flex gap-2">
                   <button
@@ -359,30 +489,125 @@ export function ProjectShadowPanel({
             )}
           />
         )}
-        {project.phases != null && typeof project.phases === 'object' && Object.keys(project.phases as object).length > 0 && (
-          <div className="mb-4 flex items-start gap-2 animate-in fade-in duration-300">
-            <span className="material-symbols-outlined mt-0.5 text-green-600 text-lg shrink-0">check_circle</span>
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => setPhasesExpanded(!phasesExpanded)}
-                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-[#8B5CF6]"
-              >
-                {phasesExpanded ? '▼' : '▶'}
-                Phases ({Object.keys(project.phases as object).length})
-              </button>
-              {phasesExpanded && (
-                <div className="mt-2 space-y-2 pl-4 border-l-2 border-gray-200">
-                  {Object.entries(project.phases as Record<string, { name?: string; description?: string }>).map(([key, phase]) => (
-                    <div key={key} className="text-sm">
-                      {phase?.name != null && <div className="font-medium text-gray-900">{phase.name}</div>}
-                      {phase?.description != null && <div className="text-gray-600">{phase.description}</div>}
+        {fields?.project?.phases != null && hasPhasesContent(fields.project.phases) && (
+          <EditableField
+            scope="project"
+            fieldKey="phases"
+            label="Project Phases"
+            value={fields.project.phases}
+            renderDisplay={(value) => {
+              const items = normalizePhasesToArray(value)
+              return (
+                <div className="space-y-3">
+                  {items.map((phase, idx) => (
+                    <div
+                      key={phase.id || idx}
+                      className="border-l-2 border-purple-200 pl-3 py-1.5 flex items-start justify-between gap-2"
+                    >
+                      <div>
+                        <div className="font-medium text-gray-900">{phase.name || `Phase ${idx + 1}`}</div>
+                        {phase.description != null && phase.description !== '' && (
+                          <div className="text-xs text-gray-600 mt-0.5">{phase.description}</div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {phase.deadline != null && phase.deadline !== '' && (
+                          <span className="text-xs text-gray-500">{formatDate(phase.deadline)}</span>
+                        )}
+                        {phase.status && phase.status !== 'future' && (
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded ${
+                              phase.status === 'completed'
+                                ? 'bg-green-100 text-green-700'
+                                : phase.status === 'active'
+                                  ? 'bg-purple-100 text-purple-700'
+                                  : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {phase.status}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          </div>
+              )
+            }}
+            renderEdit={(value, onChange) => {
+              const data = value as { _format: PhasesFormat; _items: PhaseItem[] }
+              const items = data._items ?? []
+              const format = data._format ?? 'array'
+              const updateItem = (idx: number, patch: Partial<PhaseItem>) => {
+                const next = items.map((p, i) => (i === idx ? { ...p, ...patch } : p))
+                onChange({ _format: format, _items: next })
+              }
+              const removeItem = (idx: number) => {
+                const next = items.filter((_, i) => i !== idx)
+                onChange({ _format: format, _items: next })
+              }
+              const addPhase = () => {
+                const next = [...items, { id: `phase-${items.length}`, name: '', description: '', status: 'future', deadline: null }]
+                onChange({ _format: format, _items: next })
+              }
+              return (
+                <div className="space-y-4">
+                  {items.map((phase, idx) => (
+                    <div key={phase.id || idx} className="p-3 border border-gray-200 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Phase {idx + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(idx)}
+                          className="text-xs text-red-600 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={phase.name}
+                        onChange={(e) => updateItem(idx, { name: e.target.value })}
+                        placeholder="Phase name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                      />
+                      <textarea
+                        value={phase.description}
+                        onChange={(e) => updateItem(idx, { description: e.target.value })}
+                        rows={2}
+                        placeholder="Description / goal"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                      />
+                      <select
+                        value={phase.status}
+                        onChange={(e) => updateItem(idx, { status: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                      >
+                        <option value="future">Future</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                      <div>
+                        <label className="text-xs text-gray-600 block mb-1">Deadline</label>
+                        <input
+                          type="date"
+                          value={phase.deadline != null && phase.deadline !== '' ? phase.deadline.slice(0, 10) : ''}
+                          onChange={(e) => updateItem(idx, { deadline: e.target.value ? e.target.value : null })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addPhase}
+                    className="w-full px-3 py-2 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-[#8B5CF6] hover:text-[#8B5CF6] text-sm"
+                  >
+                    Add Phase
+                  </button>
+                </div>
+              )
+            }}
+          />
         )}
         {fields?.project?.projectNotes != null && fields.project.projectNotes !== '' && (
           <EditableField

@@ -16,8 +16,8 @@
 
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 
@@ -90,6 +90,31 @@ const INITIAL_MESSAGES: UIMessage[] = [
   },
 ]
 
+/** Convert stored discussion messages to UIMessage[] for useChat (e.g. after restore). */
+function storedToUIMessages(stored: Array<{ role: string; content: string }>): UIMessage[] {
+  return stored.map((m, i) => {
+    let content = m.content ?? ''
+    if (content.includes(COMPLETION_MARKER)) {
+      content = content.replace(COMPLETION_MARKER, '').trim()
+    }
+    return {
+      id: `stored-${i}-${m.role}`,
+      role: m.role as 'user' | 'assistant',
+      parts: [{ type: 'text' as const, text: content }],
+    }
+  })
+}
+
+/** True only when phases has actual content (non-empty array, or object with phases array, or phase_* keys). Empty {} or [] returns false. */
+function hasPhasesContentForProgress(raw: unknown): boolean {
+  if (raw == null) return false
+  if (Array.isArray(raw)) return raw.length > 0
+  if (typeof raw !== 'object') return false
+  const o = raw as Record<string, unknown>
+  if (Array.isArray(o.phases)) return o.phases.length > 0
+  return Object.keys(o).some((k) => k.startsWith('phase_'))
+}
+
 /**
  * Calculate completion progress based on weighted importance of extracted fields.
  * Returns 0–100 percentage.
@@ -127,7 +152,8 @@ function calculateExtractionProgress(fields: { user: Record<string, unknown>; pr
   if (p?.skill_level) score += weights.skill_level
   if (p?.tools_and_stack && Array.isArray(p.tools_and_stack) && (p.tools_and_stack as unknown[]).length > 0) score += weights.tools_and_stack
   if (p?.motivation) score += weights.motivation
-  if (p?.phases != null && typeof p.phases === 'object') score += weights.phases
+  // Phases: only count if there is actual content (array with items, or object with phases array, or phase_1/phase_2 keys)
+  if (hasPhasesContentForProgress(p?.phases)) score += weights.phases
   if (u?.workSchedule != null && typeof u.workSchedule === 'object') score += weights.workSchedule
   if (u?.commute != null && typeof u.commute === 'object') score += weights.commute
   if (u?.preferred_session_length != null) score += weights.preferred_session_length
@@ -150,12 +176,19 @@ function hasMinimumFields(fields: { user: Record<string, unknown>; project: Reco
   return hasTitle && hasDescriptionOrGoals && hasAvailability && hasWeeklyHours
 }
 
-export default function OnboardingPage() {
+interface OnboardingChatContentProps {
+  initialMessages: UIMessage[]
+  initialProjectId: string | null
+  /** When restoring, pass stored project/user from DB so we skip the extraction API call. */
+  initialExtracted?: { user: Record<string, unknown>; project: Record<string, unknown> } | null
+}
+
+function OnboardingChatContent({ initialMessages, initialProjectId, initialExtracted }: OnboardingChatContentProps) {
   const router = useRouter()
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const projectIdRef = useRef<string | null>(null)
+  const projectIdRef = useRef<string | null>(initialProjectId)
 
-  const [projectId, setProjectId] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(initialProjectId)
   const [isComplete, setIsComplete] = useState(false)
   const [hasCompletionMarker, setHasCompletionMarker] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -163,10 +196,10 @@ export default function OnboardingPage() {
   const [shadowFields, setShadowFields] = useState<{
     user: Record<string, unknown>
     project: Record<string, unknown>
-  } | null>(null)
+  } | null>(initialExtracted ?? null)
   const [extractionLoading, setExtractionLoading] = useState(false)
 
-  const triggerExtraction = async (currentProjectId: string) => {
+  const triggerExtraction = useCallback(async (currentProjectId: string) => {
     console.log('[OnboardingExtraction] Starting extraction for project:', currentProjectId)
     setExtractionLoading(true)
     try {
@@ -198,10 +231,24 @@ export default function OnboardingPage() {
     } finally {
       setExtractionLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    projectIdRef.current = initialProjectId
+    setProjectId(initialProjectId)
+    if (initialProjectId) {
+      if (initialExtracted) {
+        setShadowFields(initialExtracted)
+      } else {
+        triggerExtraction(initialProjectId).catch((err) => {
+          console.error('[OnboardingRestore] Extraction after restore failed:', err)
+        })
+      }
+    }
+  }, [initialProjectId, initialExtracted, triggerExtraction])
 
   const { messages, sendMessage, status, error } = useChat({
-    messages: INITIAL_MESSAGES,
+    messages: initialMessages,
     transport: new DefaultChatTransport({
       api: '/api/chat',
       body: () => ({
@@ -467,5 +514,73 @@ export default function OnboardingPage() {
       <div className="fixed top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[#8B5CF6]/5 rounded-full blur-[100px] -z-10" />
       <div className="fixed bottom-[-10%] right-[-5%] w-[30%] h-[30%] bg-[#8B5CF6]/10 rounded-full blur-[80px] -z-10" />
     </div>
+  )
+}
+
+export default function OnboardingPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [restoringSession, setRestoringSession] = useState(true)
+  const [restoreData, setRestoreData] = useState<{
+    projectId: string
+    messages: UIMessage[]
+    extracted?: { user: Record<string, unknown>; project: Record<string, unknown> }
+  } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const projectIdFromUrl = searchParams.get('projectId')
+    const url = projectIdFromUrl
+      ? `/api/onboarding/restore?projectId=${encodeURIComponent(projectIdFromUrl)}`
+      : '/api/onboarding/restore'
+    fetch(url, { credentials: 'include' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data.completed) {
+          router.replace('/dashboard')
+          return
+        }
+        if (data.restore && data.projectId && Array.isArray(data.messages)) {
+          setRestoreData({
+            projectId: data.projectId,
+            messages: storedToUIMessages(data.messages),
+            extracted: data.extracted ?? undefined,
+          })
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('[OnboardingRestore] Restore failed:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setRestoringSession(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; URL projectId read once
+  }, [router])
+
+  if (restoringSession) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#FAF9F6]">
+        <div className="flex flex-col items-center gap-3">
+          <span className="material-symbols-outlined animate-spin text-4xl text-[#8B5CF6]">progress_activity</span>
+          <p className="text-sm text-gray-600">Loading your conversation...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const initialMessages = restoreData ? restoreData.messages : INITIAL_MESSAGES
+  const initialProjectId = restoreData ? restoreData.projectId : null
+  const initialExtracted = restoreData?.extracted ?? null
+  return (
+    <OnboardingChatContent
+      key={initialProjectId ?? 'new'}
+      initialMessages={initialMessages}
+      initialProjectId={initialProjectId}
+      initialExtracted={initialExtracted}
+    />
   )
 }

@@ -50,6 +50,53 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-14 – Feature D (Shadow Panel) Batch 4: Reload persistence (restore session on refresh)
+
+- **Agent / context**: Cursor AI – When the user refreshes during onboarding, restore the existing conversation and extracted data instead of starting fresh; avoid duplicate projects. On restore, fetch stored project/user from DB instead of calling the extraction API to save cost.
+- **Summary**:
+  - **New API**: `GET /api/onboarding/restore`. Optional query `projectId`. Auth required. If `projectId` provided: load that project’s onboarding discussion (ownership verified); if not: find user’s active projects (status=active, order createdAt desc), take the first that has an onboarding discussion with messages. Returns `{ restore: true, projectId, messages, completed?, extracted? }` or `{ restore: false }`. When restoring, also loads full project and user from DB and returns `extracted: { user, project }` in the same shape as the extraction API, so the client can populate the shadow panel without calling `POST /api/onboarding/extract`. If any assistant message contains `COMPLETION_MARKER`, sets `completed: true` so the client can redirect.
+  - **Onboarding page**: On mount, `useEffect` calls `/api/onboarding/restore` (with `?projectId=` from URL if present). If `data.completed`, redirect to `/dashboard`. If `data.restore`, set `restoreData` (projectId, messages, and `extracted` when present) and render chat with that; otherwise render with default greeting. **On restore with `extracted`**: shadow panel is filled from `extracted` (no extraction API call). If restore returns no `extracted`, client falls back to calling extraction. Loading state `restoringSession` shows “Loading your conversation…” until restore finishes. Chat content is split into **OnboardingChatContent** which receives `initialMessages`, `initialProjectId`, and optional `initialExtracted`; it calls `useChat({ messages: initialMessages, ... })` and on mount when `initialProjectId` is set either applies `initialExtracted` to shadow state or runs extraction. Priority: URL `projectId` param > existing project from restore > new session.
+  - **No duplicates**: Restored session reuses the same projectId so the next message goes to the existing discussion; no new project or discussion is created.
+- **Files touched**: `src/app/api/onboarding/restore/route.ts` (new), `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Refresh during onboarding currently resets the UI and creates a new project on next message; users expect to see their previous messages and continue in the same project.
+- **Risks / notes**: Restore runs once on mount; if the user has multiple active projects with onboarding, the most recent (by createdAt) is used. Completed onboarding (marker in discussion) redirects to dashboard.
+- **Related docs**: `ARCHITECTURE.md` (onboarding page, API routes), `docs/onboarding/README.md`.
+
+### 2026-02-14 – Feature D (Shadow Panel) Batch 3: Click outside to cancel edit
+
+- **Agent / context**: Cursor AI – When editing a field in the Shadow Panel, clicking outside the edit area cancels editing (reverts changes), same as clicking the Cancel button.
+- **Summary**:
+  - **EditableField** in **ProjectShadowPanel**: The edit area (inputs/textareas + Save/Cancel buttons) is wrapped in a `div` with a ref. When `isEditing` is true, a `mousedown` listener is attached to `document`. If the event target is not inside the ref, `cancelEditing()` is called. The listener is removed when exiting edit mode or on unmount.
+  - Clicks inside the edit area (inputs, textareas, Save/Cancel) do not trigger cancel because they are inside the ref. Only clicks outside cancel.
+- **Files touched**: `src/components/onboarding/ProjectShadowPanel.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Improve UX so users can dismiss the edit state without having to find the Cancel button.
+- **Risks / notes**: None. Works for all field types (text, textarea, phases, work schedule, availability, etc.) since the ref wraps the entire edit block.
+- **Related docs**: `ARCHITECTURE.md` (ProjectShadowPanel), `docs/onboarding/README.md`.
+
+### 2026-02-14 – Phases: canonical storage and panel display for flat format
+
+- **Agent / context**: Cursor AI – Fix phases not showing in the Shadow Panel and align storage with the canonical nested format.
+- **Summary**:
+  - **Root cause**: (1) Extraction prompt only said `"phases": object | null`, so the model often returned a flat map like `{ phase_1: "string", phase_2: "string" }`, which was saved as-is. (2) The panel’s `normalizePhasesToArray` treated object values as `{ name, description }`; when the value was a plain string it produced empty name/description, so phases appeared blank or not at all.
+  - **Extraction**: Prompt now requires the canonical shape `{ "phases": [ { "id", "title", "goal", "status", "deadline" } ], "active_phase_id" }` with field-specific guidance. Added `normalizePhasesToCanonical(raw)` in the extract route: if the model returns the flat format (`phase_1: "string"`), it is converted to the canonical format before save and before returning to the client. Existing nested `phases` arrays are passed through with normalized fields.
+  - **Panel**: For the object format, when a phase value is a string (e.g. `phase_1: "Design the project..."`), it is now shown as the phase name so existing DB data displays correctly. When saving from the panel, phases are always persisted in the canonical format (`phasesToCanonical`) so the DB no longer stores the flat key-value shape.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`, `src/components/onboarding/ProjectShadowPanel.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Phases were stored as `{ phase_1: "…", phase_2: "…" }` and the panel did not show them; the desired format is the nested structure used elsewhere (e.g. post project).
+- **Risks / notes**: Existing projects with flat phases will display correctly; the next extraction or an edit+save from the panel will rewrite phases in the canonical format.
+- **Related docs**: `ARCHITECTURE.md` (onboarding extract), `docs/onboarding/README.md`.
+
+### 2026-02-14 – Feature D (Shadow Panel) Batch 2: Phases Support
+
+- **Agent / context**: Cursor AI – Add phases display and inline editing in the Shadow Panel, and fix completion calculation so phases contribute +8% only when they have content.
+- **Summary**:
+  - **Phases in Project Info**: **ProjectShadowPanel** now shows a “Project Phases” field (after motivation, before project notes) when `fields.project.phases` exists and has content. Three extraction formats are supported: direct array `[{name, description, status}]`, nested `{ phases: [{ title, goal, status }] }`, and object `{ phase_1: {}, phase_2: {} }`. Display normalizes to a list with left border (purple-200), phase name (font-medium), description (text-xs), and status badge (completed=green, active=purple, future=gray).
+  - **Editable phases**: Phases use the same **EditableField** pattern: Edit opens a form with Phase N (name input, description textarea, status dropdown: future/active/completed), Remove per phase, and “Add Phase” at the bottom. On save, the value is converted back to the same format as the input (array, nested, or object) and sent via `PATCH /api/onboarding/update-field`. Empty phases are saved as `[]`, `{ phases: [] }`, or `{}` depending on format.
+  - **Completion calculation**: In **onboarding/page.tsx**, `calculateExtractionProgress` no longer adds the phases weight (8 points) for empty phases. New helper `hasPhasesContentForProgress(raw)` returns true only for: non-empty array, object with non-empty `phases` array, or object with at least one `phase_*` key. Empty `{}` or `[]` do not count; adding phases with content correctly increases completion by 8%.
+- **Files touched**: `src/components/onboarding/ProjectShadowPanel.tsx`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Phases were extracted and stored but not shown or editable; completion could decrease when phases were present. Align UI and progress with actual phases content.
+- **Risks / notes**: Phases field is only rendered when `hasPhasesContent(project.phases)`; null/undefined/empty object/empty array do not show the field. Removing all phases in edit saves an empty structure per original format.
+- **Related docs**: `ARCHITECTURE.md` (ProjectShadowPanel, onboarding page), `docs/onboarding/README.md`.
+
 ### 2026-02-14 – Feature D (Shadow Panel) Batch 1: Quick UI Fixes
 
 - **Agent / context**: Cursor AI – Polish Shadow Panel: single progress indicator, sticky completion bar, notes as bullet points.
