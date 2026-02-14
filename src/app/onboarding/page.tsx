@@ -116,10 +116,10 @@ function hasPhasesContentForProgress(raw: unknown): boolean {
 }
 
 /**
- * Calculate completion progress based on weighted importance of extracted fields.
- * Returns 0–100 percentage.
+ * Calculate field completeness (0–100) from weighted extracted fields.
+ * Used only internally for the 40% minimum threshold; user never sees this number.
  */
-function calculateExtractionProgress(fields: { user: Record<string, unknown>; project: Record<string, unknown> } | null): number {
+function calculateFieldCompleteness(fields: { user: Record<string, unknown>; project: Record<string, unknown> } | null): number {
   if (!fields) return 0
   const weights = {
     title: 5,
@@ -197,6 +197,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     user: Record<string, unknown>
     project: Record<string, unknown>
   } | null>(initialExtracted ?? null)
+  const [harveyConfidence, setHarveyConfidence] = useState(0)
   const [extractionLoading, setExtractionLoading] = useState(false)
 
   const triggerExtraction = useCallback(async (currentProjectId: string) => {
@@ -216,15 +217,26 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       const result = await response.json()
       const extracted = result.extracted ?? { user: result.user, project: result.project }
       const saved = result.saved ?? null
-      console.log('[OnboardingExtraction] Extraction completed:', result)
-      console.log('[OnboardingExtraction] User fields:', extracted?.user)
-      console.log('[OnboardingExtraction] Project fields:', extracted?.project)
-      console.log('[OnboardingExtraction] Saved to DB:', saved)
-      if (extracted && (extracted.user != null || extracted.project != null)) {
-        setShadowFields({
-          user: extracted.user ?? {},
-          project: extracted.project ?? {},
-        })
+      const confidence = typeof result.completion_confidence === 'number'
+        ? Math.min(100, Math.max(0, Math.round(result.completion_confidence)))
+        : 0
+      const nextFields = extracted && (extracted.user != null || extracted.project != null)
+        ? { user: extracted.user ?? {}, project: extracted.project ?? {} }
+        : null
+      const fieldCompletenessPct = nextFields ? calculateFieldCompleteness(nextFields) : 0
+      const buttonState =
+        fieldCompletenessPct < 40
+          ? 'DISABLED (need ≥40% field completeness)'
+          : confidence >= 80
+            ? 'STAGE 2 (Harvey ready)'
+            : 'STAGE 1 (can build, more info recommended)'
+      console.log('[OnboardingExtraction] ─── Completion summary ───')
+      console.log('[OnboardingExtraction] Field completeness:', fieldCompletenessPct + '%', '| Harvey confidence:', confidence + '%', '| Button:', buttonState)
+      console.log('[OnboardingExtraction] Saved to DB:', saved ? { user: !!saved.user, project: !!saved.project } : null)
+      console.log('[OnboardingExtraction] ──────────────────────────')
+      setHarveyConfidence(confidence)
+      if (nextFields) {
+        setShadowFields(nextFields)
       }
     } catch (err) {
       console.error('[OnboardingExtraction] Extraction failed:', err)
@@ -327,9 +339,12 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     setShowConfirmModal(false)
   }
 
-  const extractionProgress = calculateExtractionProgress(shadowFields)
-  const canBuild = hasMinimumFields(shadowFields)
-  const isReady = extractionProgress >= 80 || hasCompletionMarker
+  const fieldCompleteness = calculateFieldCompleteness(shadowFields)
+  const canBuild = fieldCompleteness >= 40
+  const isReady = canBuild && (harveyConfidence >= 80 || hasCompletionMarker)
+  if (process.env.NODE_ENV === 'development' && (shadowFields || harveyConfidence > 0)) {
+    console.log('[Onboarding] Field completeness:', fieldCompleteness + '%', "| Harvey's confidence:", harveyConfidence + '%')
+  }
 
   // ===== DERIVED STATE =====
 
@@ -398,13 +413,13 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
           </p>
           <div className="mt-4">
             <div className="mb-1 flex justify-between text-sm text-gray-600">
-              <span>Information gathered:</span>
-              <span>{extractionProgress}%</span>
+              <span>Harvey&apos;s confidence:</span>
+              <span>{harveyConfidence}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
               <div
                 className="h-full rounded-full bg-[#8B5CF6] transition-all"
-                style={{ width: `${extractionProgress}%` }}
+                style={{ width: `${harveyConfidence}%` }}
               />
             </div>
           </div>
@@ -490,7 +505,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
             <ProjectShadowPanel
               fields={shadowFields}
               isLoading={extractionLoading}
-              progress={extractionProgress}
+              harveyConfidence={harveyConfidence}
               projectId={projectId}
               onFieldUpdate={(scope, field, value) => {
                 setShadowFields((prev) => {

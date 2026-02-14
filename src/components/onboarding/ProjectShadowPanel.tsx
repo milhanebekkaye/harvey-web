@@ -164,7 +164,8 @@ export interface ProjectShadowPanelProps {
     project: Record<string, unknown>
   } | null
   isLoading: boolean
-  progress: number
+  /** Harvey's self-assessed confidence (0-100). Shown in progress bar; user never sees field count. */
+  harveyConfidence: number
   projectId?: string | null
   onFieldUpdate?: (scope: 'user' | 'project', field: string, value: unknown) => void
 }
@@ -172,7 +173,7 @@ export interface ProjectShadowPanelProps {
 export function ProjectShadowPanel({
   fields,
   isLoading,
-  progress,
+  harveyConfidence,
   projectId = null,
   onFieldUpdate,
 }: ProjectShadowPanelProps) {
@@ -351,13 +352,13 @@ export function ProjectShadowPanel({
         <p className="text-sm text-gray-500">Information extracted from our conversation</p>
         <div className="mt-3">
           <div className="mb-1 flex justify-between text-sm text-gray-600">
-            <span>Completion</span>
-            <span>{progress}%</span>
+            <span>Harvey&apos;s Confidence</span>
+            <span>{Math.min(100, Math.max(0, harveyConfidence))}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
             <div
               className="h-full rounded-full bg-[#8B5CF6] transition-all duration-300"
-              style={{ width: `${Math.min(100, progress)}%` }}
+              style={{ width: `${Math.min(100, Math.max(0, harveyConfidence))}%` }}
             />
           </div>
         </div>

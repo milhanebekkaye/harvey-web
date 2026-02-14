@@ -43,7 +43,8 @@ Output format:
     "motivation": string | null,
     "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string (ISO) | null }], "active_phase_id": number | null } | null,
     "projectNotes": string | null
-  }
+  },
+  "completion_confidence": number
 }
 
 CRITICAL RULES:
@@ -62,6 +63,32 @@ Field-Specific Guidance:
 - communication_style: Infer from how user communicates (brief = "direct", detailed = "detailed")
 - weekly_hours_commitment: How many hours per week they'll work on THIS project
 - phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
+
+After extracting all fields, assess your confidence level (completion_confidence, 0-100):
+
+Question to ask yourself:
+- Do I clearly understand the user's goals for this project?
+- Do I know their time constraints and availability well?
+- Do I understand their skill level and what they can realistically accomplish?
+- Do I have enough context to prioritize tasks intelligently?
+- Is there a clear deadline or timeline?
+- Do I know what motivates them and what success looks like?
+- Are there obvious gaps that would lead me to generate a generic schedule?
+
+Confidence Scale:
+- 0-40%: Major gaps, many unknowns, missing critical context
+- 40-60%: Basic information gathered, but answers were shallow or incomplete
+- 60-80%: Good context established, a few details would help but not critical
+- 80-95%: Excellent understanding, confident I can build a quality schedule
+- 95-100%: Exceptional detail provided (rare - don't give this unless truly comprehensive)
+
+Be CONSERVATIVE. Only reach 80%+ when you genuinely have enough context for a high-quality schedule.
+
+Important: Your confidence should reflect DEPTH of understanding, not just whether fields are filled.
+- 10 fields filled with shallow answers = 50-60% confidence
+- 6 fields filled with rich, detailed answers = 75-85% confidence
+
+Return your assessment as a number (0-100) in the field "completion_confidence".
 
 Conversation:
 `
@@ -234,6 +261,8 @@ export async function POST(request: Request) {
       .map((m) => `${m.role === 'user' ? 'User' : 'Harvey'}: ${m.content}`)
       .join('\n\n')
 
+    console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length)
+
     // 5. Call Haiku with extraction prompt
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
@@ -260,9 +289,9 @@ export async function POST(request: Request) {
     }
 
     // 6. Parse and validate response
-    let extracted: { user: Record<string, unknown>; project: Record<string, unknown> }
+    let parsed: { user?: Record<string, unknown>; project?: Record<string, unknown>; completion_confidence?: unknown }
     try {
-      extracted = JSON.parse(extractedText) as { user: Record<string, unknown>; project: Record<string, unknown> }
+      parsed = JSON.parse(extractedText) as typeof parsed
     } catch (parseErr) {
       console.error('[OnboardingExtract] JSON parse failed:', parseErr)
       return NextResponse.json(
@@ -271,11 +300,20 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!extracted.user || typeof extracted.user !== 'object') {
-      extracted.user = {}
+    let extracted: { user: Record<string, unknown>; project: Record<string, unknown> } = {
+      user: parsed.user && typeof parsed.user === 'object' ? parsed.user : {},
+      project: parsed.project && typeof parsed.project === 'object' ? parsed.project : {},
     }
-    if (!extracted.project || typeof extracted.project !== 'object') {
-      extracted.project = {}
+
+    // Parse and validate completion_confidence (0-100); default 0 if missing, clamp if out of range
+    let completionConfidence = 0
+    if (parsed.completion_confidence != null) {
+      const n = typeof parsed.completion_confidence === 'number'
+        ? parsed.completion_confidence
+        : parseInt(String(parsed.completion_confidence), 10)
+      if (!Number.isNaN(n)) {
+        completionConfidence = Math.min(100, Math.max(0, Math.round(n)))
+      }
     }
 
     // Defensive parsing: handle stringified arrays/objects
@@ -374,7 +412,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save extracted data' }, { status: 500 })
     }
 
-    // 9. Terminal logs: what was extracted and what was saved
+    // 9. Terminal logs: summary + what was extracted and saved
+    const countFilled = (obj: Record<string, unknown>) =>
+      Object.entries(obj).filter(([, v]) => v != null && v !== '' && (typeof v !== 'object' || (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0))).length
+    const userFilled = countFilled(extracted.user)
+    const projectFilled = countFilled(extracted.project)
+    console.log('[OnboardingExtract] ─── Summary ───')
+    console.log('[OnboardingExtract] projectId:', projectId, '| user fields filled:', userFilled, '| project fields filled:', projectFilled, '| Harvey confidence:', completionConfidence + '%')
     console.log('[OnboardingExtract] Extracted user:', JSON.stringify(extracted.user, null, 2))
     console.log('[OnboardingExtract] Extracted project:', JSON.stringify(extracted.project, null, 2))
     if (Object.keys(userUpdates).length > 0) {
@@ -383,6 +427,7 @@ export async function POST(request: Request) {
     if (Object.keys(projectUpdates).length > 0) {
       console.log('[OnboardingExtract] Saved to DB (project):', Object.keys(projectUpdates).join(', '))
     }
+    console.log('[OnboardingExtract] ───────────────')
 
     // 10. Return
     return NextResponse.json({
@@ -392,6 +437,7 @@ export async function POST(request: Request) {
         user: Object.keys(userUpdates).length > 0 ? userUpdates : null,
         project: Object.keys(projectUpdates).length > 0 ? projectUpdates : null,
       },
+      completion_confidence: completionConfidence,
     })
   } catch (err) {
     console.error('[OnboardingExtract] Extraction failure:', err)

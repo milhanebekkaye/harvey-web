@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-14 – Feature D (Shadow Panel) Batch 5: Harvey-controlled completion (confidence-based progress)
+
+- **Agent / context**: Cursor AI – Replace mechanical field-count progress with Harvey’s self-assessed confidence. Progress bar and button state now use Harvey’s confidence (0–100) plus a hidden field-completeness minimum (40%).
+- **Summary**:
+  - **Extraction prompt** (in `extract/route.ts`): Added instructions for Harvey to output `completion_confidence` (0–100) reflecting depth of understanding, not just filled fields. Conservative scale (e.g. 80%+ only when genuinely ready); guidance that shallow answers across many fields = 50–60%, rich answers in fewer fields = 75–85%.
+  - **Extract API**: Parses and validates `completion_confidence` (default 0 if missing, clamp 0–100); returns it in the response as `completion_confidence`; logs “Harvey’s confidence: X%”.
+  - **Onboarding page**: New state `harveyConfidence` (init 0), set from extraction response. Renamed `calculateExtractionProgress` → `calculateFieldCompleteness` (internal only; user never sees this). Button logic: (1) Disabled when `fieldCompleteness < 40%`; (2) Stage 1 when ≥40% and `harveyConfidence < 80%` and no completion marker (enabled, “Build Schedule”, “Better results with more info”, modal on click); (3) Stage 2 when ≥40% and (`harveyConfidence ≥ 80%` or `hasCompletionMarker`) (direct to schedule, “Harvey is ready!”). Confirmation modal shows “Harvey’s confidence” and bar. Dev log: “Field completeness: X% | Harvey’s confidence: Y%”.
+  - **ProjectShadowPanel**: Prop `progress` replaced by `harveyConfidence`. Header label “Completion” → “Harvey’s Confidence”; bar value is `harveyConfidence`.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`, `src/app/onboarding/page.tsx`, `src/components/onboarding/ProjectShadowPanel.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Progress previously hit a ceiling when all extractable fields were filled (77–85%), while Harvey might still need follow-ups. Let Harvey decide readiness; shallow answers keep confidence lower even with many fields filled.
+- **Risks / notes**: Restore does not return `completion_confidence`; after restore with `extracted`, confidence stays 0 until the next extraction (e.g. after user sends another message). Invalid or missing confidence from extraction defaults to 0.
+- **Related docs**: `ARCHITECTURE.md` (onboarding, extract API), `docs/onboarding/README.md`.
+
 ### 2026-02-14 – Feature D (Shadow Panel) Batch 4: Reload persistence (restore session on refresh)
 
 - **Agent / context**: Cursor AI – When the user refreshes during onboarding, restore the existing conversation and extracted data instead of starting fresh; avoid duplicate projects. On restore, fetch stored project/user from DB instead of calling the extraction API to save cost.
