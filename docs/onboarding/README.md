@@ -5,9 +5,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/page.tsx`
-  - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
+  - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. **Step 6**: Weighted extraction progress (`calculateExtractionProgress`), minimum-fields check (`hasMinimumFields`), and completion-marker detection drive a three-state “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct); button at bottom of right column. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
 - `src/components/onboarding/ProjectShadowPanel.tsx`
-  - **Feature D (Shadow Panel) Step 5**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. Renders only non-null fields; supports work schedule day grid, availability windows, tools pills, phases (collapsible), dates and times formatted for display.
+  - **Feature D (Shadow Panel) Step 5 + 6**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. **Step 6**: Receives `progress` (0–100); header shows “Completion {progress}%” and a progress bar. Renders only non-null fields; supports work schedule day grid, availability windows, tools pills, phases (collapsible), dates and times formatted for display.
 - `src/components/onboarding/ChatMessage.tsx`
   - Renders chat bubbles and message list.
 - `src/components/onboarding/ChatInput.tsx`
@@ -54,19 +54,25 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
    - Loads existing discussion by `projectId`.
 7. API streams Claude response via Vercel AI SDK (`streamText`).
 8. API appends user + assistant messages into `Discussion.messages` when stream completes.
-9. Client receives streamed text and `projectId` (via transient data). `isComplete` is derived when response contains `PROJECT_INTAKE_COMPLETE`.
-10. When `isComplete` is true, UI shows “Build my schedule” CTA.
-11. CTA navigates to `/loading?projectId=...` (schedule generation starts there).
+9. Client receives streamed text and `projectId` (via transient data). `isComplete` and `hasCompletionMarker` are set when response contains `PROJECT_INTAKE_COMPLETE`. Extraction progress (0–100) is computed from weighted extracted fields; minimum required fields (title, description or goals, availability, weekly hours) enable the “Build” button.
+10. **Build My Schedule button (Step 6)** in the right column: (1) Disabled until minimum fields are present; (2) Stage 1 when can build but progress &lt; 80% and no completion marker — click opens “Build now or keep chatting?” modal; (3) Stage 2 when progress ≥ 80% or completion marker — click goes directly to schedule. When `isComplete`, left column also shows the legacy “Build my schedule” CTA.
+11. CTA or “Build Anyway” / Stage 2 button navigates to `/loading?projectId=...` (schedule generation starts there).
 
 ## Function reference (what each function does)
 
 ### `src/app/onboarding/page.tsx`
 - `handleSendMessage(content)`
-  - Calls `sendMessage({ text: content })` from `useChat`. Response streams word-by-word; `isComplete` set via `onFinish` when last message contains `PROJECT_INTAKE_COMPLETE`.
+  - Calls `sendMessage({ text: content })` from `useChat`. Response streams word-by-word; `isComplete` and `hasCompletionMarker` set via `onFinish` when last message contains `PROJECT_INTAKE_COMPLETE`.
 - `handleBuildSchedule()`
-  - Redirects to `/loading` with `projectId` for schedule generation.
+  - Closes confirmation modal if open, then redirects to `/loading` with `projectId` for schedule generation.
+- `handleStage1Click()` / `handleKeepChatting()`
+  - Stage 1 button opens confirmation modal; “Keep Chatting” closes it.
 - `calculateProgress()`
-  - Computes progress based on count of user messages.
+  - Computes **top progress bar** percentage based on count of user messages (unchanged).
+- `calculateExtractionProgress(fields)`
+  - Returns 0–100 from weighted extracted fields (title, description/goals, availability, weekly_hours, deadline, project_type, skill_level, tools_and_stack, motivation, phases, workSchedule, commute, preferred_session_length, communication_style, timezone, userNotes, projectNotes).
+- `hasMinimumFields(fields)`
+  - True when project has title, (description or goals), and weekly_hours_commitment > 0, and user has non-empty availabilityWindows.
 
 ### `src/app/api/chat/route.ts`
 - `POST(request)`

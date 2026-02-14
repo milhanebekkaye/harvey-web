@@ -47,9 +47,10 @@ export interface ProjectShadowPanelProps {
     project: Record<string, unknown>
   } | null
   isLoading: boolean
+  progress: number
 }
 
-export function ProjectShadowPanel({ fields, isLoading }: ProjectShadowPanelProps) {
+export function ProjectShadowPanel({ fields, isLoading, progress }: ProjectShadowPanelProps) {
   const [phasesExpanded, setPhasesExpanded] = useState(false)
   const user = fields?.user ?? {}
   const project = fields?.project ?? {}
@@ -59,6 +60,18 @@ export function ProjectShadowPanel({ fields, isLoading }: ProjectShadowPanelProp
       <header className="mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Harvey&apos;s Knowledge</h2>
         <p className="text-sm text-gray-500">Information extracted from our conversation</p>
+        <div className="mt-3">
+          <div className="mb-1 flex justify-between text-sm text-gray-600">
+            <span>Completion</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-[#8B5CF6] transition-all duration-300"
+              style={{ width: `${Math.min(100, progress)}%` }}
+            />
+          </div>
+        </div>
         {isLoading && (
           <div className="mt-2 flex items-center gap-2 text-sm text-[#8B5CF6]">
             <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>

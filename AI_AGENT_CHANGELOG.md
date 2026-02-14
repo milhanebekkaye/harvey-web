@@ -50,6 +50,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-13 – Feature D (Shadow Panel) Step 6: Button + Progress Logic
+
+- **Agent / context**: Cursor AI – Implement smart “Build My Schedule” button with three states and weighted extraction progress (Step 6).
+- **Summary**:
+  - **Progress**: `calculateExtractionProgress(shadowFields)` returns 0–100 from weighted fields (title, description/goals, availability, weekly_hours, deadline, project_type, skill_level, tools_and_stack, motivation, phases, workSchedule, commute, preferred_session_length, communication_style, timezone, userNotes, projectNotes). `hasMinimumFields(shadowFields)` requires title, description or goals, non-empty availabilityWindows, and weekly_hours_commitment > 0.
+  - **Completion marker**: State `hasCompletionMarker` set in `onFinish` when last assistant message contains `COMPLETION_MARKER` (PROJECT_INTAKE_COMPLETE); used to show “Harvey ready” state even if progress &lt; 80%.
+  - **BuildScheduleButton**: Three states — (1) Disabled when !hasMinimumFields: gray button “Build My Schedule”, subtext “Answer Harvey’s questions first”; (2) Stage 1 when canBuild and progress &lt; 80% and !hasCompletionMarker: purple “Build Schedule”, subtext “Better results with more info”, click opens confirmation modal; (3) Stage 2 when progress ≥ 80% or hasCompletionMarker: prominent “Build My Schedule ✨”, “Harvey is ready!”, click navigates directly to `/loading?projectId=...`.
+  - **ConfirmationModal**: Shown on Stage 1 click; “Build schedule now?”, progress bar with percentage, [Keep Chatting] (close) and [Build Anyway] (close + navigate).
+  - **ProjectShadowPanel**: New prop `progress`; header shows “Completion {progress}%” and a progress bar. Button rendered at bottom of right column (below panel).
+- **Files touched**: `src/app/onboarding/page.tsx`, `src/components/onboarding/ProjectShadowPanel.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Guide users toward quality (more info = better schedule) while preserving agency (can build after minimum fields); continuous feedback via progress bar and button state.
+- **Risks / notes**: Top progress bar still uses message-count `calculateProgress()`; extraction progress is separate and used only for panel and button. Left-column OnboardingCTA when `isComplete` unchanged; primary CTA is the new button in the right column.
+- **Related docs**: `ARCHITECTURE.md` (onboarding page, ProjectShadowPanel), `docs/onboarding/README.md`.
+
 ### 2026-02-13 – Feature D (Shadow Panel) Step 5: Build Shadow Panel component
 
 - **Agent / context**: Cursor AI – Implement live-updating Shadow Panel UI for onboarding (Feature D Step 5).
