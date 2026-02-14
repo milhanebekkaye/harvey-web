@@ -77,7 +77,7 @@ Core Next.js application structure.
 Additional route groups:
 
 - **`loading/page.tsx`**: A route that provides a loading/placeholder experience, likely displayed while the main experience or data loads.
-- **`onboarding/page.tsx`**: `/onboarding` route. Manages the onboarding experience and initial user setup, using components from `src/components/onboarding`. **Feature D (Shadow Panel) Step 4**: After each Harvey response (`useChat` `onFinish`), triggers extraction in the background via `POST /api/onboarding/extract` when `projectId` exists; stores result in `shadowFields` state and shows a temporary debug panel (bottom-right). Extraction is non-blocking; errors are logged only.
+- **`onboarding/page.tsx`**: `/onboarding` route. Split layout: 40% chat (left), 60% Shadow Panel (right). After each Harvey response, triggers extraction in the background via `POST /api/onboarding/extract` when `projectId` exists; stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. Extraction is non-blocking; errors are logged only.
 - **`signin/page.tsx`**: `/signin` route. Handles email-based sign-in and integration with Supabase auth.
 - **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components.
 - **`dashboard/settings/page.tsx`**: `/dashboard/settings` route. Full-page Settings: work schedule, availability windows, preferences, and Project link. Data from GET `/api/settings`; save via POST `/api/settings/update`. See `docs/settings.md`. Complete/Skip use optimistic UI (timeline and chat message update immediately; PATCH runs in background; revert on failure). **Daily check-in**: on load, when the user has an active project and existing tasks, triggers a contextual check-in message (rate-limited to every 3 hours or new calendar day via localStorage); the message streams at the bottom of the chat and is persisted with `messageType: 'check-in'`.
@@ -96,7 +96,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/chat`.
   - Streaming chat: uses Vercel AI SDK (`streamText`, `createUIMessageStream`, `createUIMessageStreamResponse`) with `@ai-sdk/anthropic`.
   - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
-  - Saves messages to Discussion on stream finish. During onboarding, runs early project title/description extraction via `extractProjectInfo()` and updates Project when data is available. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
+  - Saves messages to Discussion on stream finish. Project title/description and other fields are extracted by the client-triggered `POST /api/onboarding/extract` after each message. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
 
 - **`onboarding/extract/route.ts`**
   - Endpoint under `/api/onboarding/extract`.
@@ -211,6 +211,7 @@ Components used on the onboarding/chat-style experience:
 - **`OnboardingCTA.tsx`**: Call-to-action component used during onboarding (buttons, prompts).
 - **`OnboardingHeader.tsx`**: Header section for onboarding pages (title, subtitle, progress).
 - **`OnboardingProgress.tsx`**: Visual indicator of user’s progress through onboarding steps.
+- **`ProjectShadowPanel.tsx`**: **Feature D (Shadow Panel)**. Live-updating panel showing extracted user/project fields (Project Info, Your Schedule, Preferences). Used on the onboarding page (60% width); receives `shadowFields` and `isLoading` from parent.
 
 ---
 

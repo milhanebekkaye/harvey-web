@@ -28,6 +28,7 @@ import {
   OnboardingHeader,
   OnboardingCTA,
   ChatInput,
+  ProjectShadowPanel,
 } from '@/components/onboarding'
 
 // Import types and helper functions for messages
@@ -223,50 +224,60 @@ export default function OnboardingPage() {
         isComplete={isComplete}
       />
 
-      <div className="flex-1 flex flex-col items-center justify-start px-4 py-10 overflow-y-auto">
-        <div className="w-full max-w-[700px] flex flex-col gap-6">
-          {isComplete && (
-            <OnboardingHeader
-              badgeText="Success"
-              headline="The finish line is just the beginning."
-              highlightText="the beginning."
+      <div className="flex flex-1 min-h-0">
+        {/* Chat section – 40% */}
+        <div className="flex w-[40%] flex-col border-r border-gray-200/80">
+          <div className="flex-1 flex flex-col overflow-y-auto px-4 py-6">
+            <div className="mx-auto w-full max-w-[600px] flex flex-col gap-6">
+              {isComplete && (
+                <OnboardingHeader
+                  badgeText="Success"
+                  headline="The finish line is just the beginning."
+                  highlightText="the beginning."
+                />
+              )}
+
+              <ChatMessageList
+                messages={displayMessages}
+                userInitial={USER_INFO.initial}
+              />
+
+              {isTyping && (
+                <div className="flex items-center gap-2 text-[#8B5CF6]/60 text-sm">
+                  <span className="material-symbols-outlined text-lg animate-pulse">
+                    more_horiz
+                  </span>
+                  <span>Harvey is typing...</span>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-600 text-sm">
+                  {error.message}
+                </div>
+              )}
+
+              <div ref={chatEndRef} />
+            </div>
+          </div>
+
+          {isComplete ? (
+            <OnboardingCTA onClick={handleBuildSchedule} isLoading={false} />
+          ) : (
+            <ChatInput
+              onSend={handleSendMessage}
+              isLoading={isTyping}
+              placeholder="Type your answer..."
+              autoFocus
             />
           )}
+        </div>
 
-          <ChatMessageList
-            messages={displayMessages}
-            userInitial={USER_INFO.initial}
-          />
-
-          {isTyping && (
-            <div className="flex items-center gap-2 text-[#8B5CF6]/60 text-sm">
-              <span className="material-symbols-outlined text-lg animate-pulse">
-                more_horiz
-              </span>
-              <span>Harvey is typing...</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-600 text-sm">
-              {error.message}
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
+        {/* Shadow panel – 60% */}
+        <div className="w-[60%] min-w-0 flex flex-col">
+          <ProjectShadowPanel fields={shadowFields} isLoading={extractionLoading} />
         </div>
       </div>
-
-      {isComplete ? (
-        <OnboardingCTA onClick={handleBuildSchedule} isLoading={false} />
-      ) : (
-        <ChatInput
-          onSend={handleSendMessage}
-          isLoading={isTyping}
-          placeholder="Type your answer..."
-          autoFocus
-        />
-      )}
 
       <div className="fixed top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[#8B5CF6]/5 rounded-full blur-[100px] -z-10" />
       <div className="fixed bottom-[-10%] right-[-5%] w-[30%] h-[30%] bg-[#8B5CF6]/10 rounded-full blur-[80px] -z-10" />

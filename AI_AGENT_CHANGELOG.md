@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-13 – Feature D (Shadow Panel) Step 5: Build Shadow Panel component
+
+- **Agent / context**: Cursor AI – Implement live-updating Shadow Panel UI for onboarding (Feature D Step 5).
+- **Summary**:
+  - **New component**: `ProjectShadowPanel` in `src/components/onboarding/ProjectShadowPanel.tsx`. Displays extracted user/project fields in three sections: Project Info (title, description, goals, project_type, target_deadline, motivation, phases collapsible, projectNotes), Your Schedule (work schedule day grid, commute, availability windows with day grids, weekly_hours_commitment), Preferences (timezone, preferred_session_length, communication_style, skill_level, tools_and_stack pills, userNotes). Only renders non-null fields; uses formatTime, formatDate, day-matching for grids; loading state shows "Extracting..." with spinner.
+  - **Onboarding layout**: Split view 40% chat / 60% panel. Left: chat messages, typing indicator, error, input or CTA. Right: full-height scrollable Shadow Panel. Debug panel had already been removed earlier.
+  - **Exports**: `ProjectShadowPanel` added to `@/components/onboarding` index.
+- **Files touched**: `src/components/onboarding/ProjectShadowPanel.tsx` (new), `src/components/onboarding/index.ts`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Users see in real time what Harvey has extracted; no logic changes to extraction or storage.
+- **Risks / notes**: Desktop-optimized layout; mobile not adjusted. Phases rendering assumes object with optional name/description per entry.
+- **Related docs**: `ARCHITECTURE.md` (onboarding page, onboarding components), `docs/onboarding/README.md`.
+
 ### 2026-02-13 – Feature D (Shadow Panel) Step 4: Wire extraction into onboarding flow
 
 - **Agent / context**: Cursor AI – Automatically trigger extraction after every Harvey response during onboarding and store results in React state for the shadow panel (Step 5).
