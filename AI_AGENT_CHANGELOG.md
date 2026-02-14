@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-13 – Feature D (Shadow Panel) Step 7: Inline Field Editing
+
+- **Agent / context**: Cursor AI – Allow users to correct extracted fields in the Shadow Panel with per-field Edit / Save / Cancel (Step 7).
+- **Summary**:
+  - **New API**: `PATCH /api/onboarding/update-field`. Body: `{ projectId, scope: 'user' | 'project', field, value }`. Auth via Supabase; validates project ownership with `getProjectById(projectId, user.id)`; updates one field via `updateUser` or `updateProject`. Converts `target_deadline` string to Date for project. Returns `{ success, updated }` or 401/400/404/500.
+  - **ProjectShadowPanel**: New props `projectId` (optional) and `onFieldUpdate(scope, field, value)` (optional). State: `editingField` (composite key `scope:fieldKey`), `editValue`, `saving`. One field in edit mode at a time; other Edit buttons disabled. **EditableField** wrapper: label, Edit button (when not editing), display vs edit slot, Save/Cancel. Escape key cancels edit.
+  - **Editable fields**: Title, description, goals, project_type, target_deadline, motivation, projectNotes (project); workSchedule (user, day grid + start/end time); availabilityWindows (user, multiple blocks with type, days, times, add/remove block); weekly_hours_commitment (project); timezone, preferred_session_length, communication_style, userNotes (user); skill_level, tools_and_stack (project, add/remove pills). Phases and commute remain display-only.
+- **Files touched**: `src/app/api/onboarding/update-field/route.ts` (new), `src/components/onboarding/ProjectShadowPanel.tsx`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Users can fix extraction mistakes without re-chatting; each field has its own Save/Cancel for clear feedback and no accidental overwrites.
+- **Risks / notes**: Commute and phases not editable in this step. Validation is minimal (e.g. empty title can be saved). Optimistic update is via `onFieldUpdate` merging into `shadowFields`; no refetch.
+- **Related docs**: `ARCHITECTURE.md` (API routes, ProjectShadowPanel), `docs/onboarding/README.md`.
+
 ### 2026-02-13 – Feature D (Shadow Panel) Step 6: Button + Progress Logic
 
 - **Agent / context**: Cursor AI – Implement smart “Build My Schedule” button with three states and weighted extraction progress (Step 6).

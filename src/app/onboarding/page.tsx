@@ -458,6 +458,16 @@ export default function OnboardingPage() {
               fields={shadowFields}
               isLoading={extractionLoading}
               progress={extractionProgress}
+              projectId={projectId}
+              onFieldUpdate={(scope, field, value) => {
+                setShadowFields((prev) => {
+                  if (!prev) return prev
+                  if (scope === 'user') {
+                    return { ...prev, user: { ...prev.user, [field]: value } }
+                  }
+                  return { ...prev, project: { ...prev.project, [field]: value } }
+                })
+              }}
             />
           </div>
           <div className="shrink-0 border-t border-gray-200/80 bg-[#FAF9F6] p-4">

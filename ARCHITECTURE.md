@@ -102,6 +102,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/onboarding/extract`.
   - **Feature D (Shadow Panel) Step 2 + 3**: Extraction + persistence. POST body: `{ projectId }`. Authenticates user, verifies project ownership, loads onboarding discussion via `getOnboardingDiscussion`, builds full conversation text, calls Anthropic Haiku (CLAUDE_CONFIG.model) with a structured extraction prompt, parses and validates JSON. **Merge logic**: only non-null extracted fields are written (no overwriting with null). Uses `updateUser` and `updateProject` to persist; returns `{ success: true, extracted: { user, project }, saved: { user, project } }`. See `docs/onboarding/README.md`.
 
+- **`onboarding/update-field/route.ts`**
+  - Endpoint under `/api/onboarding/update-field`.
+  - **Feature D (Shadow Panel) Step 7**: Inline field updates. PATCH body: `{ projectId, scope: 'user' | 'project', field, value }`. Authenticates via Supabase, validates project ownership with `getProjectById(projectId, user.id)`, updates a single field via `updateUser` or `updateProject`. Converts `target_deadline` string to Date for project. Used by the Shadow Panel Edit/Save flow.
+
 - **`chat/project/route.ts`**
   - Endpoint under `/api/chat/project`.
   - **Post-onboarding project chat**: streaming endpoint with 7 AI tools for schedule management. Uses **Claude Haiku** (`claude-haiku-4-5-20251001`) during MVP testing to reduce cost; can be switched back to Sonnet for paid users (see `AI_AGENT_CHANGELOG.md`).
@@ -211,7 +215,7 @@ Components used on the onboarding/chat-style experience:
 - **`OnboardingCTA.tsx`**: Call-to-action component used during onboarding (buttons, prompts).
 - **`OnboardingHeader.tsx`**: Header section for onboarding pages (title, subtitle, progress).
 - **`OnboardingProgress.tsx`**: Visual indicator of user’s progress through onboarding steps.
-- **`ProjectShadowPanel.tsx`**: **Feature D (Shadow Panel)**. Live-updating panel showing extracted user/project fields (Project Info, Your Schedule, Preferences). Used on the onboarding page (60% width); receives `shadowFields`, `isLoading`, and `progress` (0–100). **Step 6**: Header shows “Completion {progress}%” and a progress bar; “Build My Schedule” button is rendered below the panel by the parent.
+- **`ProjectShadowPanel.tsx`**: **Feature D (Shadow Panel)**. Live-updating panel showing extracted user/project fields (Project Info, Your Schedule, Preferences). Used on the onboarding page (60% width); receives `shadowFields`, `isLoading`, `progress` (0–100), optional `projectId` and `onFieldUpdate`. **Step 6**: Header shows “Completion {progress}%” and a progress bar; “Build My Schedule” button is rendered below the panel by the parent. **Step 7**: Inline editing: one field in edit mode at a time, per-field Save/Cancel, `PATCH /api/onboarding/update-field`; work schedule and availability windows have dedicated edit UIs (day grids, time inputs, add/remove blocks).
 
 ---
 

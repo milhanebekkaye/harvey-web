@@ -7,7 +7,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `src/app/onboarding/page.tsx`
   - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. **Step 6**: Weighted extraction progress (`calculateExtractionProgress`), minimum-fields check (`hasMinimumFields`), and completion-marker detection drive a three-state “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct); button at bottom of right column. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
 - `src/components/onboarding/ProjectShadowPanel.tsx`
-  - **Feature D (Shadow Panel) Step 5 + 6**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. **Step 6**: Receives `progress` (0–100); header shows “Completion {progress}%” and a progress bar. Renders only non-null fields; supports work schedule day grid, availability windows, tools pills, phases (collapsible), dates and times formatted for display.
+  - **Feature D (Shadow Panel) Step 5 + 6 + 7**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. **Step 6**: Receives `progress` (0–100); header shows “Completion {progress}%” and a progress bar. **Step 7**: Inline editing: optional `projectId` and `onFieldUpdate(scope, field, value)`; Edit button on each filled field; one field in edit mode at a time; Save/Cancel per field; Escape cancels. Work schedule and availability windows use dedicated edit UIs (day selection, time inputs, add/remove blocks). Renders only non-null fields; phases and commute are display-only.
+- `src/app/api/onboarding/update-field/route.ts`
+  - **Feature D Step 7**. `PATCH /api/onboarding/update-field`. Body: `{ projectId, scope: 'user' | 'project', field, value }`. Auth required; project ownership verified. Updates a single user or project field via `updateUser` / `updateProject`. Used by the Shadow Panel when the user saves an edited field.
 - `src/components/onboarding/ChatMessage.tsx`
   - Renders chat bubbles and message list.
 - `src/components/onboarding/ChatInput.tsx`
@@ -73,6 +75,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Returns 0–100 from weighted extracted fields (title, description/goals, availability, weekly_hours, deadline, project_type, skill_level, tools_and_stack, motivation, phases, workSchedule, commute, preferred_session_length, communication_style, timezone, userNotes, projectNotes).
 - `hasMinimumFields(fields)`
   - True when project has title, (description or goals), and weekly_hours_commitment > 0, and user has non-empty availabilityWindows.
+- **Step 7**: Passes `projectId` and `onFieldUpdate` to **ProjectShadowPanel**. `onFieldUpdate(scope, field, value)` merges the updated field into `shadowFields` so the panel reflects the change without refetching.
 
 ### `src/app/api/chat/route.ts`
 - `POST(request)`
@@ -134,6 +137,14 @@ During onboarding, after each chat message is saved, the chat API runs a lightwe
 - **Response**: `{ success: true, extracted: { user, project }, saved: { user: userUpdates | null, project: projectUpdates | null } }` so the frontend knows what was written. Extracted = full extraction result; saved = only the keys that were actually updated.
 - **Response fields (extracted/saved)**: `user` (timezone, workSchedule, commute, availabilityWindows, preferred_session_length, communication_style, userNotes); `project` (title, description, goals, project_type, target_deadline, weekly_hours_commitment, tools_and_stack, skill_level, motivation, phases, projectNotes).
 - **Errors**: 401 Unauthorized, 400 missing/invalid projectId, 403 project not found or not owner, 404 no onboarding conversation, 500 extraction/parse failure or database save failure (logged to console).
+
+## Inline field update (Feature D – Shadow Panel, Step 7)
+
+- **Route**: `PATCH /api/onboarding/update-field`
+- **Body**: `{ projectId: string, scope: 'user' | 'project', field: string, value: unknown }`
+- **Auth**: Supabase session required. Project ownership verified via `getProjectById(projectId, user.id)`.
+- **Behavior**: Updates a single field on the user or project. For `scope === 'user'`, calls `updateUser(userId, { [field]: value })`; for `scope === 'project'`, calls `updateProject(projectId, userId, { [field]: value })`. If `field === 'target_deadline'`, `value` (ISO string) is converted to `Date` before updating. Used by the Shadow Panel when the user clicks Save after editing a field.
+- **Response**: `{ success: true, updated: { scope, field, value } }` or 401/400/404/500.
 
 ## Gaps / Not found in repo
 - No explicit UI state persistence between refreshes in onboarding (messages are refetched only via API when used in dashboard).
