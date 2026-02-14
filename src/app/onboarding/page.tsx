@@ -98,6 +98,46 @@ export default function OnboardingPage() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [isComplete, setIsComplete] = useState(false)
 
+  const [shadowFields, setShadowFields] = useState<{
+    user: Record<string, unknown>
+    project: Record<string, unknown>
+  } | null>(null)
+  const [extractionLoading, setExtractionLoading] = useState(false)
+
+  const triggerExtraction = async (currentProjectId: string) => {
+    console.log('[OnboardingExtraction] Starting extraction for project:', currentProjectId)
+    setExtractionLoading(true)
+    try {
+      const response = await fetch('/api/onboarding/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ projectId: currentProjectId }),
+      })
+      if (!response.ok) {
+        const errText = await response.text()
+        throw new Error(`Extraction failed: ${response.status} ${errText}`)
+      }
+      const result = await response.json()
+      const extracted = result.extracted ?? { user: result.user, project: result.project }
+      const saved = result.saved ?? null
+      console.log('[OnboardingExtraction] Extraction completed:', result)
+      console.log('[OnboardingExtraction] User fields:', extracted?.user)
+      console.log('[OnboardingExtraction] Project fields:', extracted?.project)
+      console.log('[OnboardingExtraction] Saved to DB:', saved)
+      if (extracted && (extracted.user != null || extracted.project != null)) {
+        setShadowFields({
+          user: extracted.user ?? {},
+          project: extracted.project ?? {},
+        })
+      }
+    } catch (err) {
+      console.error('[OnboardingExtraction] Extraction failed:', err)
+    } finally {
+      setExtractionLoading(false)
+    }
+  }
+
   const { messages, sendMessage, status, error } = useChat({
     messages: INITIAL_MESSAGES,
     transport: new DefaultChatTransport({
@@ -108,11 +148,13 @@ export default function OnboardingPage() {
       }),
     }),
     onData: (dataPart) => {
+      console.log('[OnboardingChat] onData received:', dataPart)
       const typed = dataPart as { type?: string; data?: { projectId?: string } }
       if (typed.type === 'data-onboarding-meta' && typed.data?.projectId) {
         const pid = typed.data.projectId
         projectIdRef.current = pid
         setProjectId(pid)
+        console.log('[OnboardingChat] projectId set from stream:', pid)
       }
     },
     onFinish: ({ messages: finishedMessages }) => {
@@ -121,9 +163,20 @@ export default function OnboardingPage() {
         .find((m) => m.role === 'assistant')
       if (lastAssistant) {
         const text = getTextFromUIMessage(lastAssistant)
+        console.log('[OnboardingChat] Stream finished, Harvey responded:', text.substring(0, 100) + (text.length > 100 ? '...' : ''))
         if (text.includes(COMPLETION_MARKER)) {
           setIsComplete(true)
         }
+      }
+      const currentProjectId = projectIdRef.current ?? projectId
+      console.log('[OnboardingChat] onFinish: projectIdRef.current =', projectIdRef.current, ', projectId state =', projectId, ', will trigger extraction =', !!currentProjectId)
+      if (currentProjectId) {
+        console.log('[OnboardingChat] Triggering extraction...')
+        triggerExtraction(currentProjectId).catch((err) => {
+          console.error('[OnboardingChat] Background extraction error:', err)
+        })
+      } else {
+        console.log('[OnboardingChat] No projectId yet, skipping extraction')
       }
     },
   })
@@ -151,6 +204,7 @@ export default function OnboardingPage() {
   // ===== EVENT HANDLERS =====
 
   const handleSendMessage = (content: string) => {
+    console.log('[OnboardingChat] User sent message:', content)
     sendMessage({ text: content })
   }
 

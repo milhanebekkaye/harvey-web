@@ -39,7 +39,6 @@ import {
 import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { ONBOARDING_SYSTEM_PROMPT } from '@/lib/ai/prompts'
-import { extractProjectInfo } from '@/lib/ai/project-extraction'
 import { isIntakeComplete } from '@/lib/ai/claude-client'
 import type { StoredMessage } from '@/types/api.types'
 import type { UIMessage } from 'ai'
@@ -216,32 +215,8 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString(),
         }
         await appendMessages(discussionId, [userMessage, assistantMessage])
-
-        // Early project title/description extraction (onboarding only)
-        if (context === 'onboarding') {
-          const project = await getProjectById(currentProjectId, user.id)
-          const needsExtraction =
-            project &&
-            (project.title === 'Untitled Project' || !project.description)
-          if (needsExtraction) {
-            try {
-              const fullMessages = [...existingMessages, userMessage, assistantMessage]
-              const conversationText = fullMessages
-                .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
-                .join('\n\n')
-              const { project_title, project_description } =
-                await extractProjectInfo(conversationText)
-              const updates: { title?: string; description?: string } = {}
-              if (project_title) updates.title = project_title
-              if (project_description) updates.description = project_description
-              if (Object.keys(updates).length > 0) {
-                await updateProject(currentProjectId, user.id, updates)
-              }
-            } catch (err) {
-              console.error('[ChatAPI] Project info extraction failed:', err)
-            }
-          }
-        }
+        // Project title/description and other fields are extracted by POST /api/onboarding/extract
+        // (triggered by the client after each Harvey response). No early extraction here.
       },
     })
 

@@ -5,7 +5,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/page.tsx`
-  - Onboarding chat UI and main state machine (messages, typing, completion, CTA).
+  - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel) Step 4**: After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state for the future Shadow Panel, and shows a temporary debug panel (bottom-right) with extracted user/project JSON. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
 - `src/components/onboarding/ChatMessage.tsx`
   - Renders chat bubbles and message list.
 - `src/components/onboarding/ChatInput.tsx`

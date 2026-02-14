@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-13 – Feature D (Shadow Panel) Step 4: Wire extraction into onboarding flow
+
+- **Agent / context**: Cursor AI – Automatically trigger extraction after every Harvey response during onboarding and store results in React state for the shadow panel (Step 5).
+- **Summary**:
+  - **State**: Added `shadowFields` (user + project extracted payload) and `extractionLoading` on the onboarding page.
+  - **triggerExtraction(projectId)**: Calls `POST /api/onboarding/extract` with credentials, updates `shadowFields` from `result.extracted`, logs start/completion/saved/errors; runs non-blocking (errors only logged).
+  - **onFinish**: After stream finishes, if `projectIdRef.current` exists, triggers extraction in the background (no await). Logs "User sent message", "Stream finished, Harvey responded", "Triggering extraction" / "No projectId yet, skipping extraction".
+  - **Debug panel**: Temporary fixed bottom-right panel showing "Shadow Fields (Debug)", extraction loading state, and JSON of `shadowFields` (to be replaced by real Shadow Panel in Step 5).
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Shadow Panel needs live extracted data; extraction must run after each Harvey reply without blocking the user.
+- **Risks / notes**: Extraction failures are logged only; first message may not have projectId yet (created by API), so first extraction runs after the first response that returns projectId via onData.
+- **Related docs**: `ARCHITECTURE.md` (onboarding page), `docs/onboarding/README.md` (Shadow Panel / extraction trigger).
+
 ### 2026-02-13 – Feature D (Shadow Panel) Step 3: Save extraction to database
 
 - **Agent / context**: Cursor AI – Extend onboarding extract endpoint to persist extracted user and project fields to the database (Feature D – Shadow Panel, Step 3).

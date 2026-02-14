@@ -3,16 +3,18 @@
  *
  * POST /api/onboarding/extract
  *
- * Reads the full onboarding conversation for a project, calls Haiku to extract
- * structured user and project fields, and returns clean JSON. Read-only; does not persist.
- * Part of Feature D (Shadow Panel) – Step 2.
+ * Reads the full onboarding conversation, calls Haiku to extract structured fields,
+ * saves to DB (merge logic: don't overwrite with null), and returns extracted + saved.
+ * Part of Feature D (Shadow Panel). Triggered after every Harvey message during onboarding.
  */
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getOnboardingDiscussion } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
-import { anthropic } from '@/lib/ai/claude-client'
+import { anthropic, CLAUDE_CONFIG } from '@/lib/ai/claude-client'
+import { updateUser } from '@/lib/users/user-service'
+import { updateProject } from '@/lib/projects/project-service'
 
 const EXTRACTION_PROMPT = `You are extracting structured data from a conversation between a user and Harvey (an AI project coach).
 
@@ -72,6 +74,34 @@ function parseIfString(value: unknown): unknown {
     }
   }
   return value
+}
+
+function parseTimeToMinutes(timeStr: string): number | null {
+  if (!timeStr || typeof timeStr !== 'string') return null
+  const parts = timeStr.trim().split(':')
+  const h = parseInt(parts[0], 10)
+  const m = parts[1] != null ? parseInt(parts[1], 10) : 0
+  if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null
+  return h * 60 + m
+}
+
+function computeWeeklyHoursFromAvailabilityWindows(
+  windows: Array<{ days?: string[]; start_time?: string; end_time?: string }>
+): number {
+  if (!Array.isArray(windows) || windows.length === 0) return 0
+  let totalMinutes = 0
+  for (const w of windows) {
+    const days = Array.isArray(w.days) ? w.days : []
+    const startM = parseTimeToMinutes(String(w.start_time ?? ''))
+    const endM = parseTimeToMinutes(String(w.end_time ?? ''))
+    if (startM == null || endM == null || days.length === 0) continue
+    let durationMinutes: number
+    if (endM > startM) durationMinutes = endM - startM
+    else if (endM < startM) durationMinutes = 24 * 60 - startM + endM
+    else durationMinutes = 0
+    totalMinutes += durationMinutes * days.length
+  }
+  return Math.round(totalMinutes / 60)
 }
 
 export async function POST(request: Request) {
@@ -136,7 +166,7 @@ export async function POST(request: Request) {
 
     // 5. Call Haiku with extraction prompt
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: CLAUDE_CONFIG.model,
       max_tokens: 2000,
       messages: [{ role: 'user', content: EXTRACTION_PROMPT + conversationText }],
     })
@@ -221,10 +251,74 @@ export async function POST(request: Request) {
       extracted.project.weekly_hours_commitment = Number.isNaN(n) ? null : n
     }
 
-    // 7. Return clean JSON
+    // 7. Build update payloads (merge logic: only non-null from extraction)
+    const userUpdates: Record<string, unknown> = {}
+    if (extracted.user.timezone !== undefined && extracted.user.timezone !== null) userUpdates.timezone = extracted.user.timezone
+    if (extracted.user.workSchedule !== undefined && extracted.user.workSchedule !== null) userUpdates.workSchedule = extracted.user.workSchedule
+    if (extracted.user.commute !== undefined && extracted.user.commute !== null) userUpdates.commute = extracted.user.commute
+    if (extracted.user.availabilityWindows !== undefined && extracted.user.availabilityWindows !== null) userUpdates.availabilityWindows = extracted.user.availabilityWindows
+    if (extracted.user.preferred_session_length !== undefined && extracted.user.preferred_session_length !== null) userUpdates.preferred_session_length = extracted.user.preferred_session_length
+    if (extracted.user.communication_style !== undefined && extracted.user.communication_style !== null) userUpdates.communication_style = extracted.user.communication_style
+    if (extracted.user.userNotes !== undefined && extracted.user.userNotes !== null) userUpdates.userNotes = extracted.user.userNotes
+
+    const projectUpdates: Record<string, unknown> = {}
+    if (extracted.project.title !== undefined && extracted.project.title !== null) projectUpdates.title = extracted.project.title
+    if (extracted.project.description !== undefined && extracted.project.description !== null) projectUpdates.description = extracted.project.description
+    if (extracted.project.goals !== undefined && extracted.project.goals !== null) projectUpdates.goals = extracted.project.goals
+    if (extracted.project.project_type !== undefined && extracted.project.project_type !== null) projectUpdates.project_type = extracted.project.project_type
+    if (extracted.project.target_deadline !== undefined && extracted.project.target_deadline !== null) projectUpdates.target_deadline = new Date(extracted.project.target_deadline as string)
+    if (extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null) projectUpdates.weekly_hours_commitment = extracted.project.weekly_hours_commitment
+    if (extracted.project.tools_and_stack !== undefined && extracted.project.tools_and_stack !== null) projectUpdates.tools_and_stack = extracted.project.tools_and_stack
+    if (extracted.project.skill_level !== undefined && extracted.project.skill_level !== null) projectUpdates.skill_level = extracted.project.skill_level
+    if (extracted.project.motivation !== undefined && extracted.project.motivation !== null) projectUpdates.motivation = extracted.project.motivation
+    if (extracted.project.phases !== undefined && extracted.project.phases !== null) projectUpdates.phases = extracted.project.phases
+    if (extracted.project.projectNotes !== undefined && extracted.project.projectNotes !== null) projectUpdates.projectNotes = extracted.project.projectNotes
+
+    // If weekly_hours_commitment was not extracted, derive from availabilityWindows
+    const hasWeeklyHours = extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null
+    const availabilityWindows = extracted.user.availabilityWindows
+    if (!hasWeeklyHours && Array.isArray(availabilityWindows) && availabilityWindows.length > 0) {
+      const computed = computeWeeklyHoursFromAvailabilityWindows(availabilityWindows)
+      if (computed > 0) {
+        projectUpdates.weekly_hours_commitment = computed
+        extracted.project.weekly_hours_commitment = computed
+      }
+    }
+
+    // 8. Save to database
+    const userId = project.userId
+    try {
+      if (Object.keys(userUpdates).length > 0) {
+        const userResult = await updateUser(userId, userUpdates)
+        if (!userResult.success) throw new Error(userResult.error?.message ?? 'User update failed')
+      }
+      if (Object.keys(projectUpdates).length > 0) {
+        const projectResult = await updateProject(projectId, userId, projectUpdates)
+        if (!projectResult.success) throw new Error(projectResult.error?.message ?? 'Project update failed')
+      }
+    } catch (dbErr) {
+      console.error('[OnboardingExtract] Database save failed:', dbErr)
+      return NextResponse.json({ error: 'Failed to save extracted data' }, { status: 500 })
+    }
+
+    // 9. Terminal logs: what was extracted and what was saved
+    console.log('[OnboardingExtract] Extracted user:', JSON.stringify(extracted.user, null, 2))
+    console.log('[OnboardingExtract] Extracted project:', JSON.stringify(extracted.project, null, 2))
+    if (Object.keys(userUpdates).length > 0) {
+      console.log('[OnboardingExtract] Saved to DB (user):', Object.keys(userUpdates).join(', '))
+    }
+    if (Object.keys(projectUpdates).length > 0) {
+      console.log('[OnboardingExtract] Saved to DB (project):', Object.keys(projectUpdates).join(', '))
+    }
+
+    // 10. Return
     return NextResponse.json({
-      user: extracted.user,
-      project: extracted.project,
+      success: true,
+      extracted: { user: extracted.user, project: extracted.project },
+      saved: {
+        user: Object.keys(userUpdates).length > 0 ? userUpdates : null,
+        project: Object.keys(projectUpdates).length > 0 ? projectUpdates : null,
+      },
     })
   } catch (err) {
     console.error('[OnboardingExtract] Extraction failure:', err)
