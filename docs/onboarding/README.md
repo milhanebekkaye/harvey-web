@@ -5,9 +5,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/page.tsx`
-  - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. **Step 6**: Weighted extraction progress (`calculateExtractionProgress`), minimum-fields check (`hasMinimumFields`), and completion-marker detection drive a three-state “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct); button at bottom of right column. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
+  - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. No top-of-page progress bar; the only progress indicator is the completion bar inside **ProjectShadowPanel**. After every Harvey response, triggers extraction in the background (`POST /api/onboarding/extract`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. **Step 6**: Weighted extraction progress (`calculateExtractionProgress`), minimum-fields check (`hasMinimumFields`), and completion-marker detection drive a three-state “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct); button at bottom of right column. Extraction runs only when `projectId` exists (set via stream `onData`); failures are logged and do not block the flow.
 - `src/components/onboarding/ProjectShadowPanel.tsx`
-  - **Feature D (Shadow Panel) Step 5 + 6 + 7**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. **Step 6**: Receives `progress` (0–100); header shows “Completion {progress}%” and a progress bar. **Step 7**: Inline editing: optional `projectId` and `onFieldUpdate(scope, field, value)`; Edit button on each filled field; one field in edit mode at a time; Save/Cancel per field; Escape cancels. Work schedule and availability windows use dedicated edit UIs (day selection, time inputs, add/remove blocks). Renders only non-null fields; phases and commute are display-only.
+  - **Feature D (Shadow Panel) Step 5 + 6 + 7**. Live-updating panel showing extracted user/project in three sections: Project Info, Your Schedule, Preferences. **Step 6**: Receives `progress` (0–100); header shows “Completion {progress}%” and a progress bar; header is **sticky** at the top when scrolling (completion bar and “Extracting…” stay visible). **Step 7**: Inline editing: optional `projectId` and `onFieldUpdate(scope, field, value)`; Edit button on each filled field; one field in edit mode at a time; Save/Cancel per field; Escape cancels. Work schedule and availability windows use dedicated edit UIs (day selection, time inputs, add/remove blocks). **userNotes** and **projectNotes** are displayed as bullet lists (split on “.”); edit via textarea with “separate points with periods” placeholder. Renders only non-null fields; phases and commute are display-only.
 - `src/app/api/onboarding/update-field/route.ts`
   - **Feature D Step 7**. `PATCH /api/onboarding/update-field`. Body: `{ projectId, scope: 'user' | 'project', field, value }`. Auth required; project ownership verified. Updates a single user or project field via `updateUser` / `updateProject`. Used by the Shadow Panel when the user saves an edited field.
 - `src/components/onboarding/ChatMessage.tsx`
@@ -15,7 +15,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `src/components/onboarding/ChatInput.tsx`
   - Text input with auto-expanding textarea and submit handling.
 - `src/components/onboarding/OnboardingProgress.tsx`
-  - Progress header and progress bar.
+  - Progress header and progress bar (“Setting up your project”). Not used on the onboarding page; only the Shadow Panel completion bar is shown.
 - `src/components/onboarding/OnboardingCTA.tsx`
   - “Build my schedule” CTA and loading state.
 - `src/components/onboarding/OnboardingHeader.tsx`
@@ -69,8 +69,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Closes confirmation modal if open, then redirects to `/loading` with `projectId` for schedule generation.
 - `handleStage1Click()` / `handleKeepChatting()`
   - Stage 1 button opens confirmation modal; “Keep Chatting” closes it.
-- `calculateProgress()`
-  - Computes **top progress bar** percentage based on count of user messages (unchanged).
+- (No top progress bar: only the Shadow Panel completion bar is shown; see `calculateExtractionProgress` and ProjectShadowPanel.)
 - `calculateExtractionProgress(fields)`
   - Returns 0–100 from weighted extracted fields (title, description/goals, availability, weekly_hours, deadline, project_type, skill_level, tools_and_stack, motivation, phases, workSchedule, commute, preferred_session_length, communication_style, timezone, userNotes, projectNotes).
 - `hasMinimumFields(fields)`

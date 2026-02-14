@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-14 – Feature D (Shadow Panel) Batch 1: Quick UI Fixes
+
+- **Agent / context**: Cursor AI – Polish Shadow Panel: single progress indicator, sticky completion bar, notes as bullet points.
+- **Summary**:
+  - **Single progress bar**: Removed the old “Setting up your project” progress bar (OnboardingProgress) from the onboarding page. The only progress indicator is now the “Completion X%” bar inside ProjectShadowPanel.
+  - **Sticky header**: ProjectShadowPanel header (title, completion bar, “Extracting…” indicator) is sticky at the top when scrolling. Uses `sticky top-0`, `z-10`, `bg-[#FAF9F6]`, and `border-b border-gray-200` so the bar stays visible and content scrolls underneath.
+  - **Notes as bullets**: userNotes and projectNotes are split on “.” and rendered as `<ul>` bullet lists; edit mode uses a textarea with placeholder “separate points with periods”. Empty segments are filtered out.
+- **Files touched**: `src/app/onboarding/page.tsx`, `src/components/onboarding/ProjectShadowPanel.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Reduce duplicate progress UI, keep extraction status visible while scrolling, and improve readability of multi-point notes.
+- **Risks / notes**: OnboardingProgress component remains in the codebase but is no longer used on the onboarding page. Notes stored as JSON from older extraction are stringified for display and edited as plain text.
+- **Related docs**: `ARCHITECTURE.md` (onboarding page, ProjectShadowPanel), `docs/onboarding/README.md`.
+
 ### 2026-02-13 – Feature D (Shadow Panel) Step 7: Inline Field Editing
 
 - **Agent / context**: Cursor AI – Allow users to correct extracted fields in the Shadow Panel with per-field Edit / Save / Cancel (Step 7).

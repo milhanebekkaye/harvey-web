@@ -85,6 +85,15 @@ function parseTimeToMinutes(timeStr: string): number | null {
   return h * 60 + m
 }
 
+/** Parse ISO date string to Date; return null if invalid (avoids Prisma "Invalid Date" error). */
+function parseValidDate(value: unknown): Date | null {
+  if (value == null) return null
+  const str = typeof value === 'string' ? value.trim() : String(value)
+  if (!str) return null
+  const d = new Date(str)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
 function computeWeeklyHoursFromAvailabilityWindows(
   windows: Array<{ days?: string[]; start_time?: string; end_time?: string }>
 ): number {
@@ -266,7 +275,8 @@ export async function POST(request: Request) {
     if (extracted.project.description !== undefined && extracted.project.description !== null) projectUpdates.description = extracted.project.description
     if (extracted.project.goals !== undefined && extracted.project.goals !== null) projectUpdates.goals = extracted.project.goals
     if (extracted.project.project_type !== undefined && extracted.project.project_type !== null) projectUpdates.project_type = extracted.project.project_type
-    if (extracted.project.target_deadline !== undefined && extracted.project.target_deadline !== null) projectUpdates.target_deadline = new Date(extracted.project.target_deadline as string)
+    const targetDeadlineDate = parseValidDate(extracted.project.target_deadline)
+    if (targetDeadlineDate !== null) projectUpdates.target_deadline = targetDeadlineDate
     if (extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null) projectUpdates.weekly_hours_commitment = extracted.project.weekly_hours_commitment
     if (extracted.project.tools_and_stack !== undefined && extracted.project.tools_and_stack !== null) projectUpdates.tools_and_stack = extracted.project.tools_and_stack
     if (extracted.project.skill_level !== undefined && extracted.project.skill_level !== null) projectUpdates.skill_level = extracted.project.skill_level

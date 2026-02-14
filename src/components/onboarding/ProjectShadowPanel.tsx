@@ -214,8 +214,9 @@ export function ProjectShadowPanel({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[#FAF9F6] p-8">
-      <header className="mb-6">
+    <div className="flex h-full flex-col bg-[#FAF9F6]">
+      {/* Fixed header: not inside scroll area so content never appears above it; solid background, no overlap */}
+      <header className="shrink-0 border-b border-gray-200 bg-[#FAF9F6] px-8 pt-8 pb-4">
         <h2 className="text-xl font-semibold text-gray-900">Harvey&apos;s Knowledge</h2>
         <p className="text-sm text-gray-500">Information extracted from our conversation</p>
         <div className="mt-3">
@@ -238,6 +239,8 @@ export function ProjectShadowPanel({
         )}
       </header>
 
+      {/* Scrollable content only — header stays fixed at top, nothing bleeds through */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-8 pt-6">
       {/* Section: Project Info */}
       <section className="mb-8">
         <h3 className="mb-4 text-lg font-semibold text-gray-900">Project Info</h3>
@@ -381,30 +384,34 @@ export function ProjectShadowPanel({
             </div>
           </div>
         )}
-        {project.projectNotes != null && project.projectNotes !== '' && (
+        {fields?.project?.projectNotes != null && fields.project.projectNotes !== '' && (
           <EditableField
             scope="project"
             fieldKey="projectNotes"
-            label="Project notes"
-            value={project.projectNotes}
-            renderDisplay={(v) => (
-              <p className="text-gray-900 text-sm">
-                {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-              </p>
-            )}
-            renderEdit={(v, onChange) => (
+            label="Project Notes"
+            value={fields.project.projectNotes}
+            renderDisplay={(value) => {
+              // Split by period into points; trim and filter empty to avoid empty bullets
+              const str = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
+              const points = str
+                .split('.')
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0)
+              return (
+                <ul className="list-disc list-inside space-y-1 text-gray-900 text-sm">
+                  {points.map((point: string, idx: number) => (
+                    <li key={idx}>{point}</li>
+                  ))}
+                </ul>
+              )
+            }}
+            renderEdit={(value, onChange) => (
               <textarea
-                value={typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v ?? '')}
-                onChange={(e) => {
-                  try {
-                    const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : ''
-                    onChange(parsed)
-                  } catch {
-                    onChange(e.target.value)
-                  }
-                }}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6] font-mono text-sm"
+                value={typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
+                onChange={(e) => onChange(e.target.value)}
+                rows={5}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                placeholder="Add project notes (separate points with periods)"
                 autoFocus
               />
             )}
@@ -814,36 +821,41 @@ export function ProjectShadowPanel({
             }}
           />
         )}
-        {user.userNotes != null && user.userNotes !== '' && (
+        {fields?.user?.userNotes != null && fields.user.userNotes !== '' && (
           <EditableField
             scope="user"
             fieldKey="userNotes"
-            label="User notes"
-            value={user.userNotes}
-            renderDisplay={(v) => (
-              <p className="text-gray-900 text-sm">
-                {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-              </p>
-            )}
-            renderEdit={(v, onChange) => (
+            label="Notes"
+            value={fields.user.userNotes}
+            renderDisplay={(value) => {
+              // Split by period into points; trim and filter empty to avoid empty bullets
+              const str = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
+              const points = str
+                .split('.')
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0)
+              return (
+                <ul className="list-disc list-inside space-y-1 text-gray-900 text-sm">
+                  {points.map((point: string, idx: number) => (
+                    <li key={idx}>{point}</li>
+                  ))}
+                </ul>
+              )
+            }}
+            renderEdit={(value, onChange) => (
               <textarea
-                value={typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v ?? '')}
-                onChange={(e) => {
-                  try {
-                    const parsed = e.target.value.trim() ? JSON.parse(e.target.value) : ''
-                    onChange(parsed)
-                  } catch {
-                    onChange(e.target.value)
-                  }
-                }}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6] font-mono text-sm"
+                value={typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')}
+                onChange={(e) => onChange(e.target.value)}
+                rows={5}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                placeholder="Add notes (separate points with periods)"
                 autoFocus
               />
             )}
           />
         )}
       </section>
+      </div>
     </div>
   )
 }

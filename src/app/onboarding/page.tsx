@@ -24,7 +24,6 @@ import { DefaultChatTransport } from 'ai'
 // Import all onboarding components from the centralized index
 import {
   ChatMessageList,
-  OnboardingProgress,
   OnboardingHeader,
   OnboardingCTA,
   ChatInput,
@@ -248,18 +247,6 @@ export default function OnboardingPage() {
 
   const isTyping = status === 'streaming' || status === 'submitted'
 
-  /**
-   * Progress percentage for the progress bar
-   */
-  const calculateProgress = (): number => {
-    if (isComplete) return 100
-    const userCount = messages.filter((m) => m.role === 'user').length
-    if (userCount === 0) return 0
-    return Math.min(90, userCount * 10)
-  }
-
-  const progressPercentage = calculateProgress()
-
   // ===== EFFECTS =====
 
   useEffect(() => {
@@ -397,14 +384,13 @@ export default function OnboardingPage() {
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-x-hidden bg-[#FAF9F6]">
-      <OnboardingProgress
-        percentage={progressPercentage}
-        isComplete={isComplete}
-      />
-
       <div className="flex flex-1 min-h-0">
         {/* Chat section – 40% */}
         <div className="flex w-[40%] flex-col border-r border-gray-200/80">
+          <header className="shrink-0 border-b border-gray-200/80 bg-[#FAF9F6] px-4 py-4">
+            <h1 className="text-lg font-semibold text-gray-900">Harvey</h1>
+            <p className="text-sm text-gray-500">Your AI project coach</p>
+          </header>
           <div className="flex-1 flex flex-col overflow-y-auto px-4 py-6">
             <div className="mx-auto w-full max-w-[600px] flex flex-col gap-6">
               {isComplete && (
