@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-15 – Onboarding smart prompt: date handling and known-info context
+
+- **Agent / context**: Cursor AI – Wire new onboarding system prompt with current date, day, and known-information summary; avoid duplicate questions and improve date calculations.
+- **Summary**:
+  - **prompts.ts**: Replaced static `ONBOARDING_SYSTEM_PROMPT` with a function `(currentDate, currentDay, knownInfo) => string`. Prompt now receives today’s date (YYYY-MM-DD), weekday (e.g. "Saturday"), and a generated summary of already-extracted info so Harvey doesn’t re-ask and can compute relative dates ("next Monday", "tomorrow") correctly. Added `generateKnownInfoSummary(projectData, userData)` to build that summary from project/user records (known vs still-missing fields).
+  - **Chat route** (`/api/chat`): For onboarding context, computes `currentDate` and `currentDay`, fetches project with user when `projectId` exists, calls `generateKnownInfoSummary(project, project.user)`, and passes `ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)` into `streamText()`. First message uses "Starting fresh" summary; subsequent messages get up-to-date known info so Harvey references the Shadow Panel and skips already-gathered data.
+  - **Extraction**: Added `task_preference` ("quick_wins" | "deep_focus" | "mixed") to project extraction schema and merge/save; added `Project.task_preference` in Prisma schema and `UpdateProjectData`; documented `preferred_session_length` in extraction field guidance (already extracted and saved).
+- **Files touched**: `src/lib/ai/prompts.ts`, `src/app/api/chat/route.ts`, `src/app/api/onboarding/extract/route.ts`, `src/prisma/schema.prisma`, `src/lib/projects/project-service.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Harvey should never ask the same question twice, calculate dates accurately from "next Thursday" etc., and direct users to the Shadow Panel for completion instead of repeating a text recap.
+- **Risks / notes**: Run `npx prisma migrate dev` (or equivalent) to add `task_preference` column if not using db push. Restore flow and Shadow Panel unchanged; extraction continues to run after each message and knownInfo is rebuilt each request from DB.
+- **Related docs**: `ARCHITECTURE.md` (chat route, onboarding), `docs/onboarding/README.md`.
+
 ### 2026-02-14 – Schedule generation analysis (no code changes)
 
 - **Agent / context**: Codex – Reviewed schedule generation pipeline and prompts to explain behavior for user request.

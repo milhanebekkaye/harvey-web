@@ -52,6 +52,7 @@ export type UpdateProjectData = Partial<{
   tools_and_stack: string[]
   project_type: string | null
   weekly_hours_commitment: number | null
+  task_preference: string | null
   motivation: string | null
   phases: unknown
   projectNotes: unknown

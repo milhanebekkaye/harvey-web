@@ -38,7 +38,8 @@ import {
 } from '@/lib/discussions/discussion-service'
 import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
-import { ONBOARDING_SYSTEM_PROMPT } from '@/lib/ai/prompts'
+import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
+import { prisma } from '@/lib/db/prisma'
 import { isIntakeComplete } from '@/lib/ai/claude-client'
 import type { StoredMessage } from '@/types/api.types'
 import type { UIMessage } from 'ai'
@@ -183,12 +184,32 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }))
 
+    // ===== STEP 4b: Build onboarding system prompt with date + known info (when onboarding) =====
+    const currentDate = new Date().toISOString().split('T')[0] 
+    console.log('currentDate :', currentDate)// YYYY-MM-DD
+    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' })
+    console.log('currentDay :', currentDay)
+    let knownInfo = 'KNOWN INFORMATION SO FAR:\n(Starting fresh - no information extracted yet)\n'
+    if (context === 'onboarding' && currentProjectId) {
+      const projectWithUser = await prisma.project.findUnique({
+        where: { id: currentProjectId },
+        include: { user: true },
+      })
+      if (projectWithUser) {
+        knownInfo = generateKnownInfoSummary(
+          projectWithUser as unknown as Record<string, unknown>,
+          projectWithUser.user as unknown as Record<string, unknown>
+        )
+      }
+    }
+    const systemPrompt = ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)
+
     // ===== STEP 5: Stream response =====
     // smoothStream: word-by-word with 5ms delay for natural ChatGPT-like typing feel
     const result = streamText({
       model: anthropic(MODEL_ID),
       maxOutputTokens: MAX_TOKENS,
-      system: ONBOARDING_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: modelMessages,
       experimental_transform: smoothStream({
         delayInMs: null, // No artificial delay - words appear as soon as ready

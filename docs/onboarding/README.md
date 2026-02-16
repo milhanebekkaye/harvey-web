@@ -84,6 +84,7 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `POST(request)`
   - Authenticates user.
   - Creates/loads project + discussion.
+  - **Onboarding**: Builds system prompt with `ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)`. Current date and weekday are computed; when `context === 'onboarding'` and `projectId` exists, fetches project with user and calls `generateKnownInfoSummary(project, user)` so Harvey sees what’s already extracted and doesn’t re-ask; first message uses "Starting fresh".
   - Streams Claude response via `streamText` + `createUIMessageStream`.
   - Saves messages to discussion when stream completes.
   - Sends `projectId` via transient data for client continuation.
@@ -138,7 +139,7 @@ During onboarding, after each chat message is saved, the chat API runs a lightwe
 - **Auth**: Same as other API routes (Supabase session required). Project must be owned by the authenticated user.
 - **Behavior**: Loads the onboarding discussion via `getOnboardingDiscussion(projectId, userId)`, builds conversation text from all messages (`User:` / `Harvey:` lines), calls Anthropic Haiku with a structured extraction prompt, parses and validates the JSON response. **Persistence (Step 3)**: Only **non-null** extracted fields are saved (merge logic – do not overwrite existing data with null). Uses `updateUser(userId, userUpdates)` and `updateProject(projectId, userId, projectUpdates)`. `target_deadline` is converted from ISO string to Date; arrays (availabilityWindows, tools_and_stack) replace existing values entirely.
 - **Response**: `{ success: true, extracted: { user, project }, saved: { user: userUpdates | null, project: projectUpdates | null } }` so the frontend knows what was written. Extracted = full extraction result; saved = only the keys that were actually updated.
-- **Response fields (extracted/saved)**: `user` (timezone, workSchedule, commute, availabilityWindows, preferred_session_length, communication_style, userNotes); `project` (title, description, goals, project_type, target_deadline, weekly_hours_commitment, tools_and_stack, skill_level, motivation, phases, projectNotes).
+- **Response fields (extracted/saved)**: `user` (timezone, workSchedule, commute, availabilityWindows, preferred_session_length, communication_style, userNotes); `project` (title, description, goals, project_type, target_deadline, weekly_hours_commitment, task_preference, tools_and_stack, skill_level, motivation, phases, projectNotes). `task_preference`: "quick_wins" | "deep_focus" | "mixed".
 - **Errors**: 401 Unauthorized, 400 missing/invalid projectId, 403 project not found or not owner, 404 no onboarding conversation, 500 extraction/parse failure or database save failure (logged to console).
 
 ## Inline field update (Feature D – Shadow Panel, Step 7)

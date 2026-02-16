@@ -38,6 +38,7 @@ Output format:
     "project_type": string | null,
     "target_deadline": string (ISO 8601) | null,
     "weekly_hours_commitment": number | null,
+    "task_preference": "quick_wins" | "deep_focus" | "mixed" | null,
     "tools_and_stack": string[] | null,
     "skill_level": string | null,
     "motivation": string | null,
@@ -62,6 +63,8 @@ Field-Specific Guidance:
 - skill_level: Look for "beginner", "intermediate", "advanced" or infer from context
 - communication_style: Infer from how user communicates (brief = "direct", detailed = "detailed")
 - weekly_hours_commitment: How many hours per week they'll work on THIS project
+- task_preference: How they like to work — "quick_wins" (small actionable items), "deep_focus" (longer blocks), or "mixed"
+- preferred_session_length: (user) How many minutes they can focus in one sitting (number, e.g. 60)
 - phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
 
 After extracting all fields, assess your confidence level (completion_confidence, 0-100):
@@ -379,6 +382,7 @@ export async function POST(request: Request) {
     const targetDeadlineDate = parseValidDate(extracted.project.target_deadline)
     if (targetDeadlineDate !== null) projectUpdates.target_deadline = targetDeadlineDate
     if (extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null) projectUpdates.weekly_hours_commitment = extracted.project.weekly_hours_commitment
+    if (extracted.project.task_preference !== undefined && extracted.project.task_preference !== null) projectUpdates.task_preference = extracted.project.task_preference
     if (extracted.project.tools_and_stack !== undefined && extracted.project.tools_and_stack !== null) projectUpdates.tools_and_stack = extracted.project.tools_and_stack
     if (extracted.project.skill_level !== undefined && extracted.project.skill_level !== null) projectUpdates.skill_level = extracted.project.skill_level
     if (extracted.project.motivation !== undefined && extracted.project.motivation !== null) projectUpdates.motivation = extracted.project.motivation

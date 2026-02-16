@@ -96,6 +96,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/chat`.
   - Streaming chat: uses Vercel AI SDK (`streamText`, `createUIMessageStream`, `createUIMessageStreamResponse`) with `@ai-sdk/anthropic`.
   - Accepts `messages`, `projectId`, `context` (onboarding | project-chat | task-chat).
+  - **Onboarding prompt**: When `context === 'onboarding'`, the system prompt is built by `ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)` — current date (YYYY-MM-DD), weekday (e.g. "Saturday"), and a known-info summary from `generateKnownInfoSummary(project, user)` so Harvey avoids re-asking and computes relative dates correctly. Known info is fetched from DB (project + user) when `projectId` is present; first message uses "Starting fresh".
   - Saves messages to Discussion on stream finish. Project title/description and other fields are extracted by the client-triggered `POST /api/onboarding/extract` after each message. See `docs/streaming-chat/README.md` and `docs/onboarding/README.md`.
 
 - **`onboarding/extract/route.ts`**
@@ -148,7 +149,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`projects/[projectId]/route.ts`**
   - GET `/api/projects/[projectId]`. Returns the project for the authenticated user (ownership checked). Used by Project Details page and for refetch after save.
-  - PATCH `/api/projects/[projectId]`. Partial update of project (title, description, goals, status, target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation). Validates types and ranges (e.g. weekly_hours 1–168, status active/paused/completed). Uses `project-service.getProjectById` and `project-service.updateProject`.
+  - PATCH `/api/projects/[projectId]`. Partial update of project (title, description, goals, status, target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, task_preference, motivation). Validates types and ranges (e.g. weekly_hours 1–168, status active/paused/completed). Uses `project-service.getProjectById` and `project-service.updateProject`.
 
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.
@@ -228,7 +229,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 ### `src/lib/ai/`
 
 - **`claude-client.ts`**: Helpers for Claude (`isIntakeComplete`, `cleanResponse`, `formatMessagesForClaude`). Non-streaming chat uses `getChatCompletion`; streaming chat uses Vercel AI SDK (`@ai-sdk/anthropic`) in the API route.
-- **`prompts.ts`**: All prompt templates and system instructions for AI interactions (e.g. how Harvey should respond, task breakdown prompts, schedule generation prompts).
+- **`prompts.ts`**: All prompt templates and system instructions for AI interactions. **Onboarding**: `ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)` is a function that returns the system prompt with date context and known-info summary; `generateKnownInfoSummary(projectData, userData)` builds the summary of already-extracted fields so Harvey doesn’t re-ask. `COMPLETION_MARKER` is still used for intake-complete detection.
 - **`project-extraction.ts`**: Extracts `project_title` and `project_description` from onboarding conversation via Claude. Used in chat route `onFinish` during onboarding to populate Project model early; mirrors the constraint extraction pattern.
 
 ### `src/lib/auth/`

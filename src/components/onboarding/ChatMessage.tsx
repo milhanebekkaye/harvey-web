@@ -19,6 +19,26 @@
 import type { ChatMessage as ChatMessageType } from '@/types/chat.types'
 import { ChatAvatar } from './ChatAvatar'
 
+/** Renders markdown-style **bold** as actual bold text. Wrapped in span for normal inline flow. */
+function formatMessageContent(text: string) {
+  if (!text) return null
+  const parts = text.split(/(\*\*[^*]+\*\*)/g)
+  return (
+    <span className="block">
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return (
+            <strong key={i} className="font-bold">
+              {part.slice(2, -2)}
+            </strong>
+          )
+        }
+        return part
+      })}
+    </span>
+  )
+}
+
 interface ChatMessageProps {
   /**
    * The message data to display
@@ -78,7 +98,7 @@ export function ChatMessage({
           {/* Message bubble - show streamed content progressively, or loading dots when no content yet */}
           <div className="text-base font-medium leading-relaxed flex max-w-[85%] rounded-2xl rounded-bl-none px-6 py-4 bg-white text-[#110d1c] shadow-md">
             {showContent ? (
-              content
+              formatMessageContent(content)
             ) : isStreaming ? (
               <span className="flex gap-1">
                 <span className="animate-bounce">.</span>
@@ -106,7 +126,7 @@ export function ChatMessage({
 
         {/* Message bubble - purple background, rounded except bottom-right */}
         <div className="text-base font-medium leading-relaxed flex max-w-[85%] rounded-2xl rounded-br-none px-6 py-4 bg-[#8B5CF6] text-white shadow-lg shadow-[#8B5CF6]/30">
-          {content}
+          {formatMessageContent(content ?? '')}
         </div>
       </div>
 

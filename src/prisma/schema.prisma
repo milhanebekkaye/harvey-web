@@ -53,6 +53,7 @@ model Project {
   tools_and_stack        String[]  @default([]) // e.g. ["Next.js", "Supabase", "Cursor"]
   project_type           String?   // "web app", "mobile app", "SaaS", "content", "script/automation", "other"
   weekly_hours_commitment Int?     // hours per week the user commits
+  task_preference        String?  // "quick_wins" | "deep_focus" | "mixed" — how user likes to work
   motivation             String?   // one-sentence why they're building this — drives coaching tone
   phases                 Json?     // { phases: [{ id, title, goal, deadline, status }], active_phase_id }; status: completed|active|future
   // Append-only array of observations: [{ "note": string, "extracted_at": string }]
