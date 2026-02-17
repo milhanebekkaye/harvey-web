@@ -299,6 +299,21 @@ export interface DashboardTask {
    * Task IDs this task depends on (for dependency chain and cascade skip)
    */
   dependsOn?: string[]
+
+  /**
+   * True when task is in a flexible window (no fixed time; display "During X · Yh").
+   */
+  isFlexible?: boolean
+
+  /**
+   * Boundary start for flexible tasks (e.g. '09:00').
+   */
+  windowStart?: string
+
+  /**
+   * Boundary end for flexible tasks (e.g. '17:30').
+   */
+  windowEnd?: string
 }
 
 // ============================================

@@ -234,7 +234,9 @@ export function TaskModal({
                 schedule
               </span>
               <span>
-                {formatTime(task.startTime)} - {formatTime(task.endTime)}
+                {task.isFlexible
+                  ? `${getFlexibleWindowLabel(task.windowStart, task.windowEnd)} · ${task.duration}`
+                  : `${formatTime(task.startTime)} - ${formatTime(task.endTime)}`}
               </span>
             </div>
           </div>
@@ -273,6 +275,22 @@ export function TaskModal({
       `}</style>
     </div>
   )
+}
+
+/**
+ * Human-readable label for a flexible window (morning / afternoon / work hours / evening).
+ */
+function getFlexibleWindowLabel(windowStart?: string, windowEnd?: string): string {
+  if (!windowStart || !windowEnd) return 'During the day'
+  const [sH, sM] = windowStart.split(':').map(Number)
+  const [eH, eM] = windowEnd.split(':').map(Number)
+  const startHours = sH + (sM || 0) / 60
+  const endHours = eH + (eM || 0) / 60
+  if (endHours <= 12) return 'During the morning'
+  if (startHours >= 12 && endHours <= 17) return 'During the afternoon'
+  if (startHours <= 10 && endHours >= 17) return 'During work hours'
+  if (startHours >= 17) return 'During the evening'
+  return 'During the day'
 }
 
 /**

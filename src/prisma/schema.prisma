@@ -105,6 +105,10 @@ model Task {
   scheduledDate     DateTime?
   scheduledStartTime DateTime?
   scheduledEndTime   DateTime?
+  // Flexible tasks: no fixed time, only boundary (e.g. "during work hours")
+  window_start  String?   // boundary start e.g. '09:00'
+  window_end    String?   // boundary end e.g. '17:30'
+  is_flexible   Boolean   @default(false)
   
   // Status
   status      String    @default("pending") // pending, in_progress, completed, skipped

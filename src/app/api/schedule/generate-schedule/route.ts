@@ -302,6 +302,7 @@ export async function POST(request: NextRequest) {
         taskTitle = `${originalTask.title} (Part ${scheduledTask.partNumber})`
       }
       const durationMinutes = Math.round(scheduledTask.hoursAssigned * 60)
+      const isFlexible = scheduledTask.isFlexible === true
       return {
         taskIndex: scheduledTask.taskIndex,
         data: {
@@ -315,8 +316,11 @@ export async function POST(request: NextRequest) {
           type: 'project',
           status: 'pending',
           scheduledDate: scheduledTask.date,
-          scheduledStartTime: scheduledTask.startTime,
-          scheduledEndTime: scheduledTask.endTime,
+          scheduledStartTime: isFlexible ? null : scheduledTask.startTime,
+          scheduledEndTime: isFlexible ? null : scheduledTask.endTime,
+          window_start: isFlexible ? scheduledTask.windowStart ?? null : null,
+          window_end: isFlexible ? scheduledTask.windowEnd ?? null : null,
+          is_flexible: isFlexible,
           label: normalizeTaskLabel(originalTask.label),
         },
       }
@@ -327,10 +331,14 @@ export async function POST(request: NextRequest) {
     taskRecords.forEach((record, index) => {
       const d = record.data
       const date = d.scheduledDate.toISOString().split('T')[0]
-      const start = d.scheduledStartTime.toTimeString().substring(0, 5)
-      const end = d.scheduledEndTime.toTimeString().substring(0, 5)
+      const timeStr =
+        d.is_flexible && d.window_start != null && d.window_end != null
+          ? `During ${d.window_start}-${d.window_end} (flexible)`
+          : d.scheduledStartTime != null && d.scheduledEndTime != null
+            ? `${d.scheduledStartTime.toTimeString().substring(0, 5)}-${d.scheduledEndTime.toTimeString().substring(0, 5)}`
+            : '—'
       const duration = `${(d.estimatedDuration / 60).toFixed(1)}h`
-      console.log(`  ${index + 1}. ${date} ${start}-${end} (${duration}) - ${d.title}`)
+      console.log(`  ${index + 1}. ${date} ${timeStr} (${duration}) - ${d.title}`)
     })
 
     // Create tasks one-by-one to get IDs, then set depends_on
@@ -344,10 +352,13 @@ export async function POST(request: NextRequest) {
       taskIndexToIds[taskIndex].push(created.id)
     }
 
-    // Map: task id → scheduled start time (ms) for validation
+    // Map: task id → scheduled start time (ms) for validation (flexible tasks use date midnight)
     const idToScheduledTime = new Map<string, number>()
     for (let j = 0; j < taskRecords.length; j++) {
-      idToScheduledTime.set(createdIds[j], taskRecords[j].data.scheduledStartTime.getTime())
+      const d = taskRecords[j].data
+      const timeMs =
+        d.scheduledStartTime != null ? d.scheduledStartTime.getTime() : d.scheduledDate.getTime()
+      idToScheduledTime.set(createdIds[j], timeMs)
     }
 
     // Resolve depends_on (1-based indices) to task IDs; only keep dependencies scheduled before this task
@@ -357,7 +368,9 @@ export async function POST(request: NextRequest) {
       const depIndices = originalTask.depends_on || []
       const dependantIds = depIndices.flatMap((oneBased) => taskIndexToIds[oneBased - 1] ?? [])
       const uniqueIds = [...new Set(dependantIds)]
-      const thisTaskTime = taskRecords[i].data.scheduledStartTime.getTime()
+      const startTime = taskRecords[i].data.scheduledStartTime
+      const thisTaskTime =
+        startTime != null ? startTime.getTime() : taskRecords[i].data.scheduledDate.getTime()
       const thisTaskId = createdIds[i]
       const thisTitle = taskRecords[i].data.title
 
@@ -372,7 +385,7 @@ export async function POST(request: NextRequest) {
           const depRecord = taskRecords[createdIds.indexOf(depId)]
           const depTitle = depRecord?.data.title ?? depId
           console.warn(
-            `[GenerateScheduleAPI] ⚠️ DEPENDS_ON validation: task "${thisTitle}" (${thisTaskId}) depends on "${depTitle}" (${depId}) but that task is scheduled AFTER this one. Dropping invalid dependency. This task scheduled: ${taskRecords[i].data.scheduledDate.toISOString().split('T')[0]} ${taskRecords[i].data.scheduledStartTime.toTimeString().slice(0, 5)}; dependency scheduled: ${depRecord?.data.scheduledDate?.toISOString().split('T')[0]} ${depRecord?.data.scheduledStartTime?.toTimeString().slice(0, 5)}.`
+            `[GenerateScheduleAPI] ⚠️ DEPENDS_ON validation: task "${thisTitle}" (${thisTaskId}) depends on "${depTitle}" (${depId}) but that task is scheduled AFTER this one. Dropping invalid dependency. This task scheduled: ${taskRecords[i].data.scheduledDate.toISOString().split('T')[0]} ${taskRecords[i].data.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'}; dependency scheduled: ${depRecord?.data.scheduledDate?.toISOString().split('T')[0]} ${depRecord?.data.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'}.`
           )
         }
       }

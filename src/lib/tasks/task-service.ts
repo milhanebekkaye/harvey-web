@@ -165,20 +165,32 @@ function getEndOfNextWeek(date: Date): Date {
  * @param dbTask - Task from database
  * @param userTimezone - User's IANA timezone (e.g. Europe/Paris) so times display in local time
  */
+/** Parse "HH:MM" to decimal hours for ordering. */
+function parseTimeStringToHours(timeStr: string | null | undefined): number {
+  if (!timeStr || typeof timeStr !== 'string') return 9
+  const [h, m] = timeStr.split(':').map(Number)
+  if (Number.isNaN(h)) return 9
+  return h + (Number.isNaN(m) ? 0 : m) / 60
+}
+
 export function transformToDashboardTask(dbTask: Task, userTimezone?: string): DashboardTask {
   const tz = userTimezone || 'UTC'
-  // Start/end as decimal hours in user's timezone for display
+  // Start/end as decimal hours in user's timezone for display (and ordering)
   let startTime = 9
   let endTime = 10
+  const isFlexible = dbTask.is_flexible === true
 
-  if (dbTask.scheduledStartTime) {
-    startTime = getHourDecimalInTimezone(dbTask.scheduledStartTime, tz)
-  }
-
-  if (dbTask.scheduledEndTime) {
-    endTime = getHourDecimalInTimezone(dbTask.scheduledEndTime, tz)
+  if (isFlexible && dbTask.window_start != null && dbTask.window_end != null) {
+    startTime = parseTimeStringToHours(dbTask.window_start)
+    endTime = parseTimeStringToHours(dbTask.window_end)
+    if (endTime <= startTime) endTime = startTime + dbTask.estimatedDuration / 60
   } else if (dbTask.scheduledStartTime) {
-    endTime = startTime + dbTask.estimatedDuration / 60
+    startTime = getHourDecimalInTimezone(dbTask.scheduledStartTime, tz)
+    if (dbTask.scheduledEndTime) {
+      endTime = getHourDecimalInTimezone(dbTask.scheduledEndTime, tz)
+    } else {
+      endTime = startTime + dbTask.estimatedDuration / 60
+    }
   }
 
   return {
@@ -198,6 +210,9 @@ export function transformToDashboardTask(dbTask: Task, userTimezone?: string): D
     scheduledDate: dbTask.scheduledDate?.toISOString(),
     projectId: dbTask.projectId || undefined,
     dependsOn: Array.isArray(dbTask.depends_on) ? [...dbTask.depends_on] : undefined,
+    isFlexible: isFlexible || undefined,
+    windowStart: dbTask.window_start ?? undefined,
+    windowEnd: dbTask.window_end ?? undefined,
   }
 }
 

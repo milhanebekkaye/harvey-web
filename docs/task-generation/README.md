@@ -29,7 +29,7 @@ If you expect UI entry points or additional services to trigger this flow, they 
 5. `generateTasks(conversationTextFull, constraints)` uses **full** conversation; Claude produces task text.
 6. `parseTasks(claudeResponse)` converts Claude output into `ParsedTask[]` and optional milestones.
 7. `calculateStartDate(constraints, userTimezone)` picks a schedule start date.
-8. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)` assigns tasks to time slots and splits them as needed.
+8. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)` assigns tasks to time slots and splits them as needed. **available_time** can include **flexible** blocks (optional `flexible_hours`); for those, slot capacity = flexible_hours (not end − start) and work/commute are not subtracted. Tasks assigned to flexible slots get `scheduledStartTime`/`scheduledEndTime` = null and `window_start`/`window_end`/`is_flexible` set; the timeline shows "During work hours · Xh" (or morning/afternoon/evening).
 9. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma.
 10. API returns `{ success, taskCount, milestones }`.
 
@@ -75,8 +75,8 @@ Reset flow:
   - Adds a number of days to a date.
 - `createDateTime(date, hours)`
   - Converts a date and decimal hours into a full datetime; supports hours >= 24 for overnight slots.
-- `buildAvailabilityMap(constraints)`
-  - Builds day -> time slots map from `available_time`, preserving overnight slots as continuous spans.
+- `buildAvailabilityMap(constraints, userBlocked?)`
+  - Builds day → time slots map from `available_time`. Fixed blocks are reduced by User work/commute. Blocks with **flexible_hours** create slots whose capacity = flexible_hours (no subtraction). Preserves overnight slots as continuous spans.
 - `calculateStartDate(constraints, userTimezone)`
   - Chooses start date using `preferences.start_preference` and user timezone.
   - Defaults to tomorrow, or next Monday if today is Fri/Sat/Sun.

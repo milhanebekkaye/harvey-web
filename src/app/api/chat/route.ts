@@ -187,6 +187,7 @@ export async function POST(request: NextRequest) {
 
     // ===== STEP 4b: Build onboarding system prompt with date + known info (when onboarding) =====
     const todayFormatted = new Date().toLocaleDateString('en-US', {
+      timeZone: 'Europe/Paris',
       weekday: 'long',
       year: 'numeric',
       month: 'long',

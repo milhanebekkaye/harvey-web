@@ -37,7 +37,7 @@ export interface UserBlockedInput {
 // ============================================
 
 /**
- * A task that has been assigned to a specific date and time
+ * A task that has been assigned to a specific date and time (or to a flexible window).
  */
 export interface ScheduledTaskAssignment {
   /**
@@ -56,17 +56,17 @@ export interface ScheduledTaskAssignment {
   date: Date
 
   /**
-   * Start time as full datetime
+   * Start time as full datetime (used for ordering; persisted as null when isFlexible)
    */
   startTime: Date
 
   /**
-   * End time as full datetime
+   * End time as full datetime (used for ordering; persisted as null when isFlexible)
    */
   endTime: Date
 
   /**
-   * Time block string for display: "09:00-11:00"
+   * Time block string for display: "09:00-11:00" or boundary for flexible
    */
   timeBlock: string
 
@@ -80,6 +80,21 @@ export interface ScheduledTaskAssignment {
    * Hours assigned to this slot (for split tasks)
    */
   hoursAssigned: number
+
+  /**
+   * True when task is assigned to a flexible window (no fixed time; use windowStart/windowEnd).
+   */
+  isFlexible?: boolean
+
+  /**
+   * Boundary start for flexible tasks (e.g. '09:00').
+   */
+  windowStart?: string
+
+  /**
+   * Boundary end for flexible tasks (e.g. '17:30').
+   */
+  windowEnd?: string
 }
 
 /**
@@ -108,13 +123,17 @@ export interface ScheduleResult {
 }
 
 /**
- * Internal representation of an available time slot
+ * Internal representation of an available time slot.
+ * When flexibleHours is set, slot capacity = flexibleHours (boundary in windowStart/windowEnd).
  */
 interface TimeSlot {
   day: string // monday, tuesday, etc.
   startHours: number // decimal hours (9.5 = 9:30 AM)
   endHours: number // decimal hours
   label?: string
+  flexibleHours?: number // when set, capacity = this; task gets is_flexible and window bounds
+  windowStart?: string // boundary start e.g. '09:00'
+  windowEnd?: string // boundary end e.g. '17:30'
 }
 
 /**
@@ -322,6 +341,7 @@ function subtractBlockedFromSlots(
 /**
  * Build availability map from constraints (available_time) and subtract User work/commute.
  * Groups available time by day of week; blocks from User.workSchedule and User.commute are excluded.
+ * Flexible blocks (flexible_hours set) use that as slot capacity and are not subtracted (already the user's capacity within the boundary).
  *
  * @param constraints - Extracted constraints (available_time from Project.contextData)
  * @param userBlocked - Optional User life constraints; blocked time is derived from these
@@ -332,8 +352,12 @@ function buildAvailabilityMap(
   userBlocked?: UserBlockedInput | null
 ): Map<string, TimeSlot[]> {
   const availability = new Map<string, TimeSlot[]>()
+  const blocks = constraints.available_time || []
+  const fixedBlocks = blocks.filter((b) => !(typeof (b as { flexible_hours?: number }).flexible_hours === 'number' && (b as { flexible_hours: number }).flexible_hours > 0))
+  const flexibleBlocks = blocks.filter((b) => typeof (b as { flexible_hours?: number }).flexible_hours === 'number' && (b as { flexible_hours: number }).flexible_hours > 0)
 
-  for (const block of constraints.available_time || []) {
+  // Fixed blocks: add then subtract User work/commute
+  for (const block of fixedBlocks) {
     const day = block.day.toLowerCase()
     const startHours = parseTimeToHours(block.start)
     const endHours = parseTimeToHours(block.end)
@@ -360,7 +384,7 @@ function buildAvailabilityMap(
     }
   }
 
-  // Subtract User work/commute blocked slots
+  // Subtract User work/commute from fixed slots only
   const hasWorkSchedule =
     userBlocked?.workSchedule &&
     (userBlocked.workSchedule.workDays?.length ||
@@ -372,6 +396,28 @@ function buildAvailabilityMap(
       const subtracted = subtractBlockedFromSlots(slots, blockedSlots)
       availability.set(day, subtracted.filter((s) => s.endHours - s.startHours >= 0.5))
     }
+  }
+
+  // Flexible blocks: add with capacity = flexible_hours; do not subtract (capacity is already the available amount within boundary)
+  for (const block of flexibleBlocks) {
+    const b = block as { day: string; start: string; end: string; flexible_hours: number; label?: string }
+    const day = b.day.toLowerCase()
+    const startHours = parseTimeToHours(b.start)
+    const flexHours = b.flexible_hours
+    const endHours = startHours + flexHours
+
+    if (!availability.has(day)) {
+      availability.set(day, [])
+    }
+    availability.get(day)!.push({
+      day,
+      startHours,
+      endHours,
+      label: b.label,
+      flexibleHours: flexHours,
+      windowStart: b.start,
+      windowEnd: b.end,
+    })
   }
 
   for (const [day, slots] of availability) {
@@ -626,12 +672,13 @@ export function assignTasksToSchedule(
     for (const slot of daySlots) {
       if (remainingTasks.length === 0) break
 
-      const slotDuration = slot.endHours - slot.startHours
+      const slotDuration = slot.flexibleHours ?? (slot.endHours - slot.startHours)
 
       if (slotDuration <= 0) continue
 
       let slotFilled = 0
       let currentSlotStartHours = slot.startHours
+      const isFlexibleSlot = slot.flexibleHours != null
 
       // Fill this slot with tasks
       while (slotFilled < slotDuration && remainingTasks.length > 0) {
@@ -651,9 +698,16 @@ export function assignTasksToSchedule(
             date: new Date(currentDate),
             startTime: createDateTimeInTimezone(currentDate, currentSlotStartHours, userTimezone),
             endTime: createDateTimeInTimezone(currentDate, taskEndHours, userTimezone),
-            timeBlock: `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
+            timeBlock: isFlexibleSlot
+              ? `${slot.windowStart ?? formatHoursToTime(slot.startHours)}-${slot.windowEnd ?? formatHoursToTime(slot.endHours)}`
+              : `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
             partNumber: task.partNumber > 1 ? task.partNumber : undefined,
             hoursAssigned: task.remainingHours,
+            ...(isFlexibleSlot && {
+              isFlexible: true,
+              windowStart: slot.windowStart,
+              windowEnd: slot.windowEnd,
+            }),
           })
 
           totalHoursScheduled += task.remainingHours
@@ -674,9 +728,16 @@ export function assignTasksToSchedule(
               date: new Date(currentDate),
               startTime: createDateTimeInTimezone(currentDate, currentSlotStartHours, userTimezone),
               endTime: createDateTimeInTimezone(currentDate, taskEndHours, userTimezone),
-              timeBlock: `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
+              timeBlock: isFlexibleSlot
+                ? `${slot.windowStart ?? formatHoursToTime(slot.startHours)}-${slot.windowEnd ?? formatHoursToTime(slot.endHours)}`
+                : `${formatHoursToTime(currentSlotStartHours)}-${formatHoursToTime(taskEndHours)}`,
               partNumber: task.partNumber,
               hoursAssigned: hoursThisSlot,
+              ...(isFlexibleSlot && {
+                isFlexible: true,
+                windowStart: slot.windowStart,
+                windowEnd: slot.windowEnd,
+              }),
             })
 
             totalHoursScheduled += hoursThisSlot
@@ -733,6 +794,7 @@ export function assignTasksToSchedule(
  * For tasks that are split across multiple slots, this returns the FIRST
  * scheduled slot's datetime as the task's scheduled time. The task will
  * appear on that day in the dashboard.
+ * For flexible tasks, scheduledStartTime/scheduledEndTime are null; window_start/window_end and is_flexible are set.
  *
  * @param taskIndex - Index of the task in the original array
  * @param scheduledTasks - All scheduled task assignments
@@ -741,12 +803,29 @@ export function assignTasksToSchedule(
 export function getTaskScheduleData(
   taskIndex: number,
   scheduledTasks: ScheduledTaskAssignment[]
-): { scheduledDate: Date; scheduledStartTime: Date; scheduledEndTime: Date } | null {
-  // Find the first scheduled block for this task (sorted by date/time)
+): {
+  scheduledDate: Date
+  scheduledStartTime: Date | null
+  scheduledEndTime: Date | null
+  window_start?: string
+  window_end?: string
+  is_flexible?: boolean
+} | null {
   const firstBlock = scheduledTasks.find((st) => st.taskIndex === taskIndex)
 
   if (!firstBlock) {
     return null
+  }
+
+  if (firstBlock.isFlexible) {
+    return {
+      scheduledDate: firstBlock.date,
+      scheduledStartTime: null,
+      scheduledEndTime: null,
+      window_start: firstBlock.windowStart,
+      window_end: firstBlock.windowEnd,
+      is_flexible: true,
+    }
   }
 
   return {

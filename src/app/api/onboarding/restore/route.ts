@@ -24,8 +24,8 @@ function buildExtractedFromDb(
   project: Awaited<ReturnType<typeof getProjectById>>,
   user: Awaited<ReturnType<typeof getUserById>>
 ): { user: Record<string, unknown>; project: Record<string, unknown> } {
-  const p = project as Record<string, unknown>
-  const u = user as Record<string, unknown>
+  const p = project as unknown as Record<string, unknown>
+  const u = user as unknown as Record<string, unknown>
   return {
     user: {
       timezone: u?.timezone ?? undefined,
@@ -93,7 +93,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!discussion || !(discussion.messages as StoredMessage[])?.length) {
+    if (!discussion || !(discussion.messages as StoredMessage[])?.length || !projectId) {
       return NextResponse.json({ restore: false }, { status: 200 })
     }
 

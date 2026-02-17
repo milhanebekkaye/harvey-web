@@ -50,6 +50,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-17 – Session 2: Flexible Availability Windows + Scheduler Fix
+
+- **Agent / context**: Cursor AI – Implement plan to fix scheduler ignoring daytime availability (schedules used ~14h/week instead of 37h) by adding fixed vs flexible windows, scheduler capacity from flexible_hours, and timeline display for flexible tasks.
+- **Summary**:
+  - **Schema**: Task model now has `window_start`, `window_end` (String?), `is_flexible` (Boolean, default false). Shared type **AvailabilityWindow** in `src/types/user.types.ts` (days, start_time, end_time, type, window_type: 'fixed' | 'flexible', flexible_hours?).
+  - **Extraction**: Onboarding extract prompt (`src/app/api/onboarding/extract/route.ts`) distinguishes FIXED (specific block every day) vs FLEXIBLE (X hours within a boundary); `computeWeeklyHoursFromAvailabilityWindows` uses `flexible_hours * days.length` for flexible windows.
+  - **Scheduler**: TimeBlock extended with `flexible_hours`, `window_type`. `buildConstraintsFromProjectAndUser` includes all windows; flexible windows push blocks with `flexible_hours`. `buildAvailabilityMap` (task-scheduler) creates slots with capacity = flexible_hours for flexible blocks (no work/commute subtraction). `assignTasksToSchedule` sets `isFlexible`, `windowStart`, `windowEnd` on assignments; generate-schedule route persists `scheduledStartTime`/`scheduledEndTime` null and `window_start`/`window_end`/`is_flexible` for flexible tasks. `calculateTotalAvailableHours` and `calculateBlockMinutes` use flexible_hours when set. `getTaskScheduleData` returns null times and window bounds for flexible tasks; regenerateSchedule full_rebuild passes new Task fields.
+  - **Timeline UI**: DashboardTask has `isFlexible`, `windowStart`, `windowEnd`. `transformToDashboardTask` maps them; flexible tasks get start/end from window for ordering. TaskTile and TaskModal show "During work hours · 2h" (or morning/afternoon/evening) for flexible tasks via `getFlexibleWindowLabel`.
+  - **Chat route**: `todayFormatted` now uses `timeZone: 'Europe/Paris'` so Harvey's date is Paris time, not UTC.
+- **Files touched**: `src/prisma/schema.prisma`, `src/types/user.types.ts`, `src/types/api.types.ts`, `src/types/task.types.ts`, `src/app/api/onboarding/extract/route.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/chat/tools/regenerateSchedule.ts`, `src/lib/tasks/task-service.ts`, `src/components/dashboard/TaskTile.tsx`, `src/components/dashboard/TaskModal.tsx`, `src/app/api/chat/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/settings/README.md`, `docs/task-generation/README.md`.
+- **Motivation**: Scheduler was effectively dropping daytime capacity because fixed 9–5 windows were added then fully subtracted by User workSchedule, leaving 0h. Flexible windows (e.g. "3h during 9–5") now contribute 3h capacity and tasks are stored with window bounds and no fixed time; UI shows "During work hours · Xh".
+- **Risks / notes**: Existing tasks without `is_flexible`/window fields display as before. Regenerate (full_rebuild) creates tasks with new shape when assignments are flexible. Rescheduling (remaining scope) does not create new tasks from scratch—only full rebuild does.
+- **Related docs**: `ARCHITECTURE.md` (User.availabilityWindows, Task, task-scheduler, buildConstraintsFromProjectAndUser), `docs/settings/README.md`, `docs/task-generation/README.md`.
+
 ### 2026-02-17 – Session 1: Date Awareness + Missing Fields Injection
 
 - **Agent / context**: Cursor AI – Implement plan: fix Harvey date confusion and gate “Build my schedule” on critical fields (specific tech stack, skill level, etc.).

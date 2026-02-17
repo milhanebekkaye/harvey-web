@@ -27,7 +27,7 @@ Output format:
     "timezone": string | null,
     "workSchedule": { "days": string[], "start_time": string, "end_time": string } | null,
     "commute": { "morning": { "duration": number, "start_time": string }, "evening": { "duration": number, "start_time": string } } | null,
-    "availabilityWindows": [{ "days": string[], "start_time": string, "end_time": string, "type": string }] | null,
+    "availabilityWindows": [{ "days": string[], "start_time": string, "end_time": string, "type": string, "window_type": "fixed" | "flexible", "flexible_hours": number | null }] | null,
     "preferred_session_length": number | null,
     "communication_style": string | null,
     "userNotes": string | null
@@ -58,7 +58,9 @@ CRITICAL RULES:
 6. Extract from the ENTIRE conversation - consider all messages
 
 Field-Specific Guidance:
-- availabilityWindows: Array of time blocks. User might say "I work Mon-Fri 9-5" → extract as availability window
+- availabilityWindows: Array of time blocks. Distinguish FIXED vs FLEXIBLE:
+  - FIXED: User works a specific, predictable time block every day. Example: "I work 8-10pm every evening" → window_type: "fixed", start_time: "20:00", end_time: "22:00", type: e.g. "evening_work".
+  - FLEXIBLE: User has X hours available somewhere inside a larger time boundary; exact timing varies. Example: "I have 3 hours during my 9-5 workday" → window_type: "flexible", flexible_hours: 3, start_time: "09:00", end_time: "17:30", type: e.g. "work_on_project". Example: "I can work 2 hours in the afternoon" → window_type: "flexible", flexible_hours: 2, start_time: "12:00", end_time: "18:00". Do NOT store the full boundary as working time: for "3 hours during 9-5", store flexible_hours: 3, not 8.5h. Always include "type" (e.g. work_on_project, evening_work, weekend) as a label for the window.
 - workSchedule: Specifically their job hours
 - tools_and_stack: Programming languages, frameworks, tools mentioned
 - skill_level: Look for "beginner", "intermediate", "advanced" or infer from context
@@ -187,15 +189,26 @@ function normalizePhasesToCanonical(raw: unknown): CanonicalPhases | null {
 }
 
 function computeWeeklyHoursFromAvailabilityWindows(
-  windows: Array<{ days?: string[]; start_time?: string; end_time?: string }>
+  windows: Array<{
+    days?: string[]
+    start_time?: string
+    end_time?: string
+    window_type?: string
+    flexible_hours?: number | null
+  }>
 ): number {
   if (!Array.isArray(windows) || windows.length === 0) return 0
   let totalMinutes = 0
   for (const w of windows) {
     const days = Array.isArray(w.days) ? w.days : []
+    if (days.length === 0) continue
+    if (w.window_type === 'flexible' && typeof w.flexible_hours === 'number' && w.flexible_hours > 0) {
+      totalMinutes += w.flexible_hours * 60 * days.length
+      continue
+    }
     const startM = parseTimeToMinutes(String(w.start_time ?? ''))
     const endM = parseTimeToMinutes(String(w.end_time ?? ''))
-    if (startM == null || endM == null || days.length === 0) continue
+    if (startM == null || endM == null) continue
     let durationMinutes: number
     if (endM > startM) durationMinutes = endM - startM
     else if (endM < startM) durationMinutes = 24 * 60 - startM + endM

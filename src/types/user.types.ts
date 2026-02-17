@@ -3,6 +3,19 @@
  */
 
 /**
+ * Shape of each availability window (User.availabilityWindows is an array of these).
+ * fixed = exact time block; flexible = X hours within a boundary.
+ */
+export interface AvailabilityWindow {
+  days: string[]           // e.g. ['monday', 'tuesday', ..., 'friday']
+  start_time: string       // e.g. '09:00'
+  end_time: string        // e.g. '17:30'
+  type: string            // e.g. 'work_on_project', 'evening_work', 'weekend'
+  window_type: 'fixed' | 'flexible'
+  flexible_hours?: number // only when window_type === 'flexible', e.g. 3
+}
+
+/**
  * User model from database
  * Matches Prisma User model structure
  */

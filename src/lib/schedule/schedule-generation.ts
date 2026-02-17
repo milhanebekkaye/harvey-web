@@ -20,6 +20,7 @@ import type {
   WorkScheduleShape,
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
+import type { AvailabilityWindow } from '../../types/user.types'
 
 // ============================================
 // System Prompts (from Telegram bot)
@@ -316,6 +317,9 @@ export function calculateTotalAvailableHours(
  */
 function calculateBlockMinutes(block: TimeBlock): number {
   try {
+    if (typeof block.flexible_hours === 'number' && block.flexible_hours > 0) {
+      return Math.round(block.flexible_hours * 60)
+    }
     const [startHour, startMin] = block.start.split(':').map(Number)
     const [endHour, endMin] = block.end.split(':').map(Number)
 
@@ -443,16 +447,21 @@ export function buildConstraintsFromProjectAndUser(
   if (Array.isArray(contextData.available_time) && contextData.available_time.length > 0) {
     available_time = contextData.available_time as TimeBlock[]
   } else {
-    const windows = user.availabilityWindows as Array<{ days?: string[]; start_time?: string; end_time?: string }> | undefined
+    const windows = user.availabilityWindows as AvailabilityWindow[] | undefined
     if (Array.isArray(windows) && windows.length > 0) {
       for (const w of windows) {
         const days = Array.isArray(w.days) ? w.days : []
         const start = typeof w.start_time === 'string' ? w.start_time : '20:00'
         const end = typeof w.end_time === 'string' ? w.end_time : '22:00'
+        const isFlexible = w.window_type === 'flexible' && typeof w.flexible_hours === 'number' && w.flexible_hours > 0
         for (const d of days) {
           const day = String(d).toLowerCase()
           if (DAY_NAME_TO_NUM[day] !== undefined) {
-            available_time.push({ day, start, end })
+            if (isFlexible) {
+              available_time.push({ day, start, end, window_type: 'flexible', flexible_hours: w.flexible_hours! })
+            } else {
+              available_time.push({ day, start, end })
+            }
           }
         }
       }

@@ -172,6 +172,7 @@ export interface GenerateScheduleResponse {
  *
  * Represents a block of time (blocked or available).
  * type is used for project availability blocks (work = dedicated work time, personal = personal project time).
+ * When flexible_hours is set, slot capacity = flexible_hours (boundary is start/end); otherwise capacity = end - start.
  */
 export interface TimeBlock {
   day: string // monday, tuesday, etc. (lowercase)
@@ -179,6 +180,8 @@ export interface TimeBlock {
   end: string // 24-hour format: "08:00", "17:30"
   label?: string // e.g., "Classes", "Work", "Class break"
   type?: 'work' | 'personal' // for availability blocks only
+  window_type?: 'fixed' | 'flexible'
+  flexible_hours?: number // when set, capacity = this (not end - start); only for flexible windows
 }
 
 /**

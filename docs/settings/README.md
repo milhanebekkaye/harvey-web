@@ -63,6 +63,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 ## Availability blocks data model (including overnight)
 
 - Each block is stored as a single object: `{ day, start, end, type? }`. `day` is the **start** day (e.g. `"friday"`).
+- **Onboarding / User.availabilityWindows**: Windows can be **fixed** (exact time block every day) or **flexible** (X hours somewhere within a boundary); extraction uses `window_type: 'fixed' | 'flexible'` and optional `flexible_hours` (e.g. 3 for "3 hours during 9–5"). Settings availability blocks are currently fixed only; flexible windows from onboarding are used by the scheduler for capacity.
 - **Same-day**: `end` &gt; `start` (e.g. Monday 14:00–16:00). Renders as one segment on that day.
 - **Overnight**: `end` ≤ `start` (e.g. Friday 23:00 – 02:00). Stored as one block; in the week grid it is shown split across two days: `[day] start–24:00` and `nextDay(day) 00:00–end`. Day order is Monday → Tuesday → … → Sunday → Monday.
 - Edge cases: 22:00–00:00 is treated as overnight (segment until 24:00 on start day; next-day segment 0–0 is effectively empty). Full overnight (e.g. 00:00–23:59) is valid and spans the whole next day.
