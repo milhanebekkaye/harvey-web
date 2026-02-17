@@ -81,7 +81,7 @@ Reset flow:
   - Chooses start date using `preferences.start_preference` and user timezone.
   - Defaults to tomorrow, or next Monday if today is Fri/Sat/Sun.
 - `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)`
-  - Core scheduling loop. First orders tasks by dependencies (topological sort), then by priority, then fills available slots day by day.
+  - Core scheduling loop. Orders tasks by dependencies only (topological sort); no priority re-sort, so dependency order is preserved. Then fills available slots day by day.
   - Splits tasks when they do not fit in a slot; minimum split block is 1 hour; ignores slots under 30 minutes remaining.
   - Returns scheduled tasks and unscheduled task indices with totals.
 - `getTaskScheduleData(taskIndex, scheduledTasks)`
@@ -109,7 +109,7 @@ Reset flow:
 Tasks can declare dependencies on other tasks so Harvey knows e.g. that "Build authentication" must come after "Set up database."
 
 - **Storage**: `Task.depends_on` is a `String[]` of task IDs this task depends on.
-- **Generation**: Claude may output an optional line per task: `DEPENDS_ON: 1, 3` (1-based indices of tasks in the generated list). The parser fills `ParsedTask.depends_on`; the scheduler orders tasks by dependency (topological sort) then priority; when creating DB tasks, dependency indices are resolved to task IDs and saved on each task.
+- **Generation**: Claude may output an optional line per task: `DEPENDS_ON: 1, 3` (1-based indices of tasks in the generated list). The parser fills `ParsedTask.depends_on`; the scheduler orders tasks by **dependency only** (topological sort). We do **not** re-sort by priority after that, so dependency order is never broken (e.g. "Build authentication" always after "Set up database"). When creating DB tasks, dependency indices are resolved to task IDs and saved on each task.
 - **Rescheduling**: The scheduler never schedules a task before its dependencies. When the user resets and regenerates, the new schedule respects dependencies.
 - **Skip behavior**: When a task is set to **skipped**, the task service finds all tasks whose `depends_on` includes that task’s ID and sets them to **skipped** (cascade). The PATCH `/api/tasks/[taskId]` response may include `downstreamSkippedIds` so the client can show e.g. “You skipped ‘Set up database.’ ‘Build authentication’ depends on it, so it was skipped too.”
 

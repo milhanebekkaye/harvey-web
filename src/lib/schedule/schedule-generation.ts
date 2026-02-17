@@ -11,9 +11,12 @@ import { anthropic, CLAUDE_CONFIG } from '../ai/claude-client'
 import type {
   CommuteShape,
   ExtractedConstraints,
+  ExtractedNote,
+  ExtractedPhases,
   ParsedTask,
   ParseResult,
   TimeBlock,
+  UserPreferences,
   WorkScheduleShape,
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
@@ -118,6 +121,8 @@ Now extract from this conversation:`
  * Generate the task generation system prompt dynamically.
  *
  * Based on Telegram bot's generate_tasks_from_project() function.
+ * Uses top-level constraints.skill_level (extraction stores it there, not under preferences).
+ * Note: preferences.gym, energy_peak, break_preference are extracted but not yet used in task generation (future: session timing, energy-aware scheduling).
  *
  * @param constraints - Extracted constraints from conversation
  * @param availableHoursPerWeek - Calculated available hours per week
@@ -129,7 +134,9 @@ function buildTaskGenerationPrompt(
 ): string {
   const scheduleWeeks = constraints.schedule_duration_weeks || 2
   const totalAvailableHours = availableHoursPerWeek * scheduleWeeks
-  const skillLevel = constraints.preferences?.skill_level || 'intermediate'
+  // Bug fix: skill_level is top-level on constraints (extraction stores it there), not under preferences
+  const skillLevel = constraints.skill_level || 'intermediate'
+  const sessionMinutes = constraints.preferred_session_length ?? 120
 
   // Build exclusions text if any
   const exclusions = constraints.exclusions || []
@@ -138,13 +145,57 @@ function buildTaskGenerationPrompt(
       ? `\n- EXCLUDED FEATURES (DO NOT include): ${exclusions.join(', ')}`
       : ''
 
+  // --- User context: motivation, skill, session length, tech stack, deadline (enriched extraction) ---
+  const userContext = `
+USER CONTEXT:
+- Motivation: ${constraints.motivation || 'Not specified'}
+- Skill level: ${skillLevel}
+- Preferred work sessions: ${sessionMinutes} minutes
+- Tech stack: ${constraints.tools_and_stack?.join(', ') || 'Not specified'}
+- Project type: ${constraints.project_type || 'Not specified'}
+${constraints.target_deadline ? `- Target deadline: ${new Date(constraints.target_deadline).toLocaleDateString()} (IMPORTANT: pace tasks to hit this date)` : ''}
+`
+
+  // --- Phases: if user defined phases, align tasks with active phase goals ---
+  const phasesContext = constraints.phases?.phases?.length
+    ? `
+PROJECT PHASES:
+User has defined these phases:
+${constraints.phases.phases.map((p) => `- Phase ${p.id}: ${p.title}${p.goal ? ` (Goal: ${p.goal})` : ''}${p.deadline ? ` (Deadline: ${p.deadline})` : ''} [${p.status}]`).join('\n')}
+
+Currently active: Phase ${constraints.phases.active_phase_id ?? constraints.phases.phases[0]?.id ?? 1}
+IMPORTANT: Structure tasks to align with the active phase goals.
+`
+    : ''
+
+  // --- Project notes: critical context Harvey should respect ---
+  const notesContext =
+    constraints.project_notes && constraints.project_notes.length > 0
+      ? `
+CRITICAL PROJECT CONTEXT:
+${constraints.project_notes.map((n) => `- ${n.note}`).join('\n')}
+`
+      : ''
+
+  // --- Communication style: affects tone of descriptions and success criteria ---
+  const communicationStyle = constraints.communication_style || 'encouraging'
+  const styleGuidance = {
+    direct: 'Be concise and directive. No fluff. Clear steps and success criteria only.',
+    encouraging: 'Use supportive, motivating language. Frame tasks as achievements. Celebrate progress.',
+    detailed: 'Provide context and reasoning. Explain WHY tasks matter. Include learning resources or tips.',
+  }[communicationStyle]
+  const communicationSection = `
+COMMUNICATION STYLE: ${styleGuidance}
+This affects how you write task descriptions and success criteria.
+`
+
   return `You are an expert project planner. Generate tasks with DETAILED descriptions and success criteria.
 
 CONTEXT FROM CONVERSATION:
 - Schedule duration: ${scheduleWeeks} weeks
 - Available hours per week: ${availableHoursPerWeek.toFixed(1)} hours
-- TOTAL AVAILABLE HOURS: ${totalAvailableHours.toFixed(1)} hours
-- User's skill level: ${skillLevel}${exclusionsText}
+- TOTAL AVAILABLE HOURS: ${totalAvailableHours.toFixed(1)} hours${exclusionsText}
+${userContext}${phasesContext}${notesContext}${communicationSection}
 
 OUTPUT FORMAT - Each task must have:
 
@@ -192,6 +243,20 @@ RULES:
 - CRITICAL: Generate enough tasks to use approximately ${totalAvailableHours.toFixed(0)} hours total
 - The sum of all task hours should be close to ${totalAvailableHours.toFixed(0)} hours (±10%)
 - If the project is smaller than ${totalAvailableHours.toFixed(0)} hours, break tasks into smaller subtasks or add polish/testing/documentation tasks
+
+SPECIFICITY REQUIREMENTS:
+- Task titles MUST include specific tool names when tech stack is provided. "Set up Next.js project with App Router" NOT "Set up web framework"
+- Task titles MUST have concrete action verbs + specific objects. "Build user authentication flow with email validation" NOT "Work on auth"
+- Descriptions MUST be step-by-step executable actions, not vague goals
+- Success criteria MUST be measurable and testable. "Login form validates email format and redirects to /dashboard" NOT "Auth works"
+
+SESSION LENGTH OPTIMIZATION:
+- User prefers ${sessionMinutes} minute work sessions
+- Target tasks that fit in 1-2 sessions (${sessionMinutes * 1}-${sessionMinutes * 2} minutes)
+- Avoid tasks that are too fragmented (<30 min) or too monolithic (>6 hours)
+
+DEADLINE PACING:
+${constraints.target_deadline ? `- User deadline is ${new Date(constraints.target_deadline).toLocaleDateString()}. Schedule ${scheduleWeeks} weeks is ${scheduleWeeks >= 3 ? 'a comfortable pace' : 'TIGHT - prioritize critical path tasks'}` : '- No deadline specified - maintain sustainable pace'}
 
 MILESTONES (if schedule < full project):
 After all tasks, if this is a partial schedule, add:
@@ -316,6 +381,213 @@ function getDefaultConstraints(): ExtractedConstraints {
     ],
     preferences: {},
   }
+}
+
+/** Default available_time when User.availabilityWindows is missing or empty (e.g. 2h weekday evenings). */
+const DEFAULT_AVAILABLE_TIME: TimeBlock[] = [
+  { day: 'monday', start: '20:00', end: '22:00' },
+  { day: 'tuesday', start: '20:00', end: '22:00' },
+  { day: 'wednesday', start: '20:00', end: '22:00' },
+  { day: 'thursday', start: '20:00', end: '22:00' },
+  { day: 'friday', start: '20:00', end: '22:00' },
+  { day: 'saturday', start: '09:00', end: '18:00' },
+  { day: 'sunday', start: '09:00', end: '18:00' },
+]
+
+const DAY_NAME_TO_NUM: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+}
+
+/**
+ * Build ExtractedConstraints from Project and User records (last extracted data from onboarding).
+ * Used when the user clicks "Build Schedule" so we use the same data as the Shadow Panel
+ * (no second extraction). Prefers Project.contextData when present (e.g. from Settings).
+ *
+ * @param project - Project from DB (contextData, enrichment fields)
+ * @param user - User from DB (availabilityWindows, workSchedule, commute, enrichment)
+ * @returns ExtractedConstraints for generateTasks and assignTasksToSchedule
+ */
+export function buildConstraintsFromProjectAndUser(
+  project: {
+    contextData?: unknown
+    target_deadline?: Date | string | null
+    skill_level?: string | null
+    tools_and_stack?: string[] | null
+    project_type?: string | null
+    weekly_hours_commitment?: number | null
+    motivation?: string | null
+    phases?: unknown
+    projectNotes?: unknown
+  },
+  user: {
+    availabilityWindows?: unknown
+    workSchedule?: unknown
+    commute?: unknown
+    preferred_session_length?: number | null
+    communication_style?: string | null
+    userNotes?: unknown
+  }
+): ExtractedConstraints {
+  const contextData = (project.contextData ?? {}) as Record<string, unknown>
+  const prefs = (contextData.preferences ?? {}) as UserPreferences
+  const preferences: UserPreferences = { ...prefs }
+
+  // available_time: prefer contextData; else derive from User.availabilityWindows
+  let available_time: TimeBlock[] = []
+  if (Array.isArray(contextData.available_time) && contextData.available_time.length > 0) {
+    available_time = contextData.available_time as TimeBlock[]
+  } else {
+    const windows = user.availabilityWindows as Array<{ days?: string[]; start_time?: string; end_time?: string }> | undefined
+    if (Array.isArray(windows) && windows.length > 0) {
+      for (const w of windows) {
+        const days = Array.isArray(w.days) ? w.days : []
+        const start = typeof w.start_time === 'string' ? w.start_time : '20:00'
+        const end = typeof w.end_time === 'string' ? w.end_time : '22:00'
+        for (const d of days) {
+          const day = String(d).toLowerCase()
+          if (DAY_NAME_TO_NUM[day] !== undefined) {
+            available_time.push({ day, start, end })
+          }
+        }
+      }
+    }
+    if (available_time.length === 0) {
+      console.warn('[ScheduleGeneration] User.availabilityWindows missing or empty; using default weekday evenings')
+      available_time = [...DEFAULT_AVAILABLE_TIME]
+    }
+  }
+
+  // schedule_duration_weeks: prefer contextData; else from target_deadline; else 2
+  let schedule_duration_weeks = 2
+  if (typeof contextData.schedule_duration_weeks === 'number' && contextData.schedule_duration_weeks >= 1) {
+    schedule_duration_weeks = contextData.schedule_duration_weeks
+  } else if (project.target_deadline) {
+    const deadline = typeof project.target_deadline === 'string' ? new Date(project.target_deadline) : project.target_deadline
+    if (!Number.isNaN(deadline.getTime())) {
+      const now = new Date()
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000
+      const weeks = Math.ceil((deadline.getTime() - now.getTime()) / msPerWeek)
+      schedule_duration_weeks = Math.max(1, weeks)
+    }
+  }
+
+  // work_schedule: from User.workSchedule (onboarding shape or legacy workDays/startTime/endTime)
+  let work_schedule: WorkScheduleShape | null = null
+  const ws = user.workSchedule as Record<string, unknown> | undefined
+  if (ws && typeof ws === 'object') {
+    const workDays = ws.workDays as number[] | undefined
+    const startTime = ws.startTime as string | undefined
+    const endTime = ws.endTime as string | undefined
+    if (Array.isArray(workDays) && workDays.length > 0 && startTime && endTime) {
+      work_schedule = { workDays, startTime, endTime }
+    } else {
+      const days = ws.days as string[] | undefined
+      const start_time = (ws.start_time as string) ?? '09:00'
+      const end_time = (ws.end_time as string) ?? '17:30'
+      if (Array.isArray(days) && days.length > 0) {
+        const workDaysNum = days
+          .map((d) => DAY_NAME_TO_NUM[String(d).toLowerCase()])
+          .filter((n) => n !== undefined) as number[]
+        if (workDaysNum.length > 0) {
+          work_schedule = { workDays: [...new Set(workDaysNum)].sort((a, b) => a - b), startTime: start_time, endTime: end_time }
+        }
+      }
+    }
+  }
+
+  // commute: from User.commute (onboarding uses duration/start_time -> durationMinutes/startTime)
+  let commute: CommuteShape | null = null
+  const comm = user.commute as Record<string, unknown> | undefined
+  if (comm && typeof comm === 'object') {
+    const morning = comm.morning as Record<string, unknown> | undefined
+    const evening = comm.evening as Record<string, unknown> | undefined
+    const out: CommuteShape = {}
+    if (morning && typeof morning === 'object') {
+      const dur = morning.durationMinutes ?? morning.duration
+      const start = (morning.startTime ?? morning.start_time) as string | undefined
+      if (typeof dur === 'number' && start) {
+        out.morning = { durationMinutes: dur, startTime: String(start) }
+      }
+    }
+    if (evening && typeof evening === 'object') {
+      const dur = evening.durationMinutes ?? evening.duration
+      const start = (evening.startTime ?? evening.start_time) as string | undefined
+      if (typeof dur === 'number' && start) {
+        out.evening = { durationMinutes: dur, startTime: String(start) }
+      }
+    }
+    if (out.morning || out.evening) commute = out
+  }
+
+  // Normalize notes to ExtractedNote[]
+  function toNotes(val: unknown): ExtractedNote[] {
+    if (val == null) return []
+    if (Array.isArray(val)) {
+      return val
+        .filter((x) => x && typeof x === 'object' && typeof (x as Record<string, unknown>).note === 'string')
+        .map((x) => {
+          const r = x as Record<string, unknown>
+          const extracted_at = typeof r.extracted_at === 'string' ? r.extracted_at : new Date().toISOString()
+          return { note: String(r.note), extracted_at }
+        })
+    }
+    if (typeof val === 'string' && val.trim()) {
+      return [{ note: val.trim(), extracted_at: new Date().toISOString() }]
+    }
+    return []
+  }
+
+  // phases: ensure ExtractedPhases shape (phases array + active_phase_id)
+  let phases: ExtractedPhases | null = null
+  const rawPhases = project.phases as Record<string, unknown> | undefined
+  if (rawPhases && typeof rawPhases === 'object' && Array.isArray(rawPhases.phases) && rawPhases.phases.length > 0) {
+    const phaseList = rawPhases.phases as Array<Record<string, unknown>>
+    const phasesMapped = phaseList.map((p, i) => ({
+      id: typeof p.id === 'number' ? p.id : i + 1,
+      title: String(p.title ?? ''),
+      goal: p.goal != null && p.goal !== '' ? String(p.goal) : null,
+      deadline: p.deadline != null && p.deadline !== '' ? String(p.deadline) : null,
+      status: String(p.status ?? 'future'),
+    }))
+    const activeId = typeof rawPhases.active_phase_id === 'number' ? rawPhases.active_phase_id : phasesMapped[0]?.id ?? 1
+    phases = { phases: phasesMapped, active_phase_id: activeId }
+  }
+
+  const target_deadline =
+    project.target_deadline != null
+      ? typeof project.target_deadline === 'string'
+        ? project.target_deadline
+        : project.target_deadline.toISOString()
+      : null
+
+  const constraints: ExtractedConstraints = {
+    schedule_duration_weeks,
+    blocked_time: [],
+    available_time,
+    preferences,
+    exclusions: Array.isArray(contextData.exclusions) ? (contextData.exclusions as string[]) : [],
+    work_schedule: work_schedule ?? undefined,
+    commute: commute ?? undefined,
+    target_deadline: target_deadline ?? undefined,
+    skill_level: project.skill_level ?? undefined,
+    tools_and_stack: Array.isArray(project.tools_and_stack) ? project.tools_and_stack : undefined,
+    project_type: project.project_type ?? undefined,
+    weekly_hours_commitment: project.weekly_hours_commitment ?? undefined,
+    motivation: project.motivation ?? undefined,
+    phases: phases ?? undefined,
+    project_notes: toNotes(project.projectNotes).length > 0 ? toNotes(project.projectNotes) : undefined,
+    preferred_session_length: user.preferred_session_length ?? undefined,
+    communication_style: user.communication_style ?? undefined,
+    user_notes: toNotes(user.userNotes).length > 0 ? toNotes(user.userNotes) : undefined,
+  }
+
+  return constraints
 }
 
 /**

@@ -8,7 +8,7 @@
  *
  * Algorithm:
  * 1. Build availability map from constraints (day → time slots)
- * 2. Sort tasks by priority (high first, then by order)
+ * 2. Sort tasks by dependency order only (topological sort). We do NOT re-sort by priority so dependencies are never broken.
  * 3. For each day in schedule period:
  *    - Get available slots for that day of week
  *    - For each slot, try to fit tasks by duration
@@ -585,15 +585,12 @@ export function assignTasksToSchedule(
     )
   }
 
-  // First order by dependencies (dependents after their dependencies), then by priority, then by index
-  const dependencyOrder = sortIndicesByDependencies(tasks)
-  const sortedTaskIndices = dependencyOrder.sort((a, b) => {
-    const priorityOrder = { high: 1, medium: 2, low: 3 }
-    const aPriority = priorityOrder[tasks[a].priority] || 2
-    const bPriority = priorityOrder[tasks[b].priority] || 2
-    if (aPriority !== bPriority) return aPriority - bPriority
-    return a - b // Maintain dependency/order for same priority
-  })
+  // CRITICAL: We do NOT sort by priority after topological sort because:
+  // 1. Dependencies are more important than priority
+  // 2. Re-sorting breaks the dependency chain (high-priority dependent task could move before its dependency)
+  // 3. Claude already orders tasks by importance in the generation prompt
+  // If we want priority sorting, it must be done WITHIN each dependency layer (not globally)
+  const sortedTaskIndices = sortIndicesByDependencies(tasks)
 
   // Create remaining tasks queue
   const remainingTasks: RemainingTask[] = sortedTaskIndices.map((taskIndex) => ({

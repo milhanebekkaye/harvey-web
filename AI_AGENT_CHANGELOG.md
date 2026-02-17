@@ -50,6 +50,42 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-17 – Schedule generation analysis (current version)
+
+- **Agent / context**: Codex – Updated schedule generation walkthrough per user request after recent changes.
+- **Summary**:
+  - Reviewed current task generation and scheduling pipeline, including new DB-based constraint build, prompt enrichment, and dependency ordering.
+  - Documented gaps (unused extracted fields, parsing limitations, and scheduling omissions) in chat response; no code changes.
+- **Files touched**: `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Provide an accurate, up-to-date explanation of the current schedule generation behavior.
+- **Risks / notes**: None (analysis only).
+- **Related docs**: `docs/task-generation/README.md`, `ARCHITECTURE.md`.
+
+### 2026-02-16 – Build Schedule uses last extracted data (no second extraction)
+
+- **Agent / context**: Cursor AI – Use last onboarding extraction when user clicks "Build Schedule" instead of re-running extractConstraints().
+- **Summary**:
+  - When the user clicks "Build Schedule", the generate-schedule route now loads full Project and User from the DB and builds `ExtractedConstraints` via new **buildConstraintsFromProjectAndUser(project, user)**. No second Claude extraction; the data used is exactly what the Shadow Panel shows (from the last POST /api/onboarding/extract after each Harvey message).
+  - **schedule-generation.ts**: Added `buildConstraintsFromProjectAndUser()` to map DB shape to ExtractedConstraints (available_time from User.availabilityWindows or contextData; schedule_duration_weeks from contextData or target_deadline; work_schedule/commute from User with onboarding vs legacy shape; enrichment from Project/User; notes/phases normalized). Prefers Project.contextData when present (e.g. manual Settings). Empty availability falls back to default weekday evenings with a warning.
+  - **generate-schedule/route.ts**: After loading the onboarding discussion, loads project (getProjectById) and user (getUserById); replaces Step 5 (extractConstraints) with buildConstraintsFromProjectAndUser(project, dbUser); still writes contextData from built constraints so Settings and chat tools keep seeing available_time; removed project/user enrichment writes (data already in DB from last extraction). Preserves contextData.one_off_blocks when updating.
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Avoid duplicate extraction and use the same data the user sees in the Shadow Panel; if the user replies after Harvey says "click the button," the next extraction updates the panel and that becomes the data used when they click Build Schedule.
+- **Risks / notes**: extractConstraints() remains in schedule-generation.ts for potential use by full rebuild or other flows. If User.availabilityWindows is missing/empty, a default available_time is used so scheduling does not fail.
+- **Related docs**: `ARCHITECTURE.md` (schedule generation, API routes), `docs/schedule-generation.md`, `docs/task-generation/README.md`.
+
+### 2026-02-16 – Schedule Generation Improvements
+
+- **Agent / context**: Cursor AI – Fix critical bugs and integrate enriched extraction data into schedule generation (Sprint Task A follow-up).
+- **Summary**:
+  - **Fixed**: `skill_level` was read from wrong path (`preferences.skill_level` → `skill_level` top-level). Extraction stores it at top-level; all users were previously treated as "intermediate".
+  - **Fixed**: Dependency order was destroyed by a second sort by priority in `task-scheduler.ts`. Removed priority re-sort after topological sort so "Build authentication" cannot be scheduled before "Setup database".
+  - **Added**: Integration with enriched extraction: motivation, phases, target_deadline, tech stack, project_type, preferred_session_length, project_notes, communication_style in `buildTaskGenerationPrompt()`. New prompt sections: USER CONTEXT, PROJECT PHASES, CRITICAL PROJECT CONTEXT, COMMUNICATION STYLE; new rules: SPECIFICITY REQUIREMENTS, SESSION LENGTH OPTIMIZATION, DEADLINE PACING.
+  - **Changed**: `buildTaskGenerationPrompt()` now uses 12+ context fields for personalization; task-scheduler orders tasks by dependency only (no priority re-sort). Comment added that `gym`, `energy_peak`, `break_preference` are extracted but not yet used in task generation (future feature).
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `ai_agent_changelog.md`, `docs/task-generation/README.md`, `architecture.md`.
+- **Motivation**: Correct skill level and dependency ordering; leverage Task A extraction improvements so generated tasks are specific (tool names, session-sized, deadline-paced) and tone matches communication style.
+- **Risks / notes**: Prompt is longer; keep under ~2500 words. No change to `parseTasks()` or `assignTasksToSchedule()` logic other than the dependency sort fix.
+- **Related docs**: `ARCHITECTURE.md` (schedule-generation, task-scheduler), `docs/task-generation/README.md` (Task Dependencies, dependency sorting).
+
 ### 2026-02-15 – Onboarding smart prompt: date handling and known-info context
 
 - **Agent / context**: Cursor AI – Wire new onboarding system prompt with current date, day, and known-information summary; avoid duplicate questions and improve date calculations.

@@ -11,7 +11,7 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, Project } from '@prisma/client'
 
 /**
  * Data needed to create a new project
@@ -64,16 +64,7 @@ export type UpdateProjectData = Partial<{
  */
 export interface ProjectServiceResponse {
   success: boolean
-  project?: {
-    id: string
-    userId: string
-    title: string
-    description: string | null
-    goals: string | null
-    status: string
-    createdAt: Date
-    updatedAt: Date
-  }
+  project?: Project
   error?: {
     message: string
     code?: string

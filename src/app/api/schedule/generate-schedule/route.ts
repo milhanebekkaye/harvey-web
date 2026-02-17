@@ -10,12 +10,12 @@
  * Flow:
  * 1. Authenticate user via Supabase
  * 2. Get projectId from request body
- * 3. Load Discussion from database
+ * 3. Load Discussion and full Project + User from database
  * 4. Convert messages to conversation text
- * 5. Extract constraints using Claude
+ * 5. Build constraints from last extracted data (Project + User) — no second extraction
  * 6. Generate tasks using Claude
  * 7. Parse tasks
- * 8. Save constraints to Project.contextData
+ * 8. Save contextData from built constraints (so Settings/tools have available_time)
  * 9. Schedule tasks to specific dates/times using algorithm
  * 10. Create Task records in database with scheduled dates
  * 10.5. Append Harvey's post-schedule message to Discussion (so user sees it in chat sidebar)
@@ -37,13 +37,13 @@ import type { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
 import {
-  extractConstraints,
+  buildConstraintsFromProjectAndUser,
   generateTasks,
   parseTasks,
   convertSuccessCriteriaToJson,
 } from '@/lib/schedule/schedule-generation'
-import { updateProject } from '@/lib/projects/project-service'
-import { updateUser } from '@/lib/users/user-service'
+import { getProjectById } from '@/lib/projects/project-service'
+import { getUserById } from '@/lib/users/user-service'
 import {
   assignTasksToSchedule,
   calculateStartDate,
@@ -126,7 +126,25 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] Onboarding discussion found:', discussion.id)
 
-    // ===== STEP 3.5: Check if tasks already exist for this project =====
+    // ===== STEP 3.5: Load full Project and User (last extracted data from onboarding) =====
+    const project = await getProjectById(projectId, user.id)
+    const dbUser = await getUserById(user.id)
+    if (!project) {
+      console.error('[GenerateScheduleAPI] Project not found or not owned by user')
+      return NextResponse.json(
+        { success: false, error: 'Project not found', code: 'PROJECT_NOT_FOUND' },
+        { status: 404 }
+      )
+    }
+    if (!dbUser) {
+      console.error('[GenerateScheduleAPI] User record not found')
+      return NextResponse.json(
+        { success: false, error: 'User not found', code: 'USER_NOT_FOUND' },
+        { status: 404 }
+      )
+    }
+
+    // ===== STEP 3.6: Check if tasks already exist for this project =====
     // This prevents duplicate task creation from double API calls (React Strict Mode, network retries)
     const existingTasks = await prisma.task.findMany({
       where: { projectId: projectId },
@@ -157,43 +175,25 @@ export async function POST(request: NextRequest) {
     const conversationTextFull = messages
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join('\n\n')
-    // Last 15 messages for extraction (cost constraint)
-    const messagesForExtraction = messages.slice(-15)
-    const conversationTextForExtraction = messagesForExtraction
-      .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
-      .join('\n\n')
 
-    console.log('[GenerateScheduleAPI] Conversation has', messages.length, 'messages (extraction uses last', messagesForExtraction.length, ')')
+    console.log('[GenerateScheduleAPI] Conversation has', messages.length, 'messages')
 
-    // ===== STEP 5: Extract Constraints =====
-    console.log('[GenerateScheduleAPI] Step 5: 🔍 Extracting constraints from conversation...')
+    // ===== STEP 5: Build constraints from last extracted data (Project + User) =====
+    console.log('[GenerateScheduleAPI] Step 5: Building constraints from DB (last onboarding extraction)...')
+    // project from getProjectById is full Prisma Project (contextData, target_deadline, etc.)
+    type ProjectForConstraints = Parameters<typeof buildConstraintsFromProjectAndUser>[0]
+    const constraints = buildConstraintsFromProjectAndUser(project as ProjectForConstraints, dbUser)
+    console.log('[GenerateScheduleAPI] ✅ Built constraints:', JSON.stringify(constraints, null, 2))
 
-    let constraints: ExtractedConstraints
-    try {
-      constraints = await extractConstraints(conversationTextForExtraction)
-    } catch (constraintError) {
-      console.error('[GenerateScheduleAPI] ❌ Failed to extract constraints:', constraintError)
-      return NextResponse.json(
-        {
-          error: 'Failed to analyze your conversation. Please try generating your schedule again.',
-          details: constraintError instanceof Error ? constraintError.message : 'Unknown error',
-        },
-        { status: 500 }
-      )
-    }
-
-    console.log('[GenerateScheduleAPI] ✅ Extracted constraints:', JSON.stringify(constraints, null, 2))
-
-    // ===== STEP 5.5: Save project allocations to contextData (no blocked_time); User life constraints to User =====
+    // ===== STEP 5.5: Save contextData from built constraints (Settings and chat tools read available_time from here) =====
     const constraintsAny = constraints as unknown as Record<string, unknown>
+    const existingContext = (project.contextData ?? {}) as Record<string, unknown>
     const contextDataSubset = {
       schedule_duration_weeks: constraints.schedule_duration_weeks,
       available_time: constraints.available_time,
       preferences: constraints.preferences,
       exclusions: constraints.exclusions,
-      ...(constraintsAny.one_off_blocks != null && {
-        one_off_blocks: constraintsAny.one_off_blocks,
-      }),
+      ...(existingContext.one_off_blocks != null && { one_off_blocks: existingContext.one_off_blocks }),
     }
 
     await prisma.project.update({
@@ -204,54 +204,7 @@ export async function POST(request: NextRequest) {
       },
     })
     console.log('[GenerateScheduleAPI] ✅ Saved project contextData (available_time, preferences; no blocked_time)')
-
-    // Project enrichment (only defined values; fail gracefully)
-    const projectEnrichment: Record<string, unknown> = {}
-    if (constraints.target_deadline != null && constraints.target_deadline !== '') {
-      projectEnrichment.target_deadline = new Date(constraints.target_deadline)
-    }
-    if (constraints.skill_level != null && constraints.skill_level !== '') projectEnrichment.skill_level = constraints.skill_level
-    if (constraints.tools_and_stack != null && constraints.tools_and_stack.length > 0) projectEnrichment.tools_and_stack = constraints.tools_and_stack
-    if (constraints.project_type != null && constraints.project_type !== '') projectEnrichment.project_type = constraints.project_type
-    if (constraints.weekly_hours_commitment != null) projectEnrichment.weekly_hours_commitment = constraints.weekly_hours_commitment
-    if (constraints.motivation != null && constraints.motivation !== '') projectEnrichment.motivation = constraints.motivation
-    if (constraints.phases != null) projectEnrichment.phases = constraints.phases
-    // TODO: Before Feature 8 (Schedule Regeneration), change this to MERGE
-    // existing projectNotes with new extraction results rather than overwriting.
-    // Current behavior (overwrite) is safe only on first generation.
-    if (constraints.project_notes != null && constraints.project_notes.length > 0) {
-      projectEnrichment.projectNotes = constraints.project_notes
-    }
-
-    if (Object.keys(projectEnrichment).length > 0) {
-      try {
-        await updateProject(projectId, user.id, projectEnrichment as Parameters<typeof updateProject>[2])
-        console.log('[GenerateScheduleAPI] ✅ Saved project enrichment')
-      } catch (err) {
-        console.error('[GenerateScheduleAPI] ⚠️ Project enrichment update failed (non-fatal):', err)
-      }
-    }
-
-    // User: life constraints (workSchedule, commute) + enrichment (preferred_session_length, communication_style, userNotes)
-    const userEnrichment: Record<string, unknown> = {}
-    if (constraints.work_schedule != null && constraints.work_schedule.workDays?.length) {
-      userEnrichment.workSchedule = constraints.work_schedule
-    }
-    if (constraints.commute != null && (constraints.commute.morning || constraints.commute.evening)) {
-      userEnrichment.commute = constraints.commute
-    }
-    if (constraints.preferred_session_length != null) userEnrichment.preferred_session_length = constraints.preferred_session_length
-    if (constraints.communication_style != null && constraints.communication_style !== '') userEnrichment.communication_style = constraints.communication_style
-    if (constraints.user_notes != null && constraints.user_notes.length > 0) userEnrichment.userNotes = constraints.user_notes
-
-    if (Object.keys(userEnrichment).length > 0) {
-      try {
-        await updateUser(user.id, userEnrichment as Parameters<typeof updateUser>[1])
-        console.log('[GenerateScheduleAPI] ✅ Saved user (workSchedule, commute, enrichment)')
-      } catch (err) {
-        console.error('[GenerateScheduleAPI] ⚠️ User update failed (non-fatal):', err)
-      }
-    }
+    // Project/User enrichment is not rewritten here — it already comes from the last onboarding extraction.
 
     // ===== STEP 6: Generate Tasks =====
     console.log('[GenerateScheduleAPI] Step 6: 🎯 Generating tasks...')
@@ -284,12 +237,7 @@ export async function POST(request: NextRequest) {
     console.log('[GenerateScheduleAPI] Step 8: 📅 Scheduling tasks to specific dates/times...')
 
     // Calculate start date based on user preference (or default to tomorrow/next Monday)
-    // Get user's timezone from database
-    const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { timezone: true },
-    })
-
+    // Use timezone from the user we already loaded (dbUser from Step 3.5)
     const userTimezone = dbUser?.timezone || 'UTC'
     console.log(`[GenerateScheduleAPI] User timezone: ${userTimezone}`)
 
