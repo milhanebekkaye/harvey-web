@@ -39,6 +39,7 @@ import {
 import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
+import { computeMissingFields, buildMissingFieldsGuidance } from '@/lib/onboarding/missing-fields'
 import { prisma } from '@/lib/db/prisma'
 import { isIntakeComplete } from '@/lib/ai/claude-client'
 import type { StoredMessage } from '@/types/api.types'
@@ -185,11 +186,14 @@ export async function POST(request: NextRequest) {
     }))
 
     // ===== STEP 4b: Build onboarding system prompt with date + known info (when onboarding) =====
-    const currentDate = new Date().toISOString().split('T')[0] 
-    console.log('currentDate :', currentDate)// YYYY-MM-DD
-    const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'long' })
-    console.log('currentDay :', currentDay)
+    const todayFormatted = new Date().toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
     let knownInfo = 'KNOWN INFORMATION SO FAR:\n(Starting fresh - no information extracted yet)\n'
+    let missingFieldsGuidance = 'You have no information yet. Start by understanding their project.'
     if (context === 'onboarding' && currentProjectId) {
       const projectWithUser = await prisma.project.findUnique({
         where: { id: currentProjectId },
@@ -200,9 +204,21 @@ export async function POST(request: NextRequest) {
           projectWithUser as unknown as Record<string, unknown>,
           projectWithUser.user as unknown as Record<string, unknown>
         )
+        console.log('[ChatAPI] Onboarding: computing missing fields for prompt', { projectId: currentProjectId, userId: projectWithUser.userId })
+        let blocking: string[] = []
+        let enriching: string[] = []
+        try {
+          const missing = await computeMissingFields(currentProjectId, projectWithUser.userId)
+          blocking = missing.blocking
+          enriching = missing.enriching
+        } catch (err) {
+          console.error('[ChatAPI] computeMissingFields failed:', err)
+        }
+        console.log('[ChatAPI] Onboarding: missing fields', { blocking, enriching })
+        missingFieldsGuidance = buildMissingFieldsGuidance(blocking, enriching)
       }
     }
-    const systemPrompt = ONBOARDING_SYSTEM_PROMPT(currentDate, currentDay, knownInfo)
+    const systemPrompt = ONBOARDING_SYSTEM_PROMPT(todayFormatted, knownInfo, missingFieldsGuidance)
 
     // ===== STEP 5: Stream response =====
     // smoothStream: word-by-word with 5ms delay for natural ChatGPT-like typing feel

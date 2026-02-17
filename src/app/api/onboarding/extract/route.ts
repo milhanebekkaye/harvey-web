@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db/prisma'
 import { anthropic, CLAUDE_CONFIG } from '@/lib/ai/claude-client'
 import { updateUser } from '@/lib/users/user-service'
 import { updateProject } from '@/lib/projects/project-service'
+import { computeMissingFields } from '@/lib/onboarding/missing-fields'
 
 const EXTRACTION_PROMPT = `You are extracting structured data from a conversation between a user and Harvey (an AI project coach).
 
@@ -416,6 +417,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save extracted data' }, { status: 500 })
     }
 
+    // 8b. Compute missing blocking/enriching fields from fresh DB state (for frontend button + Harvey guidance)
+    console.log('[OnboardingExtract] Computing missing fields after save', { projectId, userId })
+    let missingBlockingFields: string[] = []
+    let missingEnrichingFields: string[] = []
+    try {
+      const missing = await computeMissingFields(projectId, userId)
+      missingBlockingFields = missing.blocking
+      missingEnrichingFields = missing.enriching
+      console.log('[OnboardingExtract] Missing fields result:', { missingBlockingFields, missingEnrichingFields })
+    } catch (err) {
+      console.error('[OnboardingExtract] computeMissingFields failed:', err)
+    }
+
     // 9. Terminal logs: summary + what was extracted and saved
     const countFilled = (obj: Record<string, unknown>) =>
       Object.entries(obj).filter(([, v]) => v != null && v !== '' && (typeof v !== 'object' || (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0))).length
@@ -442,6 +456,8 @@ export async function POST(request: Request) {
         project: Object.keys(projectUpdates).length > 0 ? projectUpdates : null,
       },
       completion_confidence: completionConfidence,
+      missingBlockingFields,
+      missingEnrichingFields,
     })
   } catch (err) {
     console.error('[OnboardingExtract] Extraction failure:', err)

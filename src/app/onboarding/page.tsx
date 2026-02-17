@@ -198,6 +198,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     project: Record<string, unknown>
   } | null>(initialExtracted ?? null)
   const [harveyConfidence, setHarveyConfidence] = useState(0)
+  const [missingBlockingFields, setMissingBlockingFields] = useState<string[]>([])
   const [extractionLoading, setExtractionLoading] = useState(false)
 
   const triggerExtraction = useCallback(async (currentProjectId: string) => {
@@ -220,6 +221,10 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       const confidence = typeof result.completion_confidence === 'number'
         ? Math.min(100, Math.max(0, Math.round(result.completion_confidence)))
         : 0
+      const blocking: string[] = Array.isArray(result.missingBlockingFields)
+        ? result.missingBlockingFields
+        : []
+      setMissingBlockingFields(blocking)
       const nextFields = extracted && (extracted.user != null || extracted.project != null)
         ? { user: extracted.user ?? {}, project: extracted.project ?? {} }
         : null
@@ -227,9 +232,11 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       const buttonState =
         fieldCompletenessPct < 40
           ? 'DISABLED (need ≥40% field completeness)'
-          : confidence >= 80
-            ? 'STAGE 2 (Harvey ready)'
-            : 'STAGE 1 (can build, more info recommended)'
+          : blocking.length > 0
+            ? 'DISABLED (blocking fields missing)'
+            : confidence >= 80
+              ? 'STAGE 2 (Harvey ready)'
+              : 'STAGE 1 (can build, more info recommended)'
       console.log('[OnboardingExtraction] ─── Completion summary ───')
       console.log('[OnboardingExtraction] Field completeness:', fieldCompletenessPct + '%', '| Harvey confidence:', confidence + '%', '| Button:', buttonState)
       console.log('[OnboardingExtraction] Saved to DB:', saved ? { user: !!saved.user, project: !!saved.project } : null)
@@ -340,10 +347,11 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
   }
 
   const fieldCompleteness = calculateFieldCompleteness(shadowFields)
-  const canBuild = fieldCompleteness >= 40
+  const canBuild =
+    fieldCompleteness >= 40 && (missingBlockingFields?.length ?? 0) === 0
   const isReady = canBuild && (harveyConfidence >= 80 || hasCompletionMarker)
   if (process.env.NODE_ENV === 'development' && (shadowFields || harveyConfidence > 0)) {
-    console.log('[Onboarding] Field completeness:', fieldCompleteness + '%', "| Harvey's confidence:", harveyConfidence + '%')
+    console.log('[Onboarding] Field completeness:', fieldCompleteness + '%', "| Harvey's confidence:", harveyConfidence + '%', '| missingBlocking:', missingBlockingFields?.length ?? 0)
   }
 
   // ===== DERIVED STATE =====

@@ -50,6 +50,17 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-17 – Session 1: Date Awareness + Missing Fields Injection
+
+- **Agent / context**: Cursor AI – Implement plan: fix Harvey date confusion and gate “Build my schedule” on critical fields (specific tech stack, skill level, etc.).
+- **Summary**:
+  - **Fixed**: Harvey now correctly references today’s date using an unambiguous long format (“Monday, February 17, 2026”) at the top of the onboarding system prompt; “Build my schedule” button now requires specific tech tools (not vague descriptions like “web app”) and other blocking fields before activating.
+  - **Added**: `computeMissingFields(projectId, userId)` in `src/lib/onboarding/missing-fields.ts` that loads fresh project/user from DB and returns blocking vs enriching missing fields; dynamic missing-fields guidance injected into onboarding system prompt via `buildMissingFieldsGuidance()`; two-tier field system (blocking: description, availabilityWindows, tools_and_stack, skill_level; enriching: preferred_session_length, weekly_hours_commitment); extract API returns `missingBlockingFields` and `missingEnrichingFields`; onboarding page uses `missingBlockingFields` so `canBuild` is true only when field completeness ≥ 40% and no blocking fields are missing.
+- **Files touched**: `src/lib/ai/prompts.ts`, `src/app/api/chat/route.ts`, `src/lib/onboarding/missing-fields.ts` (new), `src/app/api/onboarding/extract/route.ts`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `architecture.md`, `docs/onboarding/README.md`.
+- **Motivation**: Harvey sometimes used the wrong date for “in 6 days” / “next Friday”; users could hit “Build my schedule” with vague `tools_and_stack: ["web app"]` and `skill_level: null`, producing generic schedules. Now date is explicit and the button is gated on real, specific data.
+- **Risks / notes**: `tools_and_stack` is treated as missing when it only contains vague terms (blocklist: “web app”, “app”, “AI”, etc.). Restore does not return `missingBlockingFields`; after restore the next extraction populates it.
+- **Related docs**: `ARCHITECTURE.md` (chat route, onboarding, extract API), `docs/onboarding/README.md`.
+
 ### 2026-02-17 – Schedule generation analysis (current version)
 
 - **Agent / context**: Codex – Updated schedule generation walkthrough per user request after recent changes.
