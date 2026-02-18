@@ -50,6 +50,43 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-18 – Claude scheduler validation fix: allow partial slot usage
+
+- **Agent / context**: Codex (GPT-5) – User-requested bug fix for `assignTasksWithClaude` duration validation causing unnecessary fallback.
+- **Summary**:
+  - Fixed `validateClaudeAssignments` in `src/lib/schedule/task-scheduler.ts` by removing the overly strict per-slot check that required `hoursAssigned` to equal the full slot time range.
+  - Kept slot-boundary and capacity checks, but moved duration integrity to task level: sum of `hoursAssigned` across all assigned slots for a task must match the task estimate (tolerance ±0.1h).
+  - Added inline comments clarifying that partial slot usage is valid and task-level sums are the real duration integrity rule.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `docs/schedule-generation/README.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Prevent valid Claude schedules (e.g. 2h task in a 3h slot) from being rejected, which was forcing deterministic fallback even when assignment logic was otherwise valid.
+- **Risks / notes**: Tasks can now intentionally claim less than slot capacity; this is expected. True duration mismatches (sum assigned vs estimated) still fail validation and trigger retry/fallback.
+- **Related docs**: `ARCHITECTURE.md` (`src/lib/schedule/task-scheduler.ts` section), `docs/schedule-generation/README.md`.
+
+### 2026-02-18 – Claude-powered slot assignment with validation/retry/fallback
+
+- **Agent / context**: Codex (GPT-5) – User-requested replacement of deterministic slot assignment with Claude scheduling, keeping slot-map and DB writes intact.
+- **Summary**:
+  - Added **`assignTasksWithClaude`** in `src/lib/schedule/task-scheduler.ts` as the new primary scheduler path: it keeps `buildAvailabilityMap` unchanged, serializes tasks + date-specific slots, calls **Claude Haiku** (`max_tokens=4000`), parses JSON output, and returns the existing `ScheduleResult` shape.
+  - Implemented hard-constraint validation for Claude output: valid task indices, valid slot references (`date + startTime`), no overlap/slot conflicts, strict dependency timing (task earliest start > dependency latest end), split continuity (contiguous part numbers + consecutive slots), and duration integrity (assigned hours must match task estimate).
+  - Implemented one validation-guided retry: on first failure, scheduler sends Claude the previous response plus concrete violation messages and requests a corrected full JSON array; if retry fails, it logs violations and falls back to existing deterministic `assignTasksToSchedule`.
+  - Updated `src/app/api/schedule/generate-schedule/route.ts` to call `await assignTasksWithClaude(...)` and pass project context fields (`projectGoals`, `projectMotivation`) into `SchedulerOptions`; DB write logic remains unchanged.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `docs/schedule-generation/README.md`, `docs/task-generation/README.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Replace brittle deterministic slot picking with semantic scheduling that can reason about task intent, while preserving reliability through deterministic fallback when AI output is invalid.
+- **Risks / notes**: Claude output must remain strict JSON; when unavailable/invalid after retry, fallback deterministic scheduling is used automatically. Regenerate tool (`full_rebuild`) still uses deterministic scheduler directly unless updated separately.
+- **Related docs**: `ARCHITECTURE.md` (`src/lib/schedule/task-scheduler.ts`, `src/app/api/schedule/generate-schedule/route.ts`), `docs/schedule-generation/README.md`, `docs/task-generation/README.md`.
+
+### 2026-02-18 – Scheduler fixes: cross-day dependencies, continuation priority, phase-aware ordering
+
+- **Agent / context**: Codex (GPT-5) – User-requested targeted bugfix pass in scheduler only (no task-generation logic changes).
+- **Summary**:
+  - Fixed **cross-day dependency enforcement** in `canPlaceTaskInSlot`: for every `depends_on` task, the scheduler now checks all scheduled parts across all dates; if a dependency has no scheduled assignment yet, placement is blocked; if scheduled, candidate slot start must be strictly after the dependency’s latest end.
+  - Fixed **split continuation priority** in the main slot loop: before `pickTaskForSlot`, scheduler now checks eligible continuation tasks (already split with `partNumber` scheduled + `earliestStartForContinuation` reached) and selects them with absolute priority.
+  - Added **phase-aware sort key** to `sortIndicesByDependenciesThenPriorityAndEnergy`: when `options.phases` is present, tasks are tagged with heuristic `phaseOrder` (active=0, future=1), then sorted by phase first, then dependency layer, priority, and energy; scheduler logs now include `phase=active|future`.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `docs/task-generation/README.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Prevent dependents from being placed before dependencies across days, prevent interleaving when continuing split tasks, and make scheduler ordering honor active-phase intent from constraints.
+- **Risks / notes**: Phase detection currently uses heuristic (high-priority prefix in topological order) because parsed tasks do not yet carry explicit phase IDs. Manual validation trace run against `assignTasksToSchedule` confirmed: dependency task on Thursday blocks dependent on Wednesday; split task part 2 follows part 1 in the next slot with no interleaving; sort logs show active-phase tasks before future-phase tasks.
+- **Related docs**: `ARCHITECTURE.md` (`src/lib/schedule/task-scheduler.ts` section), `docs/task-generation/README.md` (scheduling flow + function reference).
+
 ### 2026-02-18 – Read-only audit: task generation + scheduler pipeline
 
 - **Agent / context**: Codex (GPT-5) – User requested a deep, code-level audit report of task generation and scheduling behavior with no implementation changes.

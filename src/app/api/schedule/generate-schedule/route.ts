@@ -16,7 +16,7 @@
  * 6. Generate tasks using Claude
  * 7. Parse tasks
  * 8. Save contextData from built constraints (so Settings/tools have available_time)
- * 9. Schedule tasks to specific dates/times using algorithm
+ * 9. Schedule tasks to specific dates/times using Claude + validation + fallback
  * 10. Create Task records in database with scheduled dates
  * 10.5. Append Harvey's post-schedule message to Discussion (so user sees it in chat sidebar)
  * 11. Return success with task count
@@ -48,9 +48,8 @@ import {
 import { getProjectById } from '@/lib/projects/project-service'
 import { getUserById } from '@/lib/users/user-service'
 import {
-  assignTasksToSchedule,
+  assignTasksWithClaude,
   calculateStartDate,
-  getTaskScheduleData,
   type SchedulerOptions,
 } from '@/lib/schedule/task-scheduler'
 import { normalizeTaskLabel } from '@/types/task.types'
@@ -63,7 +62,6 @@ import type {
   GenerateScheduleRequest,
   GenerateScheduleResponse,
   StoredMessage,
-  ExtractedConstraints,
 } from '@/types/api.types'
 
 export async function POST(request: NextRequest) {
@@ -193,7 +191,6 @@ export async function POST(request: NextRequest) {
     )
 
     // ===== STEP 5.5: Save contextData from built constraints (Settings and chat tools read available_time from here) =====
-    const constraintsAny = constraints as unknown as Record<string, unknown>
     const existingContext = (project.contextData ?? {}) as Record<string, unknown>
     const contextDataSubset = {
       schedule_duration_weeks: constraints.schedule_duration_weeks,
@@ -273,8 +270,8 @@ export async function POST(request: NextRequest) {
     console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)
     console.log(`[GenerateScheduleAPI] Duration: ${durationWeeks} weeks`)
 
-    // Run the scheduling algorithm (slot times in user TZ, stored as UTC).
-    // Session 4: pass scheduler options for smart slot assignment (energy peak, ramp-up, etc.).
+    // Run Claude slot assignment with hard-constraint validation and deterministic fallback.
+    // Slot times are interpreted in user TZ and stored as UTC datetimes.
     const userBlocked =
       constraints.work_schedule || constraints.commute?.morning || constraints.commute?.evening
         ? { workSchedule: constraints.work_schedule ?? null, commute: constraints.commute ?? null }
@@ -291,6 +288,8 @@ export async function POST(request: NextRequest) {
       preferredSessionLength: constraints.preferred_session_length ?? null,
       userNotes: constraints.user_notes ?? null,
       projectNotes: constraints.project_notes ?? null,
+      projectGoals: project.goals ?? null,
+      projectMotivation: project.motivation ?? null,
       phases: constraints.phases ?? null,
       rampUpDay1,
     }
@@ -310,7 +309,7 @@ export async function POST(request: NextRequest) {
       )
     )
 
-    const scheduleResult = assignTasksToSchedule(
+    const scheduleResult = await assignTasksWithClaude(
       tasks,
       constraints,
       startDate,

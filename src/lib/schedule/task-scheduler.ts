@@ -8,11 +8,11 @@
  *
  * Algorithm:
  * 1. Build availability map from constraints (day → time slots)
- * 2. Sort tasks by dependency order only (topological sort). We do NOT re-sort by priority so dependencies are never broken.
+ * 2. Sort tasks with dependency-safe ordering (phase heuristic, dependency layer, priority, energy).
  * 3. For each day in schedule period:
  *    - Get available slots for that day of week
  *    - For each slot, try to fit tasks by duration
- *    - If task doesn't fit, split it (min 1 hour chunks)
+ *    - If task doesn't fit, split it (min 30-minute chunks)
  *    - Track remaining hours for split tasks
  * 4. Return scheduled tasks with dates/times
  */
@@ -24,6 +24,7 @@ import type {
   TimeBlock,
   WorkScheduleShape,
 } from '../../types/api.types'
+import { anthropic, withAnthropicRetry } from '../ai/claude-client'
 import { localTimeInTimezoneToUTC } from '../timezone'
 
 /** User life constraints: work schedule and commute. Blocked time is derived from these on-the-fly. */
@@ -38,7 +39,18 @@ export interface SchedulerOptions {
   preferredSessionLength?: number | null
   userNotes?: Array<{ note: string }> | null
   projectNotes?: Array<{ note: string }> | null
-  phases?: { phases: Array<{ deadline?: string | null }>; active_phase_id: number } | null
+  projectGoals?: string | null
+  projectMotivation?: string | null
+  phases?: {
+    phases: Array<{
+      id?: number
+      title?: string | null
+      goal?: string | null
+      deadline?: string | null
+      status?: string | null
+    }>
+    active_phase_id: number
+  } | null
   /** When true, day 1 gets max 2 tasks and prefer medium/low energy. */
   rampUpDay1?: boolean
 }
@@ -293,6 +305,18 @@ const GAP_BETWEEN_TASKS_HOURS = 15 / 60 // 15 minutes
 
 /** Minimum fragment when splitting a task (Session 4). */
 const MIN_FRAGMENT_HOURS = 0.5 // 30 minutes
+
+/** Claude request token ceiling for slot-assignment structured output. */
+const CLAUDE_SCHEDULER_MAX_TOKENS = 4000
+
+/** Claude model used for slot assignment (Haiku required for this structured step). */
+const CLAUDE_SCHEDULER_MODEL = 'claude-haiku-4-5-20251001'
+
+/** Max attempts for Claude assignment (first pass + one validation-guided retry). */
+const CLAUDE_SCHEDULER_MAX_ATTEMPTS = 2
+
+/** Comparison tolerance for floating-point hour totals. */
+const HOURS_EPSILON = 0.01
 
 /**
  * Get local time-of-day in decimal hours for a Date in the given timezone.
@@ -771,12 +795,48 @@ function energyOrder(e: string | undefined): number {
 }
 
 /**
- * Sort task indices: dependency order first, then within same dependency layer by priority (high first), then energy_required (high first).
- * Session 4: harder tasks earlier in the week while respecting dependencies.
+ * Heuristic phase split: when phases are present, treat high-priority tasks before the first non-high task
+ * in topological order as "active phase" (phaseOrder=0), others as future phase (phaseOrder=1).
  */
-function sortIndicesByDependenciesThenPriorityAndEnergy(tasks: ParsedTask[]): number[] {
+function buildPhaseOrderByHeuristic(
+  tasks: ParsedTask[],
+  depOrder: number[],
+  phases: SchedulerOptions['phases'] | null | undefined
+): number[] {
+  const phaseOrder = new Array(tasks.length).fill(1)
+  const hasPhaseContext =
+    phases != null &&
+    Array.isArray(phases.phases) &&
+    phases.phases.length > 0 &&
+    typeof phases.active_phase_id === 'number' &&
+    phases.active_phase_id >= 1 &&
+    phases.active_phase_id <= phases.phases.length
+  if (!hasPhaseContext) return phaseOrder
+
+  const firstNonHighPos = depOrder.findIndex((taskIndex) => tasks[taskIndex].priority !== 'high')
+  const activePrefixLength = firstNonHighPos === -1 ? depOrder.length : firstNonHighPos
+  for (let pos = 0; pos < activePrefixLength; pos++) {
+    const taskIndex = depOrder[pos]
+    if (tasks[taskIndex].priority === 'high') phaseOrder[taskIndex] = 0
+  }
+  return phaseOrder
+}
+
+/**
+ * Sort task indices: phase (active first), then dependency layer, then priority (high first), then energy_required (high first).
+ * Session 4: harder and current-phase tasks earlier in the week while respecting dependencies.
+ */
+function sortIndicesByDependenciesThenPriorityAndEnergy(
+  tasks: ParsedTask[],
+  phases: SchedulerOptions['phases'] | null | undefined
+): { sortedIndices: number[]; phaseOrder: number[] } {
   const depOrder = sortIndicesByDependencies(tasks)
   const n = tasks.length
+  const depPosition = new Array(n).fill(0)
+  depOrder.forEach((taskIndex, pos) => {
+    depPosition[taskIndex] = pos
+  })
+  const phaseOrder = buildPhaseOrderByHeuristic(tasks, depOrder, phases)
   const layer = new Array(n).fill(0)
   for (const i of depOrder) {
     const deps = tasks[i].depends_on || []
@@ -787,15 +847,18 @@ function sortIndicesByDependenciesThenPriorityAndEnergy(tasks: ParsedTask[]): nu
     }
     layer[i] = maxLayer
   }
-  return [...depOrder].sort((a, b) => {
+  const sortedIndices = [...depOrder].sort((a, b) => {
+    if (phaseOrder[a] !== phaseOrder[b]) return phaseOrder[a] - phaseOrder[b]
     if (layer[a] !== layer[b]) return layer[a] - layer[b]
     const pa = priorityOrder(tasks[a].priority)
     const pb = priorityOrder(tasks[b].priority)
     if (pa !== pb) return pa - pb
     const ea = energyOrder(tasks[a].energy_required)
     const eb = energyOrder(tasks[b].energy_required)
-    return ea - eb
+    if (ea !== eb) return ea - eb
+    return depPosition[a] - depPosition[b]
   })
+  return { sortedIndices, phaseOrder }
 }
 
 /** Slot type order for trying non-emergency first (Session 4). */
@@ -804,6 +867,909 @@ const SLOT_TYPE_ORDER: Record<SlotType, number> = {
   normal: 1,
   flexible: 2,
   emergency: 3,
+}
+
+// ============================================
+// Claude Scheduling Types
+// ============================================
+
+/**
+ * Flattened task payload sent to Claude for structured slot assignment.
+ */
+interface ClaudeTaskInput {
+  taskIndex: number
+  title: string
+  estimatedHours: number
+  priority: ParsedTask['priority']
+  energyRequired: ParsedTask['energy_required'] | null
+  preferredSlotType: ParsedTask['preferred_slot'] | null
+  dependsOn: number[]
+  label: string | null
+}
+
+/**
+ * Flattened slot payload sent to Claude (one entry per date + start time).
+ */
+interface ClaudeSlotInput {
+  date: string
+  day: string
+  startTime: string
+  endTime: string
+  slotType: SlotType
+  capacityHours: number
+  isFlexible: boolean
+  windowStart: string | null
+  windowEnd: string | null
+}
+
+/**
+ * Raw slot assignment shape expected from Claude output.
+ */
+interface ClaudeSlotOutput {
+  date: string
+  startTime: string
+  endTime: string
+  hoursAssigned: number
+  partNumber: number
+  isFlexible: boolean
+  windowStart: string | null
+  windowEnd: string | null
+}
+
+/**
+ * Slot record enriched with computed datetimes and order for validation.
+ */
+interface SlotRecordForValidation extends ClaudeSlotInput {
+  slotKey: string
+  slotOrder: number
+  slotStartDateTime: Date
+  slotEndDateTime: Date
+}
+
+/**
+ * Fully validated slot assignment that can be converted to ScheduleResult.
+ */
+interface ValidatedClaudeSlotAssignment extends ClaudeSlotOutput {
+  slotKey: string
+  slotType: SlotType
+  slotStartDateTime: Date
+  slotEndDateTime: Date
+  assignmentStartDateTime: Date
+  assignmentEndDateTime: Date
+}
+
+/**
+ * Fully validated task assignment that can be converted to ScheduleResult.
+ */
+interface ValidatedClaudeTaskAssignment {
+  taskIndex: number
+  slots: ValidatedClaudeSlotAssignment[]
+}
+
+/**
+ * Validation result for one Claude scheduling response.
+ */
+interface ClaudeValidationResult {
+  isValid: boolean
+  violations: string[]
+  assignments: ValidatedClaudeTaskAssignment[]
+}
+
+/**
+ * Type guard for record-like objects used while validating Claude JSON.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * Build a stable slot identifier from local date + slot start time.
+ */
+function buildSlotKey(date: string, startTime: string): string {
+  return `${date}|${startTime}`
+}
+
+/**
+ * Parse "HH:MM" into hour/minute parts, returning null for invalid values.
+ */
+function parseTimeString(time: string): { hour: number; minute: number } | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(time)
+  if (!match) return null
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
+  return { hour, minute }
+}
+
+/**
+ * Return YYYY-MM-DD + days, preserving calendar semantics.
+ */
+function addDaysToDateString(dateStr: string, days: number): string {
+  const [yearStr, monthStr, dayStr] = dateStr.split('-')
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if ([year, month, day].some((n) => Number.isNaN(n))) return dateStr
+  const utcDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0))
+  utcDate.setUTCDate(utcDate.getUTCDate() + days)
+  const y = utcDate.getUTCFullYear()
+  const m = String(utcDate.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(utcDate.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * Build a UTC datetime from local date + local time in the user's timezone.
+ */
+function toUtcDateTimeFromLocal(dateStr: string, timeStr: string, userTimezone: string): Date | null {
+  const parts = parseTimeString(timeStr)
+  if (!parts) return null
+  try {
+    return localTimeInTimezoneToUTC(dateStr, parts.hour, parts.minute, userTimezone)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build UTC start/end datetimes from local date and local HH:MM bounds.
+ * End is treated as next day when it is <= start (overnight window).
+ */
+function toUtcDateRangeFromLocal(
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  userTimezone: string
+): { start: Date; end: Date } | null {
+  const start = toUtcDateTimeFromLocal(dateStr, startTime, userTimezone)
+  if (!start) return null
+  const startParts = parseTimeString(startTime)
+  const endParts = parseTimeString(endTime)
+  if (!startParts || !endParts) return null
+  const crossesMidnight =
+    endParts.hour < startParts.hour || (endParts.hour === startParts.hour && endParts.minute <= startParts.minute)
+  const endDateStr = crossesMidnight ? addDaysToDateString(dateStr, 1) : dateStr
+  const end = toUtcDateTimeFromLocal(endDateStr, endTime, userTimezone)
+  if (!end) return null
+  return { start, end }
+}
+
+/**
+ * Normalize Claude text output into a parsable JSON array string.
+ */
+function extractJsonArrayText(rawText: string): string {
+  let cleaned = rawText.trim()
+  if (cleaned.startsWith('```')) {
+    const lines = cleaned.split('\n')
+    lines.shift()
+    cleaned = lines.join('\n')
+  }
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.slice(0, -3)
+  }
+  const firstBracket = cleaned.indexOf('[')
+  const lastBracket = cleaned.lastIndexOf(']')
+  if (firstBracket === -1 || lastBracket === -1 || lastBracket < firstBracket) {
+    throw new Error('Claude response did not contain a JSON array.')
+  }
+  return cleaned.slice(firstBracket, lastBracket + 1).trim()
+}
+
+/**
+ * Convert UTC datetime to user-local "YYYY-MM-DD HH:MM" for readable validation errors.
+ */
+function formatDateTimeForViolation(dateTime: Date, userTimezone: string): string {
+  const date = getLocalDateStrInTimezone(dateTime, userTimezone)
+  const hours = getLocalHoursInTimezone(dateTime, userTimezone)
+  return `${date} ${formatHoursToTime(hours)}`
+}
+
+/**
+ * Build zero-based dependency lists from parsed 1-based depends_on references.
+ */
+function buildZeroBasedDependencies(tasks: ParsedTask[]): number[][] {
+  return tasks.map((task, taskIndex) => {
+    const deps = task.depends_on ?? []
+    const zeroBased = deps
+      .map((oneBased) => oneBased - 1)
+      .filter((depIndex) => depIndex >= 0 && depIndex < tasks.length && depIndex !== taskIndex)
+    return [...new Set(zeroBased)].sort((a, b) => a - b)
+  })
+}
+
+/**
+ * Convert task list into a compact JSON payload Claude can schedule semantically.
+ */
+function serializeTasksForClaude(tasks: ParsedTask[], zeroBasedDependencies: number[][]): ClaudeTaskInput[] {
+  return tasks.map((task, taskIndex) => ({
+    taskIndex,
+    title: task.title,
+    estimatedHours: task.hours,
+    priority: task.priority,
+    energyRequired: task.energy_required ?? null,
+    preferredSlotType: task.preferred_slot ?? null,
+    dependsOn: zeroBasedDependencies[taskIndex] ?? [],
+    label: task.label ?? null,
+  }))
+}
+
+/**
+ * Flatten day-of-week slot map into chronological date-specific slots for the schedule window.
+ */
+function serializeSlotsForClaude(
+  availability: Map<string, TimeSlot[]>,
+  startDate: Date,
+  durationWeeks: number,
+  userTimezone: string
+): SlotRecordForValidation[] {
+  const totalDays = durationWeeks * 7
+  const unsortedSlots: Array<SlotRecordForValidation & { startHoursSortable: number }> = []
+
+  for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+    const currentDate = addDays(startDate, dayOffset)
+    const date = getLocalDateStrInTimezone(currentDate, userTimezone)
+    const day = getDayName(currentDate)
+    const daySlots = availability.get(day) ?? []
+
+    for (const slot of daySlots) {
+      const startTime = formatHoursToTime(slot.startHours >= 24 ? slot.startHours % 24 : slot.startHours)
+      const normalizedEndHours = slot.endHours >= 24 ? slot.endHours % 24 : slot.endHours
+      const endTime = formatHoursToTime(normalizedEndHours)
+      const slotType = slot.slotType ?? 'normal'
+      const capacityHours = slot.flexibleHours ?? (slot.endHours - slot.startHours)
+      const isFlexible = slot.flexibleHours != null
+      const slotKey = buildSlotKey(date, startTime)
+      const slotRange = toUtcDateRangeFromLocal(date, startTime, endTime, userTimezone)
+
+      if (!slotRange) {
+        // Invalid date/time data means this slot cannot be used reliably by Claude.
+        continue
+      }
+
+      unsortedSlots.push({
+        date,
+        day,
+        startTime,
+        endTime,
+        slotType,
+        capacityHours,
+        isFlexible,
+        windowStart: slot.windowStart ?? null,
+        windowEnd: slot.windowEnd ?? null,
+        slotKey,
+        slotOrder: -1,
+        slotStartDateTime: slotRange.start,
+        slotEndDateTime: slotRange.end,
+        startHoursSortable: slot.startHours,
+      })
+    }
+  }
+
+  unsortedSlots.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
+    return a.startHoursSortable - b.startHoursSortable
+  })
+
+  return unsortedSlots.map((slot, index) => {
+    const { startHoursSortable, ...slotWithoutSortField } = slot
+    void startHoursSortable
+    return {
+      ...slotWithoutSortField,
+      slotOrder: index,
+    }
+  })
+}
+
+/**
+ * Build Claude system prompt for semantic slot assignment using project context, tasks, and slots.
+ */
+function buildClaudeSchedulingSystemPrompt(
+  projectContext: {
+    projectGoals: string | null
+    projectMotivation: string | null
+    activePhaseId: number | null
+    phases: Array<{
+      id: number
+      title: string | null
+      goal: string | null
+      deadline: string | null
+      status: string | null
+    }>
+    userEnergyPeak: string | null
+    userNotes: string[]
+    projectNotes: string[]
+    preferredSessionLengthMinutes: number | null
+  },
+  tasksForClaude: ClaudeTaskInput[],
+  slotsForClaude: ClaudeSlotInput[]
+): string {
+  const outputExample = [
+    {
+      taskIndex: 0,
+      slots: [
+        {
+          date: '2026-02-18',
+          startTime: '20:00',
+          endTime: '22:00',
+          hoursAssigned: 2.0,
+          partNumber: 1,
+          isFlexible: false,
+          windowStart: null,
+          windowEnd: null,
+        },
+      ],
+    },
+  ]
+
+  return `You are Harvey's scheduling engine. Build a task-to-slot assignment JSON only.
+
+PROJECT CONTEXT (JSON):
+${JSON.stringify(projectContext, null, 2)}
+
+TASK LIST (JSON):
+${JSON.stringify(tasksForClaude, null, 2)}
+
+AVAILABLE SLOTS (JSON):
+${JSON.stringify(slotsForClaude, null, 2)}
+
+INSTRUCTIONS:
+1. Assign every task to one or more slots from the available slots list. Use the exact slot identifiers provided (date + startTime).
+2. Respect dependencies strictly: if task B depends on task A, every slot assigned to B must start after the latest end time of any slot assigned to A. No exceptions.
+3. Prefer assigning tasks whole to a single slot where the slot has enough capacity. Only split across multiple consecutive slots if no single slot of sufficient size exists before the schedule deadline.
+4. When splitting is unavoidable, parts must be assigned to consecutive slots. No other tasks can be scheduled between Part 1 and Part 2 of the same task.
+5. Match slot types intelligently: high-energy tasks in peak_energy slots when possible; flexible/low-energy tasks in flexible or normal slots; avoid emergency slots for deep-focus tasks unless no other option exists.
+6. Respect active phase ordering: schedule active-phase tasks before future-phase tasks whenever possible.
+7. Do not modify task durations. Keep estimatedHours intact. If a task genuinely cannot fit in the schedule period, leave it unscheduled by omitting it or returning it with an empty slots array.
+8. Return ONLY a valid JSON array, with no markdown, no preamble, and no explanation.
+
+OUTPUT FORMAT (exact keys):
+${JSON.stringify(outputExample, null, 2)}`
+}
+
+/**
+ * Build retry user message that includes first-pass output and concrete validation violations.
+ */
+function buildClaudeRetryPrompt(firstResponse: string, violations: string[]): string {
+  const violationLines = violations.map((violation, index) => `${index + 1}. ${violation}`).join('\n')
+  return `Your previous JSON schedule violated hard constraints.
+
+PREVIOUS RESPONSE:
+${firstResponse}
+
+VALIDATION ERRORS:
+${violationLines}
+
+Use the same task and slot context from the system prompt. Fix only these violations and return the full corrected JSON array. Output JSON only.`
+}
+
+/**
+ * Ask Claude Haiku for slot assignments and return raw text response.
+ */
+async function requestClaudeSchedulingAssignments(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  const response = await withAnthropicRetry(() =>
+    anthropic.messages.create({
+      model: CLAUDE_SCHEDULER_MODEL,
+      max_tokens: CLAUDE_SCHEDULER_MAX_TOKENS,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    })
+  )
+  const textBlock = response.content.find((block) => block.type === 'text')
+  const text = textBlock?.type === 'text' ? textBlock.text.trim() : ''
+  if (!text) {
+    throw new Error('Claude returned an empty scheduling response.')
+  }
+  return text
+}
+
+/**
+ * Validate Claude's JSON schedule against hard constraints before DB writes.
+ */
+function validateClaudeAssignments(
+  rawAssignments: unknown,
+  tasks: ParsedTask[],
+  dependencyMap: number[][],
+  slotLookup: Map<string, SlotRecordForValidation>,
+  slotOrderLookup: Map<string, number>,
+  userTimezone: string
+): ClaudeValidationResult {
+  const violations: string[] = []
+  const assignments: ValidatedClaudeTaskAssignment[] = []
+  // Task totals are validated with a looser tolerance to absorb floating-point math (e.g. 1.3333h style outputs).
+  const TASK_DURATION_TOLERANCE_HOURS = 0.1
+
+  if (!Array.isArray(rawAssignments)) {
+    return {
+      isValid: false,
+      violations: ['Claude output is not a JSON array.'],
+      assignments: [],
+    }
+  }
+
+  const seenTaskIndices = new Set<number>()
+
+  for (const [assignmentIndex, rawAssignment] of rawAssignments.entries()) {
+    if (!isRecord(rawAssignment)) {
+      violations.push(`Assignment ${assignmentIndex + 1} is not an object.`)
+      continue
+    }
+
+    const taskIndexRaw = rawAssignment.taskIndex
+    const taskIndex = typeof taskIndexRaw === 'number' ? taskIndexRaw : null
+    if (taskIndex == null || !Number.isInteger(taskIndex) || taskIndex < 0 || taskIndex >= tasks.length) {
+      violations.push(`Assignment ${assignmentIndex + 1} has invalid taskIndex ${String(taskIndexRaw)}.`)
+      continue
+    }
+
+    if (seenTaskIndices.has(taskIndex)) {
+      violations.push(`Task ${taskIndex} appears multiple times in Claude output.`)
+      continue
+    }
+    seenTaskIndices.add(taskIndex)
+
+    const rawSlots = rawAssignment.slots
+    if (!Array.isArray(rawSlots)) {
+      violations.push(`Task ${taskIndex} has invalid "slots" (expected array).`)
+      continue
+    }
+
+    const validatedSlots: ValidatedClaudeSlotAssignment[] = []
+
+    for (const [slotIndex, rawSlot] of rawSlots.entries()) {
+      if (!isRecord(rawSlot)) {
+        violations.push(`Task ${taskIndex} slot ${slotIndex + 1} is not an object.`)
+        continue
+      }
+
+      const date = typeof rawSlot.date === 'string' ? rawSlot.date : null
+      const startTime = typeof rawSlot.startTime === 'string' ? rawSlot.startTime : null
+      const endTime = typeof rawSlot.endTime === 'string' ? rawSlot.endTime : null
+      const hoursAssigned = typeof rawSlot.hoursAssigned === 'number' ? rawSlot.hoursAssigned : null
+      const partNumber = typeof rawSlot.partNumber === 'number' ? rawSlot.partNumber : null
+      const isFlexible = typeof rawSlot.isFlexible === 'boolean' ? rawSlot.isFlexible : null
+      const windowStart =
+        rawSlot.windowStart == null || typeof rawSlot.windowStart === 'string' ? (rawSlot.windowStart as string | null) : null
+      const windowEnd =
+        rawSlot.windowEnd == null || typeof rawSlot.windowEnd === 'string' ? (rawSlot.windowEnd as string | null) : null
+
+      if (!date || !startTime || !endTime) {
+        violations.push(`Task ${taskIndex} slot ${slotIndex + 1} is missing date/startTime/endTime.`)
+        continue
+      }
+      if (hoursAssigned == null || !Number.isFinite(hoursAssigned) || hoursAssigned <= 0) {
+        violations.push(`Task ${taskIndex} slot ${slotIndex + 1} has invalid hoursAssigned.`)
+        continue
+      }
+      if (partNumber == null || !Number.isInteger(partNumber) || partNumber < 1) {
+        violations.push(`Task ${taskIndex} slot ${slotIndex + 1} has invalid partNumber.`)
+        continue
+      }
+      if (isFlexible == null) {
+        violations.push(`Task ${taskIndex} slot ${slotIndex + 1} has invalid isFlexible.`)
+        continue
+      }
+
+      const slotKey = buildSlotKey(date, startTime)
+      const slotRecord = slotLookup.get(slotKey)
+      if (!slotRecord) {
+        violations.push(`Task ${taskIndex} references unknown slot ${date} ${startTime}.`)
+        continue
+      }
+
+      const assignmentRange = toUtcDateRangeFromLocal(date, startTime, endTime, userTimezone)
+      if (!assignmentRange) {
+        violations.push(`Task ${taskIndex} slot ${date} ${startTime} has invalid start/end times.`)
+        continue
+      }
+
+      // Partial slot usage is valid: hoursAssigned is the claimed task effort, not required to equal the slot's full range.
+      // Real duration integrity is enforced below by summing hoursAssigned across all slots of the same task.
+
+      if (assignmentRange.start.getTime() < slotRecord.slotStartDateTime.getTime()) {
+        violations.push(`Task ${taskIndex} starts before slot boundary at ${date} ${startTime}.`)
+      }
+      if (assignmentRange.end.getTime() > slotRecord.slotEndDateTime.getTime()) {
+        violations.push(
+          `Task ${taskIndex} ends after slot boundary at ${date} ${slotRecord.endTime} (attempted end ${endTime}).`
+        )
+      }
+      if (hoursAssigned - slotRecord.capacityHours > HOURS_EPSILON) {
+        violations.push(
+          `Task ${taskIndex} assigns ${hoursAssigned}h in slot ${date} ${startTime} with capacity ${slotRecord.capacityHours}h.`
+        )
+      }
+
+      if (slotRecord.isFlexible !== isFlexible) {
+        violations.push(`Task ${taskIndex} slot ${date} ${startTime} has incorrect isFlexible value.`)
+      }
+      if (slotRecord.isFlexible) {
+        if (windowStart !== slotRecord.windowStart || windowEnd !== slotRecord.windowEnd) {
+          violations.push(
+            `Task ${taskIndex} flexible slot ${date} ${startTime} must use window ${slotRecord.windowStart}-${slotRecord.windowEnd}.`
+          )
+        }
+      } else if (windowStart !== null || windowEnd !== null) {
+        violations.push(`Task ${taskIndex} fixed slot ${date} ${startTime} must set windowStart/windowEnd to null.`)
+      }
+
+      validatedSlots.push({
+        date,
+        startTime,
+        endTime,
+        hoursAssigned,
+        partNumber,
+        isFlexible,
+        windowStart,
+        windowEnd,
+        slotKey,
+        slotType: slotRecord.slotType,
+        slotStartDateTime: slotRecord.slotStartDateTime,
+        slotEndDateTime: slotRecord.slotEndDateTime,
+        assignmentStartDateTime: assignmentRange.start,
+        assignmentEndDateTime: assignmentRange.end,
+      })
+    }
+
+    // Enforce sequential part numbering so split tasks are deterministic and easy to validate.
+    validatedSlots.sort((a, b) => a.partNumber - b.partNumber)
+    for (let i = 0; i < validatedSlots.length; i++) {
+      if (validatedSlots[i].partNumber !== i + 1) {
+        violations.push(`Task ${taskIndex} part numbers must be contiguous starting at 1.`)
+        break
+      }
+    }
+
+    // Enforce "split parts in consecutive slots" by requiring adjacent slot-order indices.
+    if (validatedSlots.length > 1) {
+      for (let i = 1; i < validatedSlots.length; i++) {
+        const previous = validatedSlots[i - 1]
+        const current = validatedSlots[i]
+        const previousOrder = slotOrderLookup.get(previous.slotKey)
+        const currentOrder = slotOrderLookup.get(current.slotKey)
+        if (previousOrder == null || currentOrder == null || currentOrder !== previousOrder + 1) {
+          violations.push(
+            `Task ${taskIndex} split parts must use consecutive slots; found non-consecutive parts ${previous.partNumber} and ${current.partNumber}.`
+          )
+          break
+        }
+      }
+    }
+
+    // Task-level duration integrity: total claimed hours across all parts must match the task estimate.
+    const totalAssignedHours = validatedSlots.reduce((sum, slot) => sum + slot.hoursAssigned, 0)
+    if (
+      validatedSlots.length > 0 &&
+      Math.abs(totalAssignedHours - tasks[taskIndex].hours) > TASK_DURATION_TOLERANCE_HOURS
+    ) {
+      violations.push(
+        `Task ${taskIndex} duration mismatch: expected ${tasks[taskIndex].hours}h, assigned ${totalAssignedHours.toFixed(2)}h (tolerance ±${TASK_DURATION_TOLERANCE_HOURS}h).`
+      )
+    }
+
+    assignments.push({
+      taskIndex,
+      slots: validatedSlots,
+    })
+  }
+
+  // Prevent two tasks from occupying the same identified slot.
+  const slotOccupancy = new Map<string, number>()
+  for (const assignment of assignments) {
+    for (const slot of assignment.slots) {
+      const existingTaskIndex = slotOccupancy.get(slot.slotKey)
+      if (existingTaskIndex != null && existingTaskIndex !== assignment.taskIndex) {
+        violations.push(
+          `Slot conflict at ${slot.date} ${slot.startTime}: task ${assignment.taskIndex} overlaps task ${existingTaskIndex}.`
+        )
+      } else {
+        slotOccupancy.set(slot.slotKey, assignment.taskIndex)
+      }
+    }
+  }
+
+  // Generic overlap check catches accidental interval overlaps even if slot IDs differ.
+  const allIntervals = assignments.flatMap((assignment) =>
+    assignment.slots.map((slot) => ({
+      taskIndex: assignment.taskIndex,
+      start: slot.assignmentStartDateTime,
+      end: slot.assignmentEndDateTime,
+      date: slot.date,
+      startTime: slot.startTime,
+    }))
+  )
+  allIntervals.sort((a, b) => a.start.getTime() - b.start.getTime())
+  for (let i = 0; i < allIntervals.length; i++) {
+    for (let j = i + 1; j < allIntervals.length; j++) {
+      const left = allIntervals[i]
+      const right = allIntervals[j]
+      if (right.start.getTime() >= left.end.getTime()) break
+      const overlaps = left.start.getTime() < right.end.getTime() && right.start.getTime() < left.end.getTime()
+      if (overlaps) {
+        violations.push(
+          `Overlap detected: task ${left.taskIndex} (${left.date} ${left.startTime}) conflicts with task ${right.taskIndex} (${right.date} ${right.startTime}).`
+        )
+      }
+    }
+  }
+
+  // Dependency validation: each task must start strictly after every dependency ends.
+  const scheduleBoundsByTask = new Map<number, { earliestStart: Date; latestEnd: Date }>()
+  for (const assignment of assignments) {
+    if (assignment.slots.length === 0) continue
+    const earliestStart = assignment.slots.reduce((earliest, slot) =>
+      slot.assignmentStartDateTime.getTime() < earliest.getTime() ? slot.assignmentStartDateTime : earliest
+    , assignment.slots[0].assignmentStartDateTime)
+    const latestEnd = assignment.slots.reduce((latest, slot) =>
+      slot.assignmentEndDateTime.getTime() > latest.getTime() ? slot.assignmentEndDateTime : latest
+    , assignment.slots[0].assignmentEndDateTime)
+    scheduleBoundsByTask.set(assignment.taskIndex, { earliestStart, latestEnd })
+  }
+
+  for (const assignment of assignments) {
+    const currentBounds = scheduleBoundsByTask.get(assignment.taskIndex)
+    if (!currentBounds) continue
+    const dependencies = dependencyMap[assignment.taskIndex] ?? []
+    for (const dependencyIndex of dependencies) {
+      const dependencyBounds = scheduleBoundsByTask.get(dependencyIndex)
+      if (!dependencyBounds) {
+        violations.push(`Task ${assignment.taskIndex} is scheduled but dependency task ${dependencyIndex} is unscheduled.`)
+        continue
+      }
+      if (currentBounds.earliestStart.getTime() <= dependencyBounds.latestEnd.getTime()) {
+        violations.push(
+          `Task ${assignment.taskIndex} starts at ${formatDateTimeForViolation(currentBounds.earliestStart, userTimezone)} but dependency task ${dependencyIndex} ends at ${formatDateTimeForViolation(dependencyBounds.latestEnd, userTimezone)}.`
+        )
+      }
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+    assignments,
+  }
+}
+
+/**
+ * Parse Claude JSON text and run hard-constraint validation.
+ */
+function parseAndValidateClaudeAssignments(
+  responseText: string,
+  tasks: ParsedTask[],
+  dependencyMap: number[][],
+  slotLookup: Map<string, SlotRecordForValidation>,
+  slotOrderLookup: Map<string, number>,
+  userTimezone: string
+): ClaudeValidationResult {
+  try {
+    const jsonText = extractJsonArrayText(responseText)
+    const parsed = JSON.parse(jsonText) as unknown
+    return validateClaudeAssignments(parsed, tasks, dependencyMap, slotLookup, slotOrderLookup, userTimezone)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown parse error'
+    return {
+      isValid: false,
+      violations: [`Failed to parse Claude JSON response: ${message}`],
+      assignments: [],
+    }
+  }
+}
+
+/**
+ * Build Date object for scheduledDate using UTC noon to preserve calendar day across timezones.
+ */
+function toUtcNoonDate(dateStr: string): Date {
+  const [yearStr, monthStr, dayStr] = dateStr.split('-')
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if ([year, month, day].some((n) => Number.isNaN(n))) {
+    return new Date()
+  }
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0))
+}
+
+/**
+ * Convert validated Claude assignments into the existing ScheduleResult contract.
+ */
+function buildScheduleResultFromClaudeAssignments(
+  tasks: ParsedTask[],
+  validatedAssignments: ValidatedClaudeTaskAssignment[],
+  slotLookup: Map<string, SlotRecordForValidation>
+): ScheduleResult {
+  const scheduledTasks: ScheduledTaskAssignment[] = []
+  let totalHoursScheduled = 0
+  let weekendHoursUsed = 0
+
+  const assignmentByTaskIndex = new Map<number, ValidatedClaudeTaskAssignment>()
+  for (const assignment of validatedAssignments) {
+    assignmentByTaskIndex.set(assignment.taskIndex, assignment)
+  }
+
+  for (const assignment of validatedAssignments) {
+    const task = tasks[assignment.taskIndex]
+    const isSplit = assignment.slots.length > 1
+    for (const slot of assignment.slots) {
+      const slotRecord = slotLookup.get(slot.slotKey)
+      const fallbackTimeBlock = `${slot.startTime}-${slot.endTime}`
+      const flexibleWindowStart = slot.windowStart ?? slotRecord?.windowStart ?? undefined
+      const flexibleWindowEnd = slot.windowEnd ?? slotRecord?.windowEnd ?? undefined
+      const timeBlock = slot.isFlexible
+        ? `${flexibleWindowStart ?? slot.startTime}-${flexibleWindowEnd ?? slot.endTime}`
+        : fallbackTimeBlock
+
+      scheduledTasks.push({
+        taskIndex: assignment.taskIndex,
+        task,
+        date: toUtcNoonDate(slot.date),
+        startTime: slot.assignmentStartDateTime,
+        endTime: slot.assignmentEndDateTime,
+        timeBlock,
+        partNumber: isSplit ? slot.partNumber : undefined,
+        hoursAssigned: slot.hoursAssigned,
+        ...(slot.isFlexible && {
+          isFlexible: true,
+          windowStart: flexibleWindowStart,
+          windowEnd: flexibleWindowEnd,
+        }),
+        slotType: slot.slotType,
+      })
+
+      totalHoursScheduled += slot.hoursAssigned
+      const slotDay = slotRecord?.day ?? ''
+      if (slotDay === 'saturday' || slotDay === 'sunday') {
+        weekendHoursUsed += slot.hoursAssigned
+      }
+    }
+  }
+
+  const unscheduledTaskIndices: number[] = []
+  let totalHoursUnscheduled = 0
+  for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
+    const assignment = assignmentByTaskIndex.get(taskIndex)
+    if (!assignment || assignment.slots.length === 0) {
+      unscheduledTaskIndices.push(taskIndex)
+      totalHoursUnscheduled += tasks[taskIndex].hours
+    }
+  }
+
+  let weekendHoursAvailable = 0
+  for (const slot of slotLookup.values()) {
+    if (slot.day === 'saturday' || slot.day === 'sunday') {
+      weekendHoursAvailable += slot.capacityHours
+    }
+  }
+
+  scheduledTasks.sort((a, b) => {
+    const dateCompare = a.date.getTime() - b.date.getTime()
+    if (dateCompare !== 0) return dateCompare
+    return a.startTime.getTime() - b.startTime.getTime()
+  })
+
+  return {
+    scheduledTasks,
+    unscheduledTaskIndices,
+    totalHoursScheduled,
+    totalHoursUnscheduled,
+    weekendHoursUsed,
+    weekendHoursAvailable,
+  }
+}
+
+/**
+ * Assign tasks with Claude semantic scheduling, then enforce hard constraints locally.
+ * Falls back to deterministic assignTasksToSchedule if Claude fails validation twice.
+ */
+export async function assignTasksWithClaude(
+  tasks: ParsedTask[],
+  constraints: ExtractedConstraints,
+  startDate: Date,
+  durationWeeks: number,
+  userTimezone: string = 'UTC',
+  userBlocked?: UserBlockedInput | null,
+  options?: SchedulerOptions | null
+): Promise<ScheduleResult> {
+  const energyPeak = options?.energyPeak ?? constraints.energy_peak ?? null
+  const availability = buildAvailabilityMap(constraints, userBlocked, energyPeak)
+  const dependencyMap = buildZeroBasedDependencies(tasks)
+  const tasksForClaude = serializeTasksForClaude(tasks, dependencyMap)
+  const serializedSlotRecords = serializeSlotsForClaude(availability, startDate, durationWeeks, userTimezone)
+
+  const slotLookup = new Map<string, SlotRecordForValidation>()
+  const slotOrderLookup = new Map<string, number>()
+  for (const slot of serializedSlotRecords) {
+    if (slotLookup.has(slot.slotKey)) {
+      console.warn(`[TaskScheduler] ClaudeScheduler: duplicate slot key ${slot.slotKey}; keeping first occurrence.`)
+      continue
+    }
+    slotLookup.set(slot.slotKey, slot)
+    slotOrderLookup.set(slot.slotKey, slot.slotOrder)
+  }
+
+  const slotsForClaude: ClaudeSlotInput[] = [...slotLookup.values()]
+    .sort((a, b) => a.slotOrder - b.slotOrder)
+    .map((slot) => ({
+    date: slot.date,
+    day: slot.day,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    slotType: slot.slotType,
+    capacityHours: slot.capacityHours,
+    isFlexible: slot.isFlexible,
+    windowStart: slot.windowStart,
+    windowEnd: slot.windowEnd,
+    }))
+
+  const phaseContextRaw = options?.phases?.phases ?? []
+  const projectContext = {
+    projectGoals: options?.projectGoals ?? null,
+    projectMotivation: options?.projectMotivation ?? null,
+    activePhaseId: options?.phases?.active_phase_id ?? null,
+    phases: phaseContextRaw.map((phase, index) => {
+      const phaseRecord = phase as Record<string, unknown>
+      const id = typeof phaseRecord.id === 'number' ? phaseRecord.id : index + 1
+      const title = typeof phaseRecord.title === 'string' ? phaseRecord.title : null
+      const goal = typeof phaseRecord.goal === 'string' ? phaseRecord.goal : null
+      const deadline = typeof phaseRecord.deadline === 'string' ? phaseRecord.deadline : null
+      const status = typeof phaseRecord.status === 'string' ? phaseRecord.status : null
+      return { id, title, goal, deadline, status }
+    }),
+    userEnergyPeak: energyPeak,
+    userNotes: (options?.userNotes ?? []).map((note) => note.note).filter((note) => Boolean(note)),
+    projectNotes: (options?.projectNotes ?? []).map((note) => note.note).filter((note) => Boolean(note)),
+    preferredSessionLengthMinutes: options?.preferredSessionLength ?? null,
+  }
+
+  const systemPrompt = buildClaudeSchedulingSystemPrompt(projectContext, tasksForClaude, slotsForClaude)
+  const defaultUserPrompt = 'Generate the schedule now. Return only the JSON array.'
+
+  let lastViolations: string[] = []
+  let previousResponse = ''
+
+  for (let attempt = 1; attempt <= CLAUDE_SCHEDULER_MAX_ATTEMPTS; attempt++) {
+    const userPrompt =
+      attempt === 1 ? defaultUserPrompt : buildClaudeRetryPrompt(previousResponse, lastViolations)
+
+    try {
+      const responseText = await requestClaudeSchedulingAssignments(systemPrompt, userPrompt)
+      previousResponse = responseText
+      const validation = parseAndValidateClaudeAssignments(
+        responseText,
+        tasks,
+        dependencyMap,
+        slotLookup,
+        slotOrderLookup,
+        userTimezone
+      )
+
+      if (validation.isValid) {
+        const result = buildScheduleResultFromClaudeAssignments(tasks, validation.assignments, slotLookup)
+        console.log(
+          `[TaskScheduler] ClaudeScheduler: success on attempt ${attempt}. scheduled_blocks=${result.scheduledTasks.length}, unscheduled_tasks=${result.unscheduledTaskIndices.length}`
+        )
+        return result
+      }
+
+      lastViolations = validation.violations
+      console.warn(
+        `[TaskScheduler] ClaudeScheduler: validation failed on attempt ${attempt}. Violations:\n${lastViolations.join('\n')}`
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown Claude scheduling error'
+      lastViolations = [`Claude scheduling request failed: ${message}`]
+      console.warn(`[TaskScheduler] ClaudeScheduler: request failed on attempt ${attempt}: ${message}`)
+    }
+  }
+
+  // Second failure falls back to deterministic scheduler to keep generation resilient.
+  console.warn(
+    `[TaskScheduler] ClaudeScheduler: fallback to deterministic scheduler after ${CLAUDE_SCHEDULER_MAX_ATTEMPTS} failed attempt(s). Violations:\n${lastViolations.join('\n')}`
+  )
+  return assignTasksToSchedule(tasks, constraints, startDate, durationWeeks, userTimezone, userBlocked, options)
 }
 
 // ============================================
@@ -836,6 +1802,7 @@ export function assignTasksToSchedule(
 ): ScheduleResult {
   const energyPeak = options?.energyPeak ?? constraints.energy_peak ?? null
   const rampUpDay1 = options?.rampUpDay1 ?? false
+  const phases = options?.phases ?? null
 
   console.log(
     `[TaskScheduler] Starting scheduling: ${tasks.length} tasks, ${durationWeeks} weeks, starting ${startDate.toISOString().split('T')[0]}`
@@ -850,14 +1817,26 @@ export function assignTasksToSchedule(
   // Build availability map with slot types (Session 4)
   const availability = buildAvailabilityMap(constraints, userBlocked, energyPeak)
 
-  // Session 4: order by dependency, then within layer by priority (high first), then energy_required (high first)
-  const sortedTaskIndices = sortIndicesByDependenciesThenPriorityAndEnergy(tasks)
+  // Session 4: order by phase, dependency, then within layer by priority (high first), then energy_required (high first)
+  const { sortedIndices: sortedTaskIndices, phaseOrder } = sortIndicesByDependenciesThenPriorityAndEnergy(tasks, phases)
+  const sortedTaskPosition = new Map<number, number>()
+  sortedTaskIndices.forEach((taskIndex, pos) => {
+    sortedTaskPosition.set(taskIndex, pos)
+  })
 
-  // Log task sort order with energy_required, priority, preferred_slot
+  if (phases?.phases?.length) {
+    const activeCount = phaseOrder.filter((v) => v === 0).length
+    console.log(
+      `[TaskScheduler] PhaseOrder: active_phase_id=${phases.active_phase_id} heuristic_active_tasks=${activeCount}/${tasks.length}`
+    )
+  }
+
+  // Log task sort order with phase, energy_required, priority, preferred_slot
   sortedTaskIndices.forEach((taskIndex, orderPos) => {
     const t = tasks[taskIndex]
+    const phaseLabel = phaseOrder[taskIndex] === 0 ? 'active' : 'future'
     console.log(
-      `[TaskScheduler] TaskOrder: #${orderPos + 1} "${t.title}" energy=${t.energy_required ?? '—'} priority=${t.priority} preferred=${t.preferred_slot ?? '—'}`
+      `[TaskScheduler] TaskOrder: #${orderPos + 1} "${t.title}" phase=${phaseLabel} energy=${t.energy_required ?? '—'} priority=${t.priority} preferred=${t.preferred_slot ?? '—'}`
     )
   })
 
@@ -897,7 +1876,7 @@ export function assignTasksToSchedule(
     return fallback ?? remaining[0]
   }
 
-  /** Session 2: same-day dependency ordering — can this task be placed in this slot? (every dependency on this day must end before slot start) */
+  /** Cross-day dependency ordering — every dependency must already be scheduled and fully finished before this slot starts. */
   function canPlaceTaskInSlot(
     taskIndex: number,
     currentDate: Date,
@@ -908,14 +1887,46 @@ export function assignTasksToSchedule(
     const deps = tasks[taskIndex].depends_on ?? []
     for (const oneBased of deps) {
       const depIndex = oneBased - 1
-      const depOnDay = assignedSoFar.filter(
-        (s) => s.taskIndex === depIndex && s.date.getTime() === currentDate.getTime()
-      )
-      if (depOnDay.length === 0) continue
-      const depEndMs = Math.max(...depOnDay.map((a) => a.endTime.getTime()))
-      if (depEndMs > slotStartMs) return false
+      if (depIndex < 0 || depIndex >= tasks.length || depIndex === taskIndex) continue
+      const depAssignments = assignedSoFar.filter((s) => s.taskIndex === depIndex)
+      if (depAssignments.length === 0) return false
+      const depStillRemaining = remainingTasks.some((r) => r.taskIndex === depIndex && r.remainingHours > 0)
+      if (depStillRemaining) return false
+      const depLatestEndMs = Math.max(...depAssignments.map((a) => a.endTime.getTime()))
+      if (slotStartMs <= depLatestEndMs) return false
     }
     return true
+  }
+
+  /** Continuation priority: if a split task already has Part 1+ scheduled and it's eligible now, it must be picked before any new task. */
+  function pickContinuationTaskForSlot(
+    currentDate: Date,
+    slotStartHours: number,
+    remaining: RemainingTask[],
+    assignedSoFar: ScheduledTaskAssignment[]
+  ): RemainingTask | null {
+    const slotStartTime = createDateTimeInTimezone(currentDate, slotStartHours, userTimezone)
+    const continuationCandidates = remaining
+      .filter((r) => {
+        const hasScheduledPart = assignedSoFar.some(
+          (s) => s.taskIndex === r.taskIndex && s.partNumber != null
+        )
+        if (!hasScheduledPart) return false
+        const earliest = earliestStartForContinuation.get(r.taskIndex)
+        if (!earliest) return false
+        if (slotStartTime.getTime() < earliest.getTime()) return false
+        return canPlaceTaskInSlot(r.taskIndex, currentDate, slotStartHours, assignedSoFar)
+      })
+      .sort((a, b) => {
+        const aStart = earliestStartForContinuation.get(a.taskIndex)?.getTime() ?? Number.MAX_SAFE_INTEGER
+        const bStart = earliestStartForContinuation.get(b.taskIndex)?.getTime() ?? Number.MAX_SAFE_INTEGER
+        if (aStart !== bStart) return aStart - bStart
+        const aPos = sortedTaskPosition.get(a.taskIndex) ?? Number.MAX_SAFE_INTEGER
+        const bPos = sortedTaskPosition.get(b.taskIndex) ?? Number.MAX_SAFE_INTEGER
+        return aPos - bPos
+      })
+
+    return continuationCandidates[0] ?? null
   }
 
   /**
@@ -1047,22 +2058,36 @@ export function assignTasksToSchedule(
             break
           }
 
-          let chosen = pickTaskForSlot(slot.slotType, dayNum, remainingTasks)
-          // Session 2: same-day dependency ordering — skip candidates whose dependency on this day ends after this slot start (cap iterations to avoid any hang)
-          // Split-part ordering: Part N+1 can only be placed in slots starting after Part N ends (Option A: enforce sequential scheduling)
-          let tries = 0
-          const maxTries = Math.max(remainingTasks.length, 1)
           const slotStartTime = createDateTimeInTimezone(currentDate, currentSlotStartHours, userTimezone)
-          while (
-            chosen &&
-            (tries < maxTries &&
-              (!canPlaceTaskInSlot(chosen.taskIndex, currentDate, currentSlotStartHours, scheduledTasks) ||
-                (earliestStartForContinuation.has(chosen.taskIndex) &&
-                  slotStartTime.getTime() < earliestStartForContinuation.get(chosen.taskIndex)!.getTime())))
-          ) {
-            tries += 1
-            const rest = remainingTasks.filter((r) => r !== chosen)
-            chosen = pickTaskForSlot(slot.slotType, dayNum, rest)
+          const continuationTask = pickContinuationTaskForSlot(
+            currentDate,
+            currentSlotStartHours,
+            remainingTasks,
+            scheduledTasks
+          )
+
+          let chosen: RemainingTask | null = continuationTask
+          if (continuationTask) {
+            const earliest = earliestStartForContinuation.get(continuationTask.taskIndex)
+            console.log(
+              `[TaskScheduler] ContinuationPriority: task="${continuationTask.task.title}" earliest=${earliest?.toISOString() ?? '—'} slot_start=${slotStartTime.toISOString()}`
+            )
+          } else {
+            chosen = pickTaskForSlot(slot.slotType, dayNum, remainingTasks)
+            // Dependency/continuation eligibility — skip invalid candidates (cap iterations to avoid any hang)
+            let tries = 0
+            const maxTries = Math.max(remainingTasks.length, 1)
+            while (
+              chosen &&
+              (tries < maxTries &&
+                (!canPlaceTaskInSlot(chosen.taskIndex, currentDate, currentSlotStartHours, scheduledTasks) ||
+                  (earliestStartForContinuation.has(chosen.taskIndex) &&
+                    slotStartTime.getTime() < earliestStartForContinuation.get(chosen.taskIndex)!.getTime())))
+            ) {
+              tries += 1
+              const rest = remainingTasks.filter((r) => r !== chosen)
+              chosen = pickTaskForSlot(slot.slotType, dayNum, rest)
+            }
           }
           if (!chosen) break
           const taskIdx = remainingTasks.indexOf(chosen)
