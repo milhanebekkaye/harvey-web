@@ -26,6 +26,11 @@ export interface ProjectNoteEntry {
   extracted_at?: string
 }
 
+/** Milestone from schedule generation (Project.milestones JSON array) */
+export interface ProjectMilestoneEntry {
+  title: string
+}
+
 /** Project shape passed from server (dates as ISO strings) */
 export interface SerializedProject {
   id: string
@@ -44,6 +49,9 @@ export interface SerializedProject {
   motivation: string | null
   phases?: ProjectPhasesData | null
   projectNotes?: ProjectNoteEntry[] | null
+  /** From schedule generation; shown on Project Details when non-empty */
+  milestones?: ProjectMilestoneEntry[] | null
+  schedule_duration_days?: number | null
 }
 
 interface ProjectDetailsFormProps {
@@ -545,6 +553,44 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           <p className="text-xs text-slate-400 mt-2">Click &quot;Add phase&quot; to create your first phase.</p>
         )}
       </section>
+
+      {/* Schedule milestones (from schedule generation; read-only) */}
+      {(() => {
+        const raw = project.milestones
+        const items: string[] = []
+        if (Array.isArray(raw) && raw.length > 0) {
+          for (const entry of raw) {
+            if (entry && typeof entry === 'object' && 'title' in entry && typeof (entry as { title: unknown }).title === 'string') {
+              items.push((entry as { title: string }).title)
+            }
+          }
+        } else if (typeof raw === 'string' && (raw as string).trim()) {
+          items.push(...(raw as string).trim().split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean))
+        }
+        if (items.length === 0) return null
+        return (
+          <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 mb-6 hover:shadow-md transition-shadow">
+            <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-slate-500">track_changes</span>
+              Milestones
+            </h2>
+            <p className="text-slate-500 text-sm mb-4">
+              By the end of this schedule, you should have:
+            </p>
+            <ul className="space-y-2">
+              {items.map((title, i) => (
+                <li
+                  key={i}
+                  className="flex gap-2 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm text-slate-700"
+                >
+                  <span className="text-[#895af6] font-medium shrink-0">{i + 1}.</span>
+                  <span>{title}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })()}
 
       {/* Harvey's Notes — editable, saved with Save Changes */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 mb-8 hover:shadow-md transition-shadow">

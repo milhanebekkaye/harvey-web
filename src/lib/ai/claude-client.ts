@@ -42,6 +42,54 @@ export const CLAUDE_CONFIG = {
   maxTokens: 300,
 } as const
 
+const RETRYABLE_STATUSES = [429, 529] as const
+const DEFAULT_MAX_RETRIES = 3
+const INITIAL_DELAY_MS = 2000
+
+/**
+ * Returns true if the error is a retryable Anthropic API error (rate limit or overloaded).
+ */
+export function isRetryableAnthropicError(error: unknown): boolean {
+  if (error && typeof error === 'object') {
+    const status = (error as { status?: number }).status
+    if (typeof status === 'number' && RETRYABLE_STATUSES.includes(status as 429 | 529)) return true
+  }
+  const msg = error instanceof Error ? error.message : String(error)
+  return (
+    /\.?529\b/.test(msg) ||
+    /\boverloaded\b/i.test(msg) ||
+    /\boverloaded_error\b/.test(msg) ||
+    /\brate_limit\b/i.test(msg) ||
+    /\b429\b/.test(msg)
+  )
+}
+
+/**
+ * Run an async function and retry on Anthropic 429/529 with exponential backoff.
+ */
+export async function withAnthropicRetry<T>(
+  fn: () => Promise<T>,
+  options?: { maxRetries?: number }
+): Promise<T> {
+  const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES
+  let lastError: unknown
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastError = e
+      if (attempt === maxRetries || !isRetryableAnthropicError(e)) throw e
+      const delayMs = INITIAL_DELAY_MS * Math.pow(2, attempt)
+      console.warn(
+        `[ClaudeClient] Retryable error (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delayMs}ms:`,
+        e instanceof Error ? e.message : e
+      )
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
+  }
+  throw lastError
+}
+
 /**
  * Convert stored messages to Claude API format
  *

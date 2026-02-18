@@ -56,6 +56,7 @@ export type UpdateProjectData = Partial<{
   motivation: string | null
   phases: unknown
   projectNotes: unknown
+  schedule_start_date: Date | null
 }>
 
 /**

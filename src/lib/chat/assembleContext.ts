@@ -10,7 +10,8 @@
 
 import { prisma } from '../db/prisma'
 import { getDateStringInTimezone } from '../timezone'
-import type { Task, Project, User, TaskStats, ContextData } from './types'
+import type { Task, Project, TaskStats, ContextData } from './types'
+import type { User } from '@prisma/client'
 
 // ============================================
 // Main Entry Point
@@ -208,9 +209,10 @@ export function computeTaskStats(tasks: Task[], userTimezone?: string): TaskStat
  * @param userTimezone - User's IANA timezone
  * @returns The full system prompt string
  */
+/** Minimal user shape needed for the system prompt (we only select a subset in the query). */
 function buildSystemPrompt(
   project: Project & { tasks: Task[] },
-  user: User,
+  user: Pick<User, 'id' | 'name' | 'timezone' | 'workSchedule' | 'commute'>,
   stats: TaskStats,
   scheduleTasks: Task[],
   tasksBeyondWindow: number,
@@ -388,7 +390,9 @@ function formatNotesSection(notes: unknown, kind: 'project' | 'user'): string {
 
 /** User work schedule / commute shape (from User model). */
 interface UserLifeConstraints {
-  workSchedule?: { workDays?: number[]; startTime?: string; endTime?: string } | null
+  workSchedule?:
+    | { workDays?: number[]; startTime?: string; endTime?: string; blocks?: Array<{ days: number[]; startTime: string; endTime: string }> }
+    | null
   commute?: {
     morning?: { durationMinutes?: number; startTime?: string }
     evening?: { durationMinutes?: number; startTime?: string }
@@ -407,9 +411,9 @@ function formatConstraints(contextData: ContextData, user?: UserLifeConstraints 
   const ws = user?.workSchedule
   if (Array.isArray(ws?.blocks) && ws.blocks.length > 0) {
     result += 'Work schedule:\n'
-    ws.blocks.forEach((b) => {
+    ws.blocks.forEach((b: { days?: number[]; startTime: string; endTime: string }) => {
       const days = (Array.isArray(b.days) && b.days.length > 0 ? b.days : ws.workDays ?? [1, 2, 3, 4, 5])
-        .map((d) => DAY_NAMES[d] ?? d)
+        .map((d: number) => DAY_NAMES[d] ?? d)
         .join(', ')
       result += `  ${days}: ${b.startTime}–${b.endTime}\n`
     })

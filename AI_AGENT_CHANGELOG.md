@@ -50,6 +50,134 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-18 – Read-only audit: task generation + scheduler pipeline
+
+- **Agent / context**: Codex (GPT-5) – User requested a deep, code-level audit report of task generation and scheduling behavior with no implementation changes.
+- **Summary**:
+  - Traced the full trigger chain from onboarding UI (`/onboarding` → `/loading`) to `POST /api/schedule/generate-schedule`, including Claude prompt construction, task parsing, scheduling, and DB persistence.
+  - Extracted and documented the exact task-generation prompt/template, Claude message payload structure, parser behavior, and typed task fields at parse output.
+  - Isolated evidence for three known issues: dependency conflicts being dropped, split-part sequencing fallback that can allow interleaving, and missing phase-awareness in scheduler ordering.
+- **Files touched**: `AI_AGENT_CHANGELOG.md` only. Audit was read-only for source code. Key files inspected include `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/app/loading/page.tsx`, `src/app/onboarding/page.tsx`, `src/app/api/onboarding/extract/route.ts`, `src/types/api.types.ts`, `src/prisma/schema.prisma`, `ARCHITECTURE.md`, `docs/task-generation/README.md`, `docs/schedule-generation/README.md`.
+- **Motivation**: Provide a structured technical basis for a human advisor to diagnose current scheduler/task-generation bugs and plan fixes safely.
+- **Risks / notes**: No runtime or behavior changes were made. Findings reflect current HEAD at audit time and may differ from older changelog claims.
+- **Related docs**: `ARCHITECTURE.md` (schedule routes and `src/lib/schedule/*`), `docs/task-generation/README.md`, `docs/schedule-generation/README.md`.
+
+### 2026-02-18 – Split task parts scheduled consecutively (no other tasks between parts)
+
+- **Agent / context**: Cursor AI – Ensure all parts of a split task are placed back-to-back with no other tasks in between.
+- **Summary**:
+  - In **task-scheduler.ts** `assignTasksToSchedule`, when a task is split and Part 1 is assigned, the scheduler now **immediately** schedules Part 2, Part 3, … in the next available slot(s) via **scheduleRemainingPartsConsecutively(task, afterTime, useEmergency)**. No other task can be placed between Part 1 and Part 2 (previously Part 2 could be delayed and other tasks filled the gap).
+  - **getSlotUsedState(scheduledTasks, currentDate, slot, userTimezone)** computes how much of a slot is already used (from scheduledTasks) and the next start hour; used to avoid double-booking and to find the next free slot for consecutive parts. **getLocalHoursInTimezone** / **getLocalDateStrInTimezone** support timezone-aware slot usage.
+  - Each slot’s **slotFilled** and **currentSlotStartHours** are initialized from **getSlotUsedState** at the start of the slot loop so assignments made by the consecutive scheduler are respected when the main loop later processes that slot.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`.
+- **Motivation**: User reported e.g. "Build per-task chat Part 1" on Wed 10:00, "Implement onboarding Part 1" on Wed 20:00, then "Build per-task chat Part 2" on Thu 10:00; parts of the same task must be consecutive.
+- **Risks / notes**: If no slot is found for a continuation part in the current pass (e.g. non-emergency full), the task stays in the queue with remaining hours and may be placed in the emergency pass or remain unscheduled.
+- **Related docs**: `ARCHITECTURE.md` (task-scheduler).
+
+### 2026-02-18 – Task split sequencing + task title cleanup
+
+- **Agent / context**: Cursor AI – Fix schedule generation: split parts out of order and markdown artifacts in titles.
+- **Summary**:
+  - **Split-part ordering (Fix 1)**: In **task-scheduler.ts** `assignTasksToSchedule`, when a task is split into Part 1, Part 2, Part 3, parts are now scheduled **sequentially**. After assigning Part N to a slot, the scheduler records the earliest start time for Part N+1 (Part N end + 15 min gap). Part N+1 is only placed in slots that start at or after that time (same day or later). Implemented via `earliestStartForContinuation` Map and an extra condition in the task-picking loop (Option A: no dependency graph change; continuation constraint enforced at placement).
+  - **Task title cleanup (Fix 2)**: In **schedule-generation.ts** `parseTaskBlock`, the task title extracted from the `TASK:` line is now stripped of leading `**` and trailing `**` so markdown parsing no longer leaves titles like "Plan onboarding flow architecture & user journey**".
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `src/lib/schedule/schedule-generation.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`.
+- **Motivation**: Part 2 was sometimes scheduled before Part 1 (e.g. Part 2 at 10:00, Part 1 at 20:00), making the schedule unusable; task titles showed trailing asterisks from Claude markdown.
+- **Risks / notes**: None. All parts of a split task inherit the original task's priority and preferred_slot; no re-prioritization of parts.
+- **Related docs**: `docs/task-generation/README.md` (assignTasksToSchedule, parseTaskBlock), `ARCHITECTURE.md` (task-scheduler, schedule-generation).
+
+### 2026-02-18 – Parse numbered task headers (TASK 1:, TASK 2:)
+
+- **Agent / context**: Cursor AI – Fix 0 tasks parsed when Claude outputs "TASK 1:", "TASK 2:" instead of "TASK:".
+- **Summary**: In **schedule-generation.ts** `parseTasks` and `parseTaskBlock`, the parser now accepts both `TASK:` and numbered headers like `TASK 1:`, `TASK 2:`. Regex changed from `\bTASK\s*:` to `\bTASK\s*\d*\s*:` for block detection and title extraction so blocks such as `## TASK 1: Plan onboarding...` are recognized and titles are captured correctly.
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: User reported "we don't Generate any tasks" after schedule generation; logs showed "blocks containing TASK: (i)= 0" and "block 1 no TASK: found" because Claude returned "TASK 1:", "TASK 2:" (numbered). The 2026-02-18 title-cleanup change did not alter these regexes; the failure was due to response format variance.
+- **Risks / notes**: None. Backward compatible with unnumbered "TASK:".
+
+### 2026-02-17 – Milestones prompt and extraction improvements
+
+- **Agent / context**: Cursor AI – Reliably persist Project.milestones when generating a schedule.
+- **Summary**:
+  - **Prompt**: In **schedule-generation.ts** `buildTaskGenerationPrompt`, the MILESTONES section is now **required** (not "if partial schedule"). Instructions state "you MUST include exactly this block" and "Do not omit it", with 2–5 concrete deliverables and exact markers `===MILESTONES===` / `===END MILESTONES===`.
+  - **Extraction**: In **parseTasks**, extraction now tries (1) exact markers, (2) case-insensitive markers and `===END\\s*MILESTONES===`, (3) fallback regex for "By end of week" / "deliverables" at end of response with a numbered list. Logs indicate which path was used.
+  - **Persistence**: In **generate-schedule** route, milestone line parsing accepts `1. Title`, `1) Title`, and `-` / `*` / `•` bullets; skips boilerplate lines (e.g. "This represents", "Next period focus"); requires title length 3–250 chars before pushing to `milestonesForDb`.
+- **Files touched**: `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Project.milestones was often null because Claude skipped the block or used different formatting; making it required and broadening parsing ensures milestones are saved when present.
+- **Risks / notes**: None. Existing behavior unchanged when Claude still omits the block; then milestones remain null.
+
+### 2026-02-17 – Schedule generation hang fixes (scheduler + coaching timeout)
+
+- **Agent / context**: Cursor AI – Fix loading screen hanging forever; tasks not stored when generation never completed.
+- **Summary**:
+  - **Scheduler**: In **task-scheduler.ts**, the same-day dependency loop (`while (chosen && !canPlaceTaskInSlot(...))`) now has a cap: `tries < maxTries` with `maxTries = remainingTasks.length`, so the loop cannot run indefinitely if every candidate fails the same-day check.
+  - **Milestones fallback regex**: In **schedule-generation.ts** `parseTasks`, fallback 2 (extract milestones from "By end of week" at end of response) now runs only on `tasksText.slice(-1500)` instead of the full string to avoid possible regex backtracking on long responses.
+  - **Coaching message timeout**: In **generate-schedule** route, `generateScheduleCoachingMessage` is wrapped in `Promise.race` with a 15s timeout; on timeout or error the route uses the fallback greeting so the response is always returned and tasks are persisted.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users reported infinite loading and tasks not saved; hang was likely in the scheduler’s dependency loop or in the coaching Claude call; safeguards ensure the route completes and writes tasks.
+
+### 2026-02-17 – Session 2: Scheduler algorithm fixes + post-generation Harvey message
+
+- **Agent / context**: Cursor AI – Six scheduler fixes and one feature applied sequentially; each verified with `tsc --noEmit`.
+- **Summary**:
+  - **Fix 1 – Emergency buffer slots misclassified**: **getSlotType** in `task-scheduler.ts` now treats a window as emergency if the block label/type *contains* `"emergency"` or `"late_night"` (e.g. `late_night_emergency`), not only exact match. Overnight windows (end &lt; start, start ≥ 22:00) are also classified as emergency. **getSlotType** accepts optional `endHours`; fixed and flexible call sites pass it so 22:00–02:00 is detected.
+  - **Fix 2 – Week structure start_date forward**: Scheduler already iterates from **start_date** for `duration_weeks * 7` days (no calendar-week alignment). Added log `Schedule order (start_date forward): day0=… day1=…` and documented in **docs/task-generation/README.md** and **ARCHITECTURE.md** that the week is start_date forward.
+  - **Fix 3 – Same-day dependency ordering**: In **assignTasksToSchedule**, added **canPlaceTaskInSlot(taskIndex, currentDate, slotStartHours, scheduledTasks)** so a dependent is not placed in a slot if any dependency on the same day ends *after* that slot start. When picking a task for a slot, we skip candidates that fail this check and try the next; if none fit, we leave the slot and move on so the dependent is placed later.
+  - **Fix 4 – Weekend capacity (flexible_hours)**: **buildConstraintsFromProjectAndUser** now prefers **User.availabilityWindows** over **contextData.available_time** when the user has windows, so extracted **flexible_hours** is always used for capacity/slot end. When falling back to contextData, flexible blocks missing **flexible_hours** are normalized from boundary and a warning is logged. Scheduler comment clarified: capacity and slot end MUST use **flexible_hours** when present.
+  - **Fix 5 – Weekend slots included**: Confirmed the assignment loop iterates all days (including Saturday/Sunday); no weekday-only filter. Documented in task-scheduler and **docs/task-generation/README.md** that weekend slots are filled when task volume or capacity requires it.
+  - **Fix 6 – Post-generation Harvey coaching message**: After scheduling, the route builds a **ScheduleCoachingContext** (total tasks/hours, slot-type counts, weekend used/available, splits, start date, duration, energy_peak, preferred_session_length, project title/deadline/phases). **generateScheduleCoachingMessage(context)** in **schedule-generation.ts** calls Claude with a prompt to produce a 3–4 sentence coaching message (distribution, choices, what to focus on first, constraints). That message is used as the project discussion’s initial message; on API failure the route falls back to the previous hardcoded greeting. **ScheduleResult** and **ScheduledTaskAssignment** now include **weekendHoursUsed**, **weekendHoursAvailable**, and **slotType** for the coaching context.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`.
+- **Motivation**: Correct emergency classification (label + overnight), clarify week-from-start-date behavior, enforce same-day dependency order, ensure flexible_hours drives capacity, document weekend inclusion, and replace the generic post-schedule greeting with an AI-generated coaching message.
+- **Risks / notes**: Coaching message depends on Claude; fallback avoids blocking discussion creation. Same-day dependency check may leave some slots empty when a dependent cannot be placed before its dependency ends; that is intended.
+- **Related docs**: `ARCHITECTURE.md` (task-scheduler, generate-schedule), `docs/task-generation/README.md`.
+
+### 2026-02-17 – Session 1: Data layer and validation fixes (scheduler pipeline)
+
+- **Agent / context**: Cursor AI – Four independent data-pipeline fixes applied sequentially; each verified with `tsc --noEmit` before proceeding.
+- **Summary**:
+  - **Fix 1 – energy_peak not loaded**: **user-service.ts** raw SQL in `getUserByIdRaw` did not SELECT `energy_peak`, and `updateUser` did not persist it. Added `energy_peak` to the SELECT and return object in `getUserByIdRaw`, and added an update branch for `data.energy_peak` in `updateUser`. Schedule generation now receives and logs the stored value (e.g. `energy_peak=evening`).
+  - **Fix 2 – Schedule start date**: Added **Project.schedule_start_date** (DateTime?, migration `20260217185648_add_project_schedule_start_date`). Onboarding extraction prompt and route now extract `schedule_start_date` (natural language → ISO or "today"/"tomorrow"/"next Monday" resolved server-side via `parseScheduleStartDate`). **missing-fields.ts**: added `schedule_start_date` to ENRICHING_FIELDS and `fieldToNaturalDescription`. **ProjectShadowPanel**: new editable "Start date" field (formatted long date, date input). **generate-schedule** route prefers `project.schedule_start_date` when non-null (normalized to UTC noon for the calendar day); otherwise falls back to `calculateStartDate(constraints, userTimezone)`. **update-field** route accepts `schedule_start_date` for project scope (string → Date). **project-service** `UpdateProjectData` includes `schedule_start_date`.
+  - **Fix 3 – Dependency validation for flexible tasks**: In **generate-schedule** route, replaced naive `depTime <= thisTaskTime` (which used midnight for flexible tasks and incorrectly dropped valid deps) with temporal ordering: **getEarliestStartMs** (fixed → scheduledStartTime; flexible → same day at `window_start`) and **getLatestEndMs** (fixed → scheduledEndTime or start+1h; flexible → same day at `window_end`). A dependency is valid when `depLatestEndMs <= thisEarliestStartMs`, so e.g. flexible 10:00–17:00 before fixed 20:00 on the same day is now accepted.
+  - **Fix 4 – Flexible slot capacity**: In **task-scheduler** `buildAvailabilityMap`, flexible blocks are now classified by **either** `flexible_hours > 0` **or** `window_type === 'flexible'`. Slot capacity and slot end always use `flexible_hours` (slot end = start + flexible_hours, never boundary end). When `window_type === 'flexible'` but `flexible_hours` is missing, boundary duration is used and a warning is logged so weekend/flexible windows show correct capacity (e.g. 6h not 6.5h when flexible_hours is 6).
+- **Files touched**: `src/lib/users/user-service.ts`, `src/prisma/schema.prisma`, `src/lib/projects/project-service.ts`, `src/app/api/onboarding/extract/route.ts`, `src/app/api/onboarding/update-field/route.ts`, `src/lib/onboarding/missing-fields.ts`, `src/components/onboarding/ProjectShadowPanel.tsx`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/schedule/task-scheduler.ts`, new migration `20260217185648_add_project_schedule_start_date`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`, `docs/settings/README.md`.
+- **Motivation**: Unblock scheduler: energy_peak was never read; start date was never asked or stored; valid dependencies were dropped when comparing flexible to fixed times; flexible windows showed boundary-based capacity instead of `flexible_hours`.
+- **Risks / notes**: Run new migration for `schedule_start_date`. Existing projects have null start date and continue to use default (tomorrow/next Monday). No changes to regenerateSchedule (full_rebuild) for start date — it still uses `calculateStartDate` from constraints.
+- **Related docs**: `ARCHITECTURE.md` (User, Project, schedule flow), `docs/task-generation/README.md`, `docs/settings/README.md`.
+
+### 2026-02-17 – Scheduler debug logs + no re-extraction on Build Schedule
+
+- **Agent / context**: Cursor AI – Two tasks: (1) add structured scheduler logs for debugging task placement; (2) ensure generate-schedule uses DB-only constraints (no re-extraction when user clicks "Build my schedule").
+- **Summary**:
+  - **Task 1 – Scheduler logs**: Format `[Module] Category: message`. **task-scheduler.ts**: `buildAvailabilityMap()` logs every slot as `SlotMap: day HH:MM-HH:MM → type=… capacity=…`. `assignTasksToSchedule()` logs: task order (`TaskOrder` with energy, priority, preferred_slot); slot matching attempts and outcomes (`SlotMatch` assigned / no X slot found trying Y); dependency conflicts (`DependencyCheck` CONFLICT + rescheduling note); day-1 ramp-up (`RampUp` deferring task); gap insertion (`Gap` 15min after …); fragment rejection (`Fragment` slot size vs task need); emergency usage; per-day capacity (total/used/remaining); final `Summary: scheduled=… unscheduled=… total_hours=… emergency_used=…`. **schedule-generation.ts**: `logCapacityBreakdown(constraints)` logs `Capacity: flexible_windows=… + fixed_windows=… + weekend=… + emergency=… → total=… (emergency excluded from usable=…)`; each parsed task logged with `energy_required` and `preferred_slot`. **generate-schedule route**: logs `SchedulerOptions` passed to scheduler; each task record with `energy_required`, `preferred_slot`, `is_flexible`.
+  - **Task 2 – No re-extraction**: Generate-schedule **Step 5** now explicitly loads constraints from DB only. Logs: `Step 5: Loading constraints from DB (no re-extraction) ✅` and `Loaded: energy_peak=…, skill_level=…, weekly_hours=…, windows=…`. The route already used `buildConstraintsFromProjectAndUser(project, dbUser)` and did not call `extractConstraints`; the change is clarifying logs and comments so it is clear conversation text is used only for **task generation context** (Step 6), not for re-extracting constraints. Extraction during onboarding is unchanged.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `src/lib/schedule/schedule-generation.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`.
+- **Motivation**: Debug task placement decisions; prevent silent overwrite of Project Shadow panel data when user clicks Build Schedule (constraints must come from already-extracted DB state).
+- **Risks / notes**: Log volume increases during schedule generation; consider log level or feature flag if too noisy in production.
+- **Related docs**: `ARCHITECTURE.md` (generate-schedule flow), `docs/task-generation/README.md`.
+
+### 2026-02-17 – Session 4: Personalized Smart Scheduler
+
+- **Agent / context**: Cursor AI – Add intelligence to the scheduler: User energy peak, task scheduling metadata from Claude, smart slot assignment, breathing room, day-1 ramp-up, phase front-loading.
+- **Summary**:
+  - **User.energy_peak**: New optional field `"morning" | "afternoon" | "evening"`; added to ENRICHING_FIELDS and onboarding extract prompt; Harvey asks about it naturally when missing.
+  - **Task scheduling metadata**: Task model and ParsedTask now have `energy_required` ("high"|"medium"|"low") and `preferred_slot` ("peak_energy"|"normal"|"flexible"). Claude outputs these per task (ENERGY_REQUIRED / PREFERRED_SLOT); prompt includes SCHEDULING METADATA section and calibration rules from user/project notes. Parser extracts and validates; generate-schedule route persists them on Task records.
+  - **Smart slot assignment**: `task-scheduler.ts` introduces `SlotType` (peak_energy, normal, flexible, emergency). `getSlotType(day, startHours, windowType, blockType, energyPeak)` classifies each slot; weekend → flexible; late_night/emergency → emergency (used last). `buildAvailabilityMap` accepts `energyPeak` and sets `slotType` on each slot. Tasks ordered by dependency, then within layer by priority and energy_required (high first). When filling slots, `pickTaskForSlot` prefers task whose `preferred_slot` matches slot type; two-pass loop (non-emergency first, then emergency). **Breathing room**: 15-minute gap between consecutive tasks in the same window. **Minimum fragment**: 30 minutes when splitting. **Day-1 ramp-up**: When user/project notes mention "losing motivation" or "lacking motivation", first day gets max 2 tasks and prefers medium/low energy. **Phase front-loading**: Day-by-day iteration naturally front-loads; no extra bias added.
+  - **Route**: generate-schedule builds `SchedulerOptions` (energyPeak, preferredSessionLength, userNotes, projectNotes, phases, rampUpDay1), passes to `assignTasksToSchedule`; Task creation includes `energy_required` and `preferred_slot`. `buildConstraintsFromProjectAndUser` returns `energy_peak` and sets `window_type` + `label` (from AvailabilityWindow.type) on available_time blocks for scheduler classification.
+- **Files touched**: `src/prisma/schema.prisma`, `src/lib/onboarding/missing-fields.ts`, `src/app/api/onboarding/extract/route.ts`, `src/types/user.types.ts`, `src/types/api.types.ts`, `src/types/task.types.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`, `docs/settings/README.md`. Migration: `20260217153250_add_energy_peak_and_task_scheduling_metadata`.
+- **Motivation**: Place high-focus tasks in the user's peak energy window and respect user/project notes for duration calibration and day-1 ramp-up; avoid back-to-back tasks and tiny fragments.
+- **Risks / notes**: regenerateSchedule (full_rebuild) does not pass SchedulerOptions; it uses default (no energy peak, no ramp-up). Existing tasks without energy_required/preferred_slot remain valid. Run migration to add User.energy_peak and Task.energy_required, Task.preferred_slot.
+- **Related docs**: `ARCHITECTURE.md` (schedule section, User, Task), `docs/task-generation/README.md`, `docs/settings/README.md`.
+
+### 2026-02-17 – Session 3: Milestone Storage + Schedule Duration Persistence
+
+- **Agent / context**: Cursor AI – Persist two pieces of data that Claude already produces during schedule generation: milestones and schedule span in days.
+- **Summary**:
+  - **Schema**: Project model now has `milestones Json?` (array of milestone objects from schedule generation) and `schedule_duration_days Int?` (calendar days the schedule spans). Migration: `20260217160000_add_project_milestones_and_schedule_duration_days`.
+  - **Generate-schedule route**: After tasks are created, the route parses the milestones string from `parseTasks` into an array of `{ title }`, computes `schedule_duration_days` from min/max task `scheduledDate`, and updates the project in a single `prisma.project.update`. TODO comment added for moving `schedule_duration_days` to a Schedule/Batch model when Feature 8 (multi-generation) ships.
+  - **Project Details page**: New read-only **Milestones** section (only when `project.milestones` is non-null and non-empty). Renders as a list consistent with Phases and Harvey's Notes; supports array of `{ title }` or legacy string (split by newlines). `SerializedProject` and server serialization include `milestones` and `schedule_duration_days`.
+- **Files touched**: `src/prisma/schema.prisma`, `src/prisma/migrations/20260217160000_add_project_milestones_and_schedule_duration_days/migration.sql`, `src/app/api/schedule/generate-schedule/route.ts`, `src/app/dashboard/project/[projectId]/page.tsx`, `src/components/dashboard/ProjectDetailsForm.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/task-generation/README.md`.
+- **Motivation**: Persist data Claude already generates instead of discarding it; show schedule milestones on the project details page.
+- **Risks / notes**: No prompt or scheduler logic changes. Milestones are not shown on the onboarding shadow panel (they exist only after schedule generation). Run `npm run prisma:migrate:dev` (or deploy migration) to apply the new columns.
+- **Related docs**: `ARCHITECTURE.md` (Project model, schema.prisma), `docs/task-generation/README.md`.
+
 ### 2026-02-17 – Session 2: Flexible Availability Windows + Scheduler Fix
 
 - **Agent / context**: Cursor AI – Implement plan to fix scheduler ignoring daytime availability (schedules used ~14h/week instead of 37h) by adding fixed vs flexible windows, scheduler capacity from flexible_hours, and timeline display for flexible tasks.

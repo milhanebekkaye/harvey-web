@@ -7,7 +7,7 @@
  * Ported from Telegram bot Python implementation.
  */
 
-import { anthropic, CLAUDE_CONFIG } from '../ai/claude-client'
+import { anthropic, CLAUDE_CONFIG, withAnthropicRetry } from '../ai/claude-client'
 import type {
   CommuteShape,
   ExtractedConstraints,
@@ -21,6 +21,7 @@ import type {
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
 import type { AvailabilityWindow } from '../../types/user.types'
+import { parseTimeToHours } from './task-scheduler'
 
 // ============================================
 // System Prompts (from Telegram bot)
@@ -146,7 +147,14 @@ function buildTaskGenerationPrompt(
       ? `\n- EXCLUDED FEATURES (DO NOT include): ${exclusions.join(', ')}`
       : ''
 
-  // --- User context: motivation, skill, session length, tech stack, deadline (enriched extraction) ---
+  // --- User context: motivation, skill, session length, tech stack, deadline, energy peak, user notes (enriched extraction) ---
+  const energyPeakLine = constraints.energy_peak
+    ? `- Energy peak: ${constraints.energy_peak} (user is most productive in the ${constraints.energy_peak})`
+    : ''
+  const userNotesLine =
+    constraints.user_notes && constraints.user_notes.length > 0
+      ? `\n- User notes (scheduling signals): ${constraints.user_notes.map((n) => n.note).join('; ')}`
+      : ''
   const userContext = `
 USER CONTEXT:
 - Motivation: ${constraints.motivation || 'Not specified'}
@@ -154,6 +162,7 @@ USER CONTEXT:
 - Preferred work sessions: ${sessionMinutes} minutes
 - Tech stack: ${constraints.tools_and_stack?.join(', ') || 'Not specified'}
 - Project type: ${constraints.project_type || 'Not specified'}
+${energyPeakLine}${userNotesLine}
 ${constraints.target_deadline ? `- Target deadline: ${new Date(constraints.target_deadline).toLocaleDateString()} (IMPORTANT: pace tasks to hit this date)` : ''}
 `
 
@@ -214,6 +223,26 @@ HOURS: [Number]
 PRIORITY: [high/medium/low]
 LABEL: [Coding|Research|Design|Marketing|Communication|Personal|Planning]
 DEPENDS_ON: [Optional - comma-separated 1-based task numbers this task depends on, e.g. "1" or "1, 2". Order tasks so setup/infra come first.]
+ENERGY_REQUIRED: [high|medium|low]
+PREFERRED_SLOT: [peak_energy|normal|flexible]
+---
+
+SCHEDULING METADATA (required for each task):
+- energy_required: "high" | "medium" | "low"
+  - high: deep focus, complex problem solving, significant cognitive effort (e.g. implementing authentication, debugging complex bugs, architectural decisions)
+  - medium: moderate focus (e.g. writing documentation, code reviews, designing database schema)
+  - low: can be done in a distracted state (e.g. research/reading, communication tasks, gathering requirements)
+- preferred_slot: "peak_energy" | "normal" | "flexible"
+  - peak_energy: assign to the user's highest-energy time window (use for energy_required=high tasks when user has energy_peak set)
+  - normal: assign to standard work windows
+  - flexible: can go anywhere available
+
+Calibration (use user notes and project notes):
+- If user notes mention "uses AI tools" or "codes fast" → reduce estimated HOURS for coding tasks by 20-25%
+- If user notes mention "needs planning before coding" or "30 min planning" → account for planning sub-task or buffer in the duration estimate
+- If user notes mention "decision paralysis" or "overwhelmed" → set day 1 tasks to PREFERRED_SLOT: flexible
+- If project notes mention a hard deadline for the active phase → set ENERGY_REQUIRED: high for tasks in that phase
+
 ---
 
 EXAMPLE:
@@ -233,6 +262,9 @@ SUCCESS:
 HOURS: 2.5
 PRIORITY: high
 LABEL: Coding
+DEPENDS_ON:
+ENERGY_REQUIRED: high
+PREFERRED_SLOT: peak_energy
 ---
 
 RULES:
@@ -259,25 +291,56 @@ SESSION LENGTH OPTIMIZATION:
 DEADLINE PACING:
 ${constraints.target_deadline ? `- User deadline is ${new Date(constraints.target_deadline).toLocaleDateString()}. Schedule ${scheduleWeeks} weeks is ${scheduleWeeks >= 3 ? 'a comfortable pace' : 'TIGHT - prioritize critical path tasks'}` : '- No deadline specified - maintain sustainable pace'}
 
-MILESTONES (if schedule < full project):
-After all tasks, if this is a partial schedule, add:
+MILESTONES (REQUIRED):
+At the end of your response, after all tasks, you MUST include exactly this block. Do not omit it. List 2–5 concrete deliverables for this schedule period (what the user will have done by the end). Use the exact markers so we can parse them:
 
 ===MILESTONES===
-By end of week ${scheduleWeeks}, you should have:
-1. [Concrete deliverable]
-2. [Concrete deliverable]
-3. [Concrete deliverable]
-
-This represents ~X% of full project.
-Next period focus: [what comes next]
+1. [First concrete deliverable - e.g. "Onboarding flow documented and wireframes ready"]
+2. [Second deliverable - e.g. "Task generation API integrated with Claude"]
+3. [Third deliverable - add more if needed]
 ===END MILESTONES===
 
-Now generate task breakdown:`
+Now generate the task breakdown and end with the MILESTONES block above.`
 }
 
 // ============================================
 // Helper Functions
 // ============================================
+
+/**
+ * Log capacity breakdown: flexible_windows + fixed_windows + weekend + emergency → total (usable excluding emergency).
+ */
+function logCapacityBreakdown(constraints: ExtractedConstraints): void {
+  const blocks = constraints.available_time || []
+  const weekendDays = new Set(['saturday', 'sunday'])
+  let flexW = 0
+  let fixW = 0
+  let weekW = 0
+  let emergW = 0
+  for (const b of blocks) {
+    const block = b as TimeBlock & { label?: string }
+    const day = String(block.day).toLowerCase()
+    const label = (block.label ?? '').toLowerCase()
+    const isEmergency = /emergency|late_night/.test(label)
+    const isWeekend = weekendDays.has(day)
+    if (typeof block.flexible_hours === 'number' && block.flexible_hours > 0) {
+      const h = block.flexible_hours
+      if (isEmergency) emergW += h
+      else if (isWeekend) weekW += h
+      else flexW += h
+    } else {
+      const h = calculateBlockMinutes(block) / 60
+      if (isEmergency) emergW += h
+      else if (isWeekend) weekW += h
+      else fixW += h
+    }
+  }
+  const total = flexW + fixW + weekW + emergW
+  const usable = total - emergW
+  console.log(
+    `[ScheduleGeneration] Capacity: flexible_windows=${flexW.toFixed(0)}h + fixed_windows=${fixW.toFixed(0)}h + weekend=${weekW.toFixed(0)}h + emergency=${emergW.toFixed(0)}h → total=${total.toFixed(0)}h (emergency excluded from usable=${usable.toFixed(0)}h)`
+  )
+}
 
 /**
  * Calculate total available hours per week from constraints.
@@ -436,40 +499,56 @@ export function buildConstraintsFromProjectAndUser(
     preferred_session_length?: number | null
     communication_style?: string | null
     userNotes?: unknown
+    energy_peak?: string | null
   }
 ): ExtractedConstraints {
   const contextData = (project.contextData ?? {}) as Record<string, unknown>
   const prefs = (contextData.preferences ?? {}) as UserPreferences
   const preferences: UserPreferences = { ...prefs }
 
-  // available_time: prefer contextData; else derive from User.availabilityWindows
+  // available_time: prefer User.availabilityWindows when present so flexible_hours from extraction is used (Session 2); else contextData
   let available_time: TimeBlock[] = []
-  if (Array.isArray(contextData.available_time) && contextData.available_time.length > 0) {
-    available_time = contextData.available_time as TimeBlock[]
-  } else {
-    const windows = user.availabilityWindows as AvailabilityWindow[] | undefined
-    if (Array.isArray(windows) && windows.length > 0) {
-      for (const w of windows) {
-        const days = Array.isArray(w.days) ? w.days : []
-        const start = typeof w.start_time === 'string' ? w.start_time : '20:00'
-        const end = typeof w.end_time === 'string' ? w.end_time : '22:00'
-        const isFlexible = w.window_type === 'flexible' && typeof w.flexible_hours === 'number' && w.flexible_hours > 0
-        for (const d of days) {
-          const day = String(d).toLowerCase()
-          if (DAY_NAME_TO_NUM[day] !== undefined) {
-            if (isFlexible) {
-              available_time.push({ day, start, end, window_type: 'flexible', flexible_hours: w.flexible_hours! })
-            } else {
-              available_time.push({ day, start, end })
-            }
+  const windows = user.availabilityWindows as AvailabilityWindow[] | undefined
+  if (Array.isArray(windows) && windows.length > 0) {
+    for (const w of windows) {
+      const days = Array.isArray(w.days) ? w.days : []
+      const start = typeof w.start_time === 'string' ? w.start_time : '20:00'
+      const end = typeof w.end_time === 'string' ? w.end_time : '22:00'
+      const isFlexible = w.window_type === 'flexible' && typeof w.flexible_hours === 'number' && w.flexible_hours > 0
+      for (const d of days) {
+        const day = String(d).toLowerCase()
+        if (DAY_NAME_TO_NUM[day] !== undefined) {
+          const windowLabel = typeof w.type === 'string' ? w.type : undefined
+          if (isFlexible) {
+            available_time.push({ day, start, end, window_type: 'flexible', flexible_hours: w.flexible_hours!, label: windowLabel })
+          } else {
+            available_time.push({ day, start, end, window_type: 'fixed', label: windowLabel })
           }
         }
       }
     }
-    if (available_time.length === 0) {
-      console.warn('[ScheduleGeneration] User.availabilityWindows missing or empty; using default weekday evenings')
-      available_time = [...DEFAULT_AVAILABLE_TIME]
-    }
+  }
+  if (available_time.length === 0 && Array.isArray(contextData.available_time) && contextData.available_time.length > 0) {
+    available_time = contextData.available_time as TimeBlock[]
+    // Session 2: normalize flexible blocks missing flexible_hours (legacy data) so scheduler uses boundary for capacity
+    available_time = available_time.map((b) => {
+      const block = { ...b }
+      const wt = (block as TimeBlock & { window_type?: string }).window_type
+      if (wt === 'flexible') {
+        const flex = (block as TimeBlock & { flexible_hours?: number }).flexible_hours
+        if (typeof flex !== 'number' || flex <= 0) {
+          const startH = parseTimeToHours(block.start)
+          const endH = parseTimeToHours(block.end)
+          const boundaryHours = endH > startH ? endH - startH : 24 - startH + endH
+          ;(block as TimeBlock & { flexible_hours: number }).flexible_hours = boundaryHours > 0 ? boundaryHours : 1
+        }
+      }
+      return block
+    })
+  }
+  if (available_time.length === 0) {
+    console.warn('[ScheduleGeneration] User.availabilityWindows missing or empty; using default weekday evenings')
+    available_time = [...DEFAULT_AVAILABLE_TIME]
   }
 
   // schedule_duration_weeks: prefer contextData; else from target_deadline; else 2
@@ -594,6 +673,7 @@ export function buildConstraintsFromProjectAndUser(
     preferred_session_length: user.preferred_session_length ?? undefined,
     communication_style: user.communication_style ?? undefined,
     user_notes: toNotes(user.userNotes).length > 0 ? toNotes(user.userNotes) : undefined,
+    energy_peak: user.energy_peak ?? undefined,
   }
 
   return constraints
@@ -678,17 +758,19 @@ export async function extractConstraints(
 
   try {
     // Claude Sonnet preferred for extraction (constraints + enrichment); CLAUDE_CONFIG may be Haiku for cost. Quality matters for schedule and context.
-    const response = await anthropic.messages.create({
-      model: CLAUDE_CONFIG.model,
-      max_tokens: 4096,
-      system: EXTRACTION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: conversationText,
-        },
-      ],
-    })
+    const response = await withAnthropicRetry(() =>
+      anthropic.messages.create({
+        model: CLAUDE_CONFIG.model,
+        max_tokens: 4096,
+        system: EXTRACTION_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: conversationText,
+          },
+        ],
+      })
+    )
 
     const textBlock = response.content.find((block) => block.type === 'text')
     let jsonText = textBlock?.type === 'text' ? textBlock.text : ''
@@ -824,6 +906,7 @@ export async function generateTasks(
   conversationText: string,
   constraints: ExtractedConstraints
 ): Promise<string> {
+  logCapacityBreakdown(constraints)
   const scheduleWeeks = constraints.schedule_duration_weeks || 2
   const availableHoursPerWeek = calculateTotalAvailableHours(constraints)
   const totalAvailableHours = availableHoursPerWeek * scheduleWeeks
@@ -840,18 +923,20 @@ export async function generateTasks(
 
   console.log(`[ScheduleGeneration] Using max_tokens=${maxTokens} for ${scheduleWeeks} weeks`)
 
-  // Call Claude API
-  const response = await anthropic.messages.create({
-    model: CLAUDE_CONFIG.model,
-    max_tokens: maxTokens,
-    system: systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: `Project conversation:\n\n${conversationText}`,
-      },
-    ],
-  })
+  // Call Claude API (with retry on 529 overloaded / 429 rate limit)
+  const response = await withAnthropicRetry(() =>
+    anthropic.messages.create({
+      model: CLAUDE_CONFIG.model,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: `Project conversation:\n\n${conversationText}`,
+        },
+      ],
+    })
+  )
 
   // Extract text from response
   const textBlock = response.content.find((block) => block.type === 'text')
@@ -875,37 +960,102 @@ export function parseTasks(claudeResponse: string): ParseResult {
   const tasks: ParsedTask[] = []
   let milestones: string | null = null
 
-  // Extract milestones if present
-  let tasksText = claudeResponse
-  if (claudeResponse.includes('===MILESTONES===')) {
-    const parts = claudeResponse.split('===MILESTONES===')
+  console.log('[ScheduleGeneration] parseTasks: raw response length=', claudeResponse.length)
+  console.log('[ScheduleGeneration] parseTasks: raw response (first 600 chars)=', claudeResponse.substring(0, 600))
+
+  // Strip markdown code block if Claude wrapped the output in ``` ... ```
+  let tasksText = stripMarkdownCodeBlocks(claudeResponse)
+  console.log('[ScheduleGeneration] parseTasks: after stripMarkdownCodeBlocks length=', tasksText.length)
+  console.log('[ScheduleGeneration] parseTasks: after strip (first 400 chars)=', tasksText.substring(0, 400))
+
+  // Extract milestones: require exact markers, then try case-insensitive fallback
+  const milestonesMarkerStart = '===MILESTONES==='
+  const milestonesMarkerEnd = '===END MILESTONES==='
+  if (tasksText.includes(milestonesMarkerStart)) {
+    const parts = tasksText.split(milestonesMarkerStart)
     tasksText = parts[0]
     if (parts.length > 1) {
-      const milestoneText = parts[1].split('===END MILESTONES===')[0]
-      milestones = milestoneText.trim()
+      const block = parts[1].split(milestonesMarkerEnd)[0]
+      milestones = block.trim()
+    }
+    console.log('[ScheduleGeneration] parseTasks: milestones section found, tasksText length now=', tasksText.length)
+  } else {
+    // Fallback: look for case-insensitive markers (Claude sometimes varies casing)
+    const reStart = /===MILESTONES===/i
+    const reEnd = /===END\s*MILESTONES===/i
+    const matchStart = tasksText.match(reStart)
+    const matchEnd = tasksText.match(reEnd)
+    if (matchStart && matchEnd && matchStart.index != null && matchEnd.index != null && matchEnd.index > matchStart.index) {
+      const start = matchStart.index + matchStart[0].length
+      milestones = tasksText.slice(start, matchEnd.index).trim()
+      tasksText = tasksText.slice(0, matchStart.index)
+      console.log('[ScheduleGeneration] parseTasks: milestones section found (fallback), tasksText length now=', tasksText.length)
+    }
+  }
+  // Fallback 2: if still no milestones, look for "By end of week N" or similar followed by numbered list at end of response (run on last 1500 chars only to avoid regex backtracking on long text)
+  if (!milestones && tasksText.length > 200) {
+    const tail = tasksText.slice(-1500)
+    const byEndOfWeek = /(?:by end of (?:week|this period)|deliverables?|milestones?)\s*:?\s*\n([\s\S]{1,800})$/im
+    const m = tail.match(byEndOfWeek)
+    if (m && m[1]) {
+      const candidate = m[1].trim()
+      // Only use if it contains at least one numbered line
+      if (/\n\s*\d+[.)]\s*\S/.test(candidate) || /^\s*\d+[.)]\s*\S/m.test(candidate)) {
+        milestones = candidate
+        console.log('[ScheduleGeneration] parseTasks: milestones extracted from fallback pattern')
+      }
     }
   }
 
-  // Split into task blocks by "---" separator
-  const taskBlocks = tasksText.split('---')
+  // Match "TASK:" or "TASK 1:", "TASK 2:", etc. (Claude sometimes numbers headers)
+  const TASK_HEADER_RE = /\bTASK\s*\d*\s*:/i
 
-  for (const block of taskBlocks) {
+  // Split into task blocks by "---" on its own line (so "---" inside description/SUCCESS doesn't split)
+  let taskBlocks = tasksText.split(/\n\s*---\s*\n/)
+  console.log('[ScheduleGeneration] parseTasks: split by \\n---\\n gave', taskBlocks.length, 'blocks')
+
+  const blocksWithTask = taskBlocks.filter((b) => TASK_HEADER_RE.test(b.trim()))
+  console.log('[ScheduleGeneration] parseTasks: blocks containing TASK: (i)=', blocksWithTask.length)
+
+  if (blocksWithTask.length === 0) {
+    taskBlocks = tasksText.split('---')
+    console.log('[ScheduleGeneration] parseTasks: fallback split by "---" gave', taskBlocks.length, 'blocks')
+    const blocksWithTaskFallback = taskBlocks.filter((b) => TASK_HEADER_RE.test(b.trim()))
+    console.log('[ScheduleGeneration] parseTasks: (fallback) blocks containing TASK:=', blocksWithTaskFallback.length)
+  }
+
+  for (let i = 0; i < taskBlocks.length; i++) {
+    const block = taskBlocks[i]
     const trimmedBlock = block.trim()
 
-    // Skip empty blocks or blocks without TASK:
-    if (!trimmedBlock || !trimmedBlock.includes('TASK:')) {
+    if (!trimmedBlock) {
+      console.log('[ScheduleGeneration] parseTasks: block', i, 'empty, skip')
+      continue
+    }
+    if (!TASK_HEADER_RE.test(trimmedBlock)) {
+      console.log('[ScheduleGeneration] parseTasks: block', i, 'no TASK: found, skip. First 120 chars=', trimmedBlock.substring(0, 120))
       continue
     }
 
+    console.log('[ScheduleGeneration] parseTasks: parsing block', i, 'length=', trimmedBlock.length, 'first 180 chars=', trimmedBlock.substring(0, 180))
     const task = parseTaskBlock(trimmedBlock)
 
-    // Only add if we have at least a title
     if (task.title) {
       tasks.push(task)
+      console.log(
+        `[ScheduleGeneration] ParsedTask: "${task.title}" energy_required=${task.energy_required ?? '—'} preferred_slot=${task.preferred_slot ?? '—'}`
+      )
+    } else {
+      console.log(
+        '[ScheduleGeneration] parseTasks: block',
+        i,
+        'returned EMPTY title. Block first 250 chars=',
+        trimmedBlock.substring(0, 250)
+      )
     }
   }
 
-  console.log(`[ScheduleGeneration] Parsed ${tasks.length} tasks`)
+  console.log('[ScheduleGeneration] Parsed', tasks.length, 'tasks')
 
   return { tasks, milestones }
 }
@@ -928,10 +1078,13 @@ function parseTaskBlock(block: string): ParsedTask {
     label: 'Planning',
   }
 
-  // Extract title
+  // Extract title: "TASK: title", "TASK 1: title", or markdown prefix (e.g. "## TASK 1: Set up")
+  // Strip leading ** (from **TASK:) and trailing ** left by markdown parsing
+  const TASK_TITLE_RE = /\bTASK\s*\d*\s*:\s*(.+)$/i
   for (const line of lines) {
-    if (line.trim().startsWith('TASK:')) {
-      task.title = line.replace('TASK:', '').trim()
+    const match = line.match(TASK_TITLE_RE)
+    if (match && match[1].trim()) {
+      task.title = match[1].replace(/^\*\*/, '').replace(/\*\*$/g, '').trim()
       break
     }
   }
@@ -962,7 +1115,7 @@ function parseTaskBlock(block: string): ParsedTask {
         if (afterLabel) successLines.push(afterLabel)
         continue
       }
-      if (/^(HOURS|PRIORITY|LABEL|DEPENDS_ON|TASK|DESCRIPTION):/i.test(trimmed)) break
+      if (/^(HOURS|PRIORITY|LABEL|DEPENDS_ON|ENERGY_REQUIRED|PREFERRED_SLOT|TASK|DESCRIPTION):/i.test(trimmed)) break
       if (trimmed.startsWith('-') || trimmed.startsWith('•') || trimmed.startsWith('*')) {
         successLines.push(trimmed.replace(/^[-•*]\s*/, '').trim())
       } else if (trimmed.length > 0) {
@@ -1021,6 +1174,30 @@ function parseTaskBlock(block: string): ParsedTask {
     }
   }
 
+  // Extract energy_required (Session 4 scheduling metadata)
+  const energyRequiredValues = ['high', 'medium', 'low'] as const
+  for (const line of lines) {
+    if (line.toUpperCase().startsWith('ENERGY_REQUIRED:')) {
+      const value = line.replace(/energy_required:/i, '').trim().toLowerCase()
+      if (energyRequiredValues.includes(value as (typeof energyRequiredValues)[number])) {
+        task.energy_required = value as (typeof energyRequiredValues)[number]
+      }
+      break
+    }
+  }
+
+  // Extract preferred_slot (Session 4 scheduling metadata)
+  const preferredSlotValues = ['peak_energy', 'normal', 'flexible'] as const
+  for (const line of lines) {
+    if (line.toUpperCase().startsWith('PREFERRED_SLOT:')) {
+      const value = line.replace(/preferred_slot:/i, '').trim().toLowerCase()
+      if (preferredSlotValues.includes(value as (typeof preferredSlotValues)[number])) {
+        task.preferred_slot = value as (typeof preferredSlotValues)[number]
+      }
+      break
+    }
+  }
+
   return task
 }
 
@@ -1061,4 +1238,63 @@ export function convertSuccessCriteriaToJson(successString: string): Array<{
       done: false,
     }
   })
+}
+
+/** Session 2: context for generating Harvey's post-schedule coaching message */
+export interface ScheduleCoachingContext {
+  totalTasksScheduled: number
+  totalHoursScheduled: number
+  slotTypeCounts: Record<string, number>
+  weekendHoursUsed: number
+  weekendHoursAvailable: number
+  tasksSplit: number
+  startDate: string
+  durationWeeks: number
+  energy_peak: string | null
+  preferred_session_length: number | null
+  projectTitle: string
+  target_deadline: string | null
+  phasesSummary?: string
+}
+
+const COACHING_SYSTEM_PROMPT = `You are Harvey, a friendly AI project coach. After building a user's schedule, you write a short coaching message (3–4 sentences) that:
+1. Explains how tasks were distributed (e.g. high-energy tasks in peak hours).
+2. Explains why certain choices were made (e.g. left weekends free because work fit in weekdays).
+3. Tells the user what to focus on first (e.g. "Start with X today — it'll set you up for Y tomorrow").
+4. Mentions any constraints you respected (e.g. splits across days, emergency buffer use).
+
+Write in a warm, concise voice. No markdown, no bullet points — plain text only. Address the user directly ("I've placed...", "Start with...").`
+
+/**
+ * Generate Harvey's post-schedule coaching message via Claude (Session 2).
+ * Returns plain text; throws on API failure (caller should use fallback).
+ */
+export async function generateScheduleCoachingMessage(
+  context: ScheduleCoachingContext
+): Promise<string> {
+  const userPrompt = `Scheduling context (use this to write your 3–4 sentence coaching message):
+- Total task blocks scheduled: ${context.totalTasksScheduled}
+- Total hours scheduled: ${context.totalHoursScheduled.toFixed(1)}h
+- Tasks by slot type: peak_energy=${context.slotTypeCounts.peak_energy ?? 0}, normal=${context.slotTypeCounts.normal ?? 0}, flexible=${context.slotTypeCounts.flexible ?? 0}, emergency=${context.slotTypeCounts.emergency ?? 0}
+- Weekend: ${context.weekendHoursUsed.toFixed(1)}h used of ${context.weekendHoursAvailable.toFixed(1)}h available
+- Tasks split across multiple days: ${context.tasksSplit}
+- Schedule: ${context.durationWeeks} week(s) starting ${context.startDate}
+- User energy peak: ${context.energy_peak ?? 'not set'}; preferred session length: ${context.preferred_session_length ?? '—'} min
+- Project: "${context.projectTitle}"${context.target_deadline ? `, deadline ${context.target_deadline}` : ''}${context.phasesSummary ? `; ${context.phasesSummary}` : ''}
+
+Write your coaching message now (plain text, 3–4 sentences):`
+
+  const response = await withAnthropicRetry(() =>
+    anthropic.messages.create({
+      model: CLAUDE_CONFIG.model,
+      max_tokens: 400,
+      system: COACHING_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+    })
+  )
+
+  const textBlock = response.content.find((block) => block.type === 'text')
+  const text = textBlock?.type === 'text' ? textBlock.text.trim() : ''
+  if (!text) throw new Error('Empty coaching message response')
+  return text
 }

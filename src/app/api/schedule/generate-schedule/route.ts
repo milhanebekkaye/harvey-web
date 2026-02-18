@@ -36,11 +36,14 @@ import type { NextRequest } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
+import { isRetryableAnthropicError } from '@/lib/ai/claude-client'
 import {
   buildConstraintsFromProjectAndUser,
   generateTasks,
   parseTasks,
   convertSuccessCriteriaToJson,
+  generateScheduleCoachingMessage,
+  type ScheduleCoachingContext,
 } from '@/lib/schedule/schedule-generation'
 import { getProjectById } from '@/lib/projects/project-service'
 import { getUserById } from '@/lib/users/user-service'
@@ -48,6 +51,7 @@ import {
   assignTasksToSchedule,
   calculateStartDate,
   getTaskScheduleData,
+  type SchedulerOptions,
 } from '@/lib/schedule/task-scheduler'
 import { normalizeTaskLabel } from '@/types/task.types'
 import {
@@ -178,12 +182,15 @@ export async function POST(request: NextRequest) {
 
     console.log('[GenerateScheduleAPI] Conversation has', messages.length, 'messages')
 
-    // ===== STEP 5: Build constraints from last extracted data (Project + User) =====
-    console.log('[GenerateScheduleAPI] Step 5: Building constraints from DB (last onboarding extraction)...')
+    // ===== STEP 5: Load constraints from DB only (no re-extraction) =====
+    console.log('[GenerateScheduleAPI] Step 5: Loading constraints from DB (no re-extraction) ✅')
     // project from getProjectById is full Prisma Project (contextData, target_deadline, etc.)
     type ProjectForConstraints = Parameters<typeof buildConstraintsFromProjectAndUser>[0]
     const constraints = buildConstraintsFromProjectAndUser(project as ProjectForConstraints, dbUser)
-    console.log('[GenerateScheduleAPI] ✅ Built constraints:', JSON.stringify(constraints, null, 2))
+    const windowsCount = Array.isArray(constraints.available_time) ? constraints.available_time.length : 0
+    console.log(
+      `[GenerateScheduleAPI] Loaded: energy_peak=${constraints.energy_peak ?? '—'}, skill_level=${constraints.skill_level ?? '—'}, weekly_hours=${constraints.weekly_hours_commitment ?? '—'}, windows=${windowsCount}`
+    )
 
     // ===== STEP 5.5: Save contextData from built constraints (Settings and chat tools read available_time from here) =====
     const constraintsAny = constraints as unknown as Record<string, unknown>
@@ -213,20 +220,28 @@ export async function POST(request: NextRequest) {
 
     // ===== STEP 7: Parse Tasks =====
     console.log('[GenerateScheduleAPI] Step 7: Parsing tasks')
+    console.log('[GenerateScheduleAPI] Raw Claude response length:', tasksResponse.length)
+    console.log('[GenerateScheduleAPI] Raw Claude response (first 800 chars):', tasksResponse.substring(0, 800))
 
     const { tasks, milestones } = parseTasks(tasksResponse)
 
     console.log(`[GenerateScheduleAPI] ✅ Generated ${tasks.length} tasks`)
 
-    // Log each task for debugging
+    // Log each task in detail (same format as before)
     console.log('\n[GenerateScheduleAPI] 📋 GENERATED TASKS:')
-    tasks.forEach((task, index) => {
-      console.log(`\n[GenerateScheduleAPI] Task ${index + 1}: ${task.title}`)
-      console.log(`  Hours: ${task.hours}`)
-      console.log(`  Priority: ${task.priority}`)
-      console.log(`  Success: ${task.success}`)
-      console.log(`  Description: ${task.description.substring(0, 100)}...`)
-    })
+    if (tasks.length === 0) {
+      console.log('[GenerateScheduleAPI] ⚠️ No tasks parsed. Check [ScheduleGeneration] parseTasks logs above for block split and title extraction.')
+      console.log('[GenerateScheduleAPI] Claude response (first 1000 chars) for format check:', tasksResponse.substring(0, 1000))
+    } else {
+      tasks.forEach((task, index) => {
+        console.log(`\n[GenerateScheduleAPI] Task ${index + 1}: ${task.title}`)
+        console.log(`  Hours: ${task.hours}`)
+        console.log(`  Priority: ${task.priority}`)
+        console.log(`  Success: ${task.success}`)
+        console.log(`  Description: ${task.description ? task.description.substring(0, 100) + (task.description.length > 100 ? '...' : '') : '(none)'}`)
+        console.log(`  energy_required: ${task.energy_required ?? '—'}, preferred_slot: ${task.preferred_slot ?? '—'}`)
+      })
+    }
 
     if (milestones) {
       console.log('\n[GenerateScheduleAPI] 📍 MILESTONES:')
@@ -236,31 +251,73 @@ export async function POST(request: NextRequest) {
     // ===== STEP 8: Schedule Tasks =====
     console.log('[GenerateScheduleAPI] Step 8: 📅 Scheduling tasks to specific dates/times...')
 
-    // Calculate start date based on user preference (or default to tomorrow/next Monday)
-    // Use timezone from the user we already loaded (dbUser from Step 3.5)
+    // Calculate start date: prefer project.schedule_start_date when set; else from constraints (tomorrow/next Monday)
     const userTimezone = dbUser?.timezone || 'UTC'
     console.log(`[GenerateScheduleAPI] User timezone: ${userTimezone}`)
 
-    // Calculate start date in user's timezone
-    const startDate = calculateStartDate(constraints, userTimezone)
+    let startDate: Date
+    const projectStart = (project as { schedule_start_date?: Date | null }).schedule_start_date ?? null
+    if (projectStart != null) {
+      const d = new Date(projectStart)
+      if (!Number.isNaN(d.getTime())) {
+        startDate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0, 0))
+        console.log(`[GenerateScheduleAPI] Using project schedule_start_date: ${startDate.toISOString().split('T')[0]}`)
+      } else {
+        startDate = calculateStartDate(constraints, userTimezone)
+      }
+    } else {
+      startDate = calculateStartDate(constraints, userTimezone)
+    }
     const durationWeeks = constraints.schedule_duration_weeks || 2
 
     console.log(`[GenerateScheduleAPI] Start date: ${startDate.toISOString().split('T')[0]}`)
     console.log(`[GenerateScheduleAPI] Duration: ${durationWeeks} weeks`)
 
     // Run the scheduling algorithm (slot times in user TZ, stored as UTC).
-    // Blocked time is derived from User workSchedule/commute and subtracted from available_time.
+    // Session 4: pass scheduler options for smart slot assignment (energy peak, ramp-up, etc.).
     const userBlocked =
       constraints.work_schedule || constraints.commute?.morning || constraints.commute?.evening
         ? { workSchedule: constraints.work_schedule ?? null, commute: constraints.commute ?? null }
         : null
+
+    const notesText = [
+      ...(constraints.user_notes ?? []).map((n) => n.note),
+      ...(constraints.project_notes ?? []).map((n) => n.note),
+    ].join(' ')
+    const rampUpDay1 = /losing motivation|lacking motivation|low motivation/i.test(notesText)
+
+    const schedulerOptions: SchedulerOptions = {
+      energyPeak: constraints.energy_peak ?? dbUser?.energy_peak ?? null,
+      preferredSessionLength: constraints.preferred_session_length ?? null,
+      userNotes: constraints.user_notes ?? null,
+      projectNotes: constraints.project_notes ?? null,
+      phases: constraints.phases ?? null,
+      rampUpDay1,
+    }
+    console.log(
+      '[GenerateScheduleAPI] SchedulerOptions:',
+      JSON.stringify(
+        {
+          energyPeak: schedulerOptions.energyPeak,
+          preferredSessionLength: schedulerOptions.preferredSessionLength,
+          rampUpDay1: schedulerOptions.rampUpDay1,
+          hasUserNotes: (schedulerOptions.userNotes?.length ?? 0) > 0,
+          hasProjectNotes: (schedulerOptions.projectNotes?.length ?? 0) > 0,
+          phasesActivePhaseId: schedulerOptions.phases?.active_phase_id,
+        },
+        null,
+        2
+      )
+    )
+
     const scheduleResult = assignTasksToSchedule(
       tasks,
       constraints,
       startDate,
       durationWeeks,
       userTimezone,
-      userBlocked
+      userBlocked,
+      schedulerOptions
     )
 
     console.log(`[GenerateScheduleAPI] ✅ Scheduled ${scheduleResult.scheduledTasks.length} task blocks`)
@@ -322,12 +379,14 @@ export async function POST(request: NextRequest) {
           window_end: isFlexible ? scheduledTask.windowEnd ?? null : null,
           is_flexible: isFlexible,
           label: normalizeTaskLabel(originalTask.label),
+          energy_required: originalTask.energy_required ?? null,
+          preferred_slot: originalTask.preferred_slot ?? null,
         },
       }
     })
 
-    // Log scheduled tasks for debugging
-    console.log('\n[GenerateScheduleAPI] 📅 TASK RECORDS TO CREATE:')
+    // Log each task record with energy_required, preferred_slot, is_flexible
+    console.log('[GenerateScheduleAPI] Task records (energy_required, preferred_slot, is_flexible):')
     taskRecords.forEach((record, index) => {
       const d = record.data
       const date = d.scheduledDate.toISOString().split('T')[0]
@@ -338,7 +397,9 @@ export async function POST(request: NextRequest) {
             ? `${d.scheduledStartTime.toTimeString().substring(0, 5)}-${d.scheduledEndTime.toTimeString().substring(0, 5)}`
             : '—'
       const duration = `${(d.estimatedDuration / 60).toFixed(1)}h`
-      console.log(`  ${index + 1}. ${date} ${timeStr} (${duration}) - ${d.title}`)
+      console.log(
+        `[GenerateScheduleAPI] TaskRecord #${index + 1}: ${d.title} | ${date} ${timeStr} (${duration}) | energy_required=${d.energy_required ?? '—'} preferred_slot=${d.preferred_slot ?? '—'} is_flexible=${d.is_flexible ?? false}`
+      )
     })
 
     // Create tasks one-by-one to get IDs, then set depends_on
@@ -352,40 +413,61 @@ export async function POST(request: NextRequest) {
       taskIndexToIds[taskIndex].push(created.id)
     }
 
-    // Map: task id → scheduled start time (ms) for validation (flexible tasks use date midnight)
-    const idToScheduledTime = new Map<string, number>()
-    for (let j = 0; j < taskRecords.length; j++) {
-      const d = taskRecords[j].data
-      const timeMs =
-        d.scheduledStartTime != null ? d.scheduledStartTime.getTime() : d.scheduledDate.getTime()
-      idToScheduledTime.set(createdIds[j], timeMs)
+    /** For dependency validation: get earliest start (ms) for "this" task and latest end (ms) for a dependency. */
+    function getEarliestStartMs(data: (typeof taskRecords)[0]['data']): number {
+      if (data.scheduledStartTime != null) return data.scheduledStartTime.getTime()
+      if (data.is_flexible && data.window_start) {
+        const [h, m] = data.window_start.split(':').map((x) => parseInt(x, 10) || 0)
+        const d = data.scheduledDate
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0, 0)
+      }
+      return data.scheduledDate.getTime()
+    }
+    function getLatestEndMs(data: (typeof taskRecords)[0]['data']): number {
+      if (data.scheduledEndTime != null) return data.scheduledEndTime.getTime()
+      if (data.scheduledStartTime != null) return data.scheduledStartTime.getTime() + 60 * 60 * 1000
+      if (data.is_flexible && data.window_end) {
+        const [h, m] = data.window_end.split(':').map((x) => parseInt(x, 10) || 0)
+        const d = data.scheduledDate
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, m, 0, 0)
+      }
+      return data.scheduledDate.getTime() + 60 * 60 * 1000
     }
 
-    // Resolve depends_on (1-based indices) to task IDs; only keep dependencies scheduled before this task
+    // Resolve depends_on (1-based indices) to task IDs; only keep dependencies that end at or before this task starts
     for (let i = 0; i < taskRecords.length; i++) {
       const taskIndex = taskRecords[i].taskIndex
       const originalTask = tasks[taskIndex]
       const depIndices = originalTask.depends_on || []
       const dependantIds = depIndices.flatMap((oneBased) => taskIndexToIds[oneBased - 1] ?? [])
       const uniqueIds = [...new Set(dependantIds)]
-      const startTime = taskRecords[i].data.scheduledStartTime
-      const thisTaskTime =
-        startTime != null ? startTime.getTime() : taskRecords[i].data.scheduledDate.getTime()
+      const thisData = taskRecords[i].data
+      const thisEarliestStartMs = getEarliestStartMs(thisData)
       const thisTaskId = createdIds[i]
-      const thisTitle = taskRecords[i].data.title
+      const thisTitle = thisData.title
 
-      // Only allow dependencies that are scheduled at or before this task (never future tasks)
       const validIds: string[] = []
       for (const depId of uniqueIds) {
-        const depTime = idToScheduledTime.get(depId)
-        if (depTime === undefined) continue
-        if (depTime <= thisTaskTime) {
+        const depIdx = createdIds.indexOf(depId)
+        if (depIdx < 0) continue
+        const depRecord = taskRecords[depIdx]
+        const depData = depRecord.data
+        const depLatestEndMs = getLatestEndMs(depData)
+        const valid = depLatestEndMs <= thisEarliestStartMs
+        if (valid) {
           validIds.push(depId)
         } else {
-          const depRecord = taskRecords[createdIds.indexOf(depId)]
-          const depTitle = depRecord?.data.title ?? depId
+          const depTitle = depData.title ?? depId
+          const thisTimeStr =
+            thisData.is_flexible && thisData.window_start != null && thisData.window_end != null
+              ? `flexible ${thisData.window_start}-${thisData.window_end}`
+              : thisData.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'
+          const depTimeStr =
+            depData.is_flexible && depData.window_start != null && depData.window_end != null
+              ? `flexible ${depData.window_start}-${depData.window_end}`
+              : depData.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'
           console.warn(
-            `[GenerateScheduleAPI] ⚠️ DEPENDS_ON validation: task "${thisTitle}" (${thisTaskId}) depends on "${depTitle}" (${depId}) but that task is scheduled AFTER this one. Dropping invalid dependency. This task scheduled: ${taskRecords[i].data.scheduledDate.toISOString().split('T')[0]} ${taskRecords[i].data.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'}; dependency scheduled: ${depRecord?.data.scheduledDate?.toISOString().split('T')[0]} ${depRecord?.data.scheduledStartTime?.toTimeString().slice(0, 5) ?? 'flexible'}.`
+            `[GenerateScheduleAPI] ⚠️ DEPENDS_ON validation: task "${thisTitle}" (${thisTaskId}) depends on "${depTitle}" (${depId}) but that task is scheduled AFTER this one. Dropping invalid dependency. This task: ${thisData.scheduledDate.toISOString().split('T')[0]} ${thisTimeStr}; dependency: ${depData.scheduledDate.toISOString().split('T')[0]} ${depTimeStr}.`
           )
         }
       }
@@ -399,11 +481,102 @@ export async function POST(request: NextRequest) {
 
     console.log(`[GenerateScheduleAPI] ✅ Created ${taskRecords.length} task records in database (including split parts)`)
 
-    // ===== STEP 9.5: Create project discussion with Harvey greeting =====
-    const harveyGreeting: StoredMessage = {
+    // ===== Persist milestones and schedule_duration_days on project =====
+    const milestonesForDb: Array<{ title: string }> = []
+    if (milestones && milestones.trim()) {
+      const lines = milestones.trim().split(/\r?\n/)
+      const skipPatterns = /^(this represents|next period|~?\d+% of|full project)/i
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.length > 300) continue
+        if (skipPatterns.test(trimmed)) continue
+        const numberedDot = trimmed.match(/^\d+\.\s*(.+)$/)
+        const numberedParen = trimmed.match(/^\d+\)\s*(.+)$/)
+        const bullet = trimmed.match(/^[-*•]\s*(.+)$/)
+        const title = (numberedDot?.[1] ?? numberedParen?.[1] ?? bullet?.[1] ?? trimmed).trim()
+        if (title.length >= 3 && title.length <= 250) milestonesForDb.push({ title })
+      }
+    }
+    let scheduleDurationDays: number | null = null
+    if (taskRecords.length > 0) {
+      const dates = taskRecords.map((r) => r.data.scheduledDate)
+      const first = new Date(Math.min(...dates.map((d) => d.getTime())))
+      const last = new Date(Math.max(...dates.map((d) => d.getTime())))
+      const msPerDay = 24 * 60 * 60 * 1000
+      scheduleDurationDays = Math.ceil((last.getTime() - first.getTime()) / msPerDay) + 1
+    }
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        milestones: milestonesForDb.length > 0 ? (milestonesForDb as Prisma.InputJsonValue) : null,
+        // TODO: move to a Schedule/Batch model when Feature 8 (multi-generation) ships
+        schedule_duration_days: scheduleDurationDays,
+        updatedAt: new Date(),
+      } as Prisma.ProjectUpdateInput,
+    })
+    if (milestonesForDb.length > 0 || scheduleDurationDays != null) {
+      console.log('[GenerateScheduleAPI] ✅ Saved project milestones and schedule_duration_days')
+    }
+
+    // ===== STEP 9.5: Create project discussion with Harvey coaching message (Session 2) =====
+    const fallbackGreeting =
+      "Here's your schedule! Take a look and let me know if anything needs adjusting — you can ask me to move tasks, add new ones, or change your availability anytime."
+
+    const slotTypeCounts: Record<string, number> = {
+      peak_energy: 0,
+      normal: 0,
+      flexible: 0,
+      emergency: 0,
+    }
+    for (const st of scheduleResult.scheduledTasks) {
+      const t = st.slotType ?? 'normal'
+      if (t in slotTypeCounts) slotTypeCounts[t] += 1
+    }
+    const tasksSplit = new Set(
+      scheduleResult.scheduledTasks.filter((st) => st.partNumber != null && st.partNumber > 1).map((st) => st.taskIndex)
+    ).size
+
+    const coachingContext: ScheduleCoachingContext = {
+      totalTasksScheduled: scheduleResult.scheduledTasks.length,
+      totalHoursScheduled: scheduleResult.totalHoursScheduled,
+      slotTypeCounts,
+      weekendHoursUsed: scheduleResult.weekendHoursUsed ?? 0,
+      weekendHoursAvailable: scheduleResult.weekendHoursAvailable ?? 0,
+      tasksSplit,
+      startDate: startDate.toISOString().split('T')[0],
+      durationWeeks,
+      energy_peak: constraints.energy_peak ?? null,
+      preferred_session_length: constraints.preferred_session_length ?? null,
+      projectTitle: project.title ?? 'Project',
+      target_deadline: project.target_deadline
+        ? typeof project.target_deadline === 'string'
+          ? project.target_deadline
+          : project.target_deadline.toISOString()
+        : null,
+      phasesSummary:
+        constraints.phases?.phases?.length &&
+        constraints.phases.active_phase_id != null
+          ? `Phase ${constraints.phases.active_phase_id}: ${constraints.phases.phases[constraints.phases.active_phase_id - 1]?.title ?? 'active'}`
+          : undefined,
+    }
+
+    let coachingContent: string
+    const COACHING_TIMEOUT_MS = 15_000
+    try {
+      coachingContent = await Promise.race([
+        generateScheduleCoachingMessage(coachingContext),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Coaching message timeout')), COACHING_TIMEOUT_MS)
+        ),
+      ])
+    } catch (err) {
+      console.warn('[GenerateScheduleAPI] Coaching message generation failed, using fallback:', err)
+      coachingContent = fallbackGreeting
+    }
+
+    const harveyMessage: StoredMessage = {
       role: 'assistant',
-      content:
-        "Here's your schedule! Take a look and let me know if anything needs adjusting — you can ask me to move tasks, add new ones, or change your availability anytime.",
+      content: coachingContent,
       timestamp: new Date().toISOString(),
     }
     const existingProjectDiscussion = await getProjectDiscussion(projectId, user.id)
@@ -412,10 +585,10 @@ export async function POST(request: NextRequest) {
         projectId,
         userId: user.id,
         type: 'project',
-        initialMessage: harveyGreeting,
+        initialMessage: harveyMessage,
       })
       if (createResult.success) {
-        console.log('[GenerateScheduleAPI] ✅ Created project discussion with Harvey greeting')
+        console.log('[GenerateScheduleAPI] ✅ Created project discussion with Harvey coaching message')
       } else {
         console.error('[GenerateScheduleAPI] ⚠️ Failed to create project discussion:', createResult.error?.message)
       }
@@ -438,7 +611,19 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     console.error('[GenerateScheduleAPI] ❌ Error generating schedule:', errorMessage)
 
-    // Check if it's a Claude API error
+    // Retries exhausted for overload/rate limit → user-friendly message
+    if (isRetryableAnthropicError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'The AI service is temporarily overloaded. Please try again in a minute.',
+          code: 'AI_OVERLOADED',
+        },
+        { status: 503 }
+      )
+    }
+
+    // Other Claude/API errors
     if (errorMessage.includes('anthropic') || errorMessage.includes('API')) {
       return NextResponse.json(
         { success: false, error: 'AI service unavailable', code: 'AI_ERROR' },

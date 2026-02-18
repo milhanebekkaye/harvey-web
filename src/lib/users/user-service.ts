@@ -156,11 +156,12 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       preferred_session_length: number | null
       communication_style: string | null
       userNotes: unknown
+      energy_peak: string | null
     }>
   >(
     `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
             "availabilityWindows", "workSchedule", "commute",
-            "preferred_session_length", "communication_style", "userNotes"
+            "preferred_session_length", "communication_style", "userNotes", "energy_peak"
      FROM "users" WHERE "id" = $1`,
     userId
   )
@@ -179,6 +180,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     preferred_session_length: row.preferred_session_length ?? undefined,
     communication_style: row.communication_style ?? undefined,
     userNotes: row.userNotes ?? undefined,
+    energy_peak: row.energy_peak ?? undefined,
   }
 }
 
@@ -293,6 +295,11 @@ export async function updateUser(
     if (data.userNotes !== undefined) {
       updates.push(`"userNotes" = $${paramIndex}::jsonb`)
       values.push(JSON.stringify(data.userNotes))
+      paramIndex++
+    }
+    if (data.energy_peak !== undefined) {
+      updates.push(`"energy_peak" = $${paramIndex}`)
+      values.push(data.energy_peak)
       paramIndex++
     }
 

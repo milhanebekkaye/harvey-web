@@ -36,6 +36,7 @@ export interface User {
   preferred_session_length?: number | null
   communication_style?: string | null
   userNotes?: unknown
+  energy_peak?: string | null // "morning" | "afternoon" | "evening"
 }
 
 /**
@@ -85,6 +86,7 @@ export interface UpdateUserData {
   preferred_session_length?: number   // minutes
   communication_style?: string       // "direct", "encouraging", "detailed"
   userNotes?: unknown          // [{ note, extracted_at }] — append-only array
+  energy_peak?: string | null  // "morning" | "afternoon" | "evening"
 }
 
 /**

@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const projectIdParam = searchParams.get('projectId')
 
-    let projectId: string
+    let projectId: string | undefined
     let discussion: Awaited<ReturnType<typeof getOnboardingDiscussion>> = null
 
     if (projectIdParam) {
@@ -93,7 +93,7 @@ export async function GET(request: Request) {
       }
     }
 
-    if (!discussion || !(discussion.messages as StoredMessage[])?.length || !projectId) {
+    if (!discussion || !(discussion.messages as StoredMessage[])?.length || projectId === undefined) {
       return NextResponse.json({ restore: false }, { status: 200 })
     }
 

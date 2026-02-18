@@ -302,6 +302,8 @@ export interface ExtractedConstraints {
   preferred_session_length?: number | null
   communication_style?: string | null
   user_notes?: ExtractedNote[]
+  /** When the user is most productive: "morning" | "afternoon" | "evening" (Session 4). */
+  energy_peak?: string | null
 }
 
 /**
@@ -346,6 +348,16 @@ export interface ParsedTask {
    * Resolved to task IDs when persisting.
    */
   depends_on?: number[]
+
+  /**
+   * Scheduling metadata (Session 4): cognitive load — high = deep focus, medium = moderate, low = can be distracted.
+   */
+  energy_required?: 'high' | 'medium' | 'low'
+
+  /**
+   * Scheduling metadata (Session 4): ideal window type — peak_energy = user's best time, normal = standard, flexible = anywhere.
+   */
+  preferred_slot?: 'peak_energy' | 'normal' | 'flexible'
 }
 
 /**

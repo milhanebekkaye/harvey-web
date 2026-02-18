@@ -30,7 +30,8 @@ Output format:
     "availabilityWindows": [{ "days": string[], "start_time": string, "end_time": string, "type": string, "window_type": "fixed" | "flexible", "flexible_hours": number | null }] | null,
     "preferred_session_length": number | null,
     "communication_style": string | null,
-    "userNotes": string | null
+    "userNotes": string | null,
+    "energy_peak": "morning" | "afternoon" | "evening" | null
   },
   "project": {
     "title": string | null,
@@ -44,7 +45,8 @@ Output format:
     "skill_level": string | null,
     "motivation": string | null,
     "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string (ISO) | null }], "active_phase_id": number | null } | null,
-    "projectNotes": string | null
+    "projectNotes": string | null,
+    "schedule_start_date": string (ISO date YYYY-MM-DD) | null
   },
   "completion_confidence": number
 }
@@ -68,7 +70,9 @@ Field-Specific Guidance:
 - weekly_hours_commitment: How many hours per week they'll work on THIS project
 - task_preference: How they like to work — "quick_wins" (small actionable items), "deep_focus" (longer blocks), or "mixed"
 - preferred_session_length: (user) How many minutes they can focus in one sitting (number, e.g. 60)
+- energy_peak: (user) When they are most productive. Extract from phrases like "I'm a night owl", "I hit my stride in the evenings", "I'm sharpest in the morning". Values: "morning" (05:00–11:59), "afternoon" (12:00–17:59), or "evening" (18:00–23:59). Omit or null if not mentioned.
 - phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
+- schedule_start_date: (project) When they want to start working on this schedule. Parse natural language into ISO date YYYY-MM-DD: "today" → today's date; "tomorrow" → next day; "next Monday" / "Monday" → next occurrence of that weekday; "February 20", "Feb 20 2026" → parsed date. Use the conversation context for "today". Null if not mentioned.
 
 After extracting all fields, assess your confidence level (completion_confidence, 0-100):
 
@@ -126,6 +130,35 @@ function parseValidDate(value: unknown): Date | null {
   if (!str) return null
   const d = new Date(str)
   return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** Parse schedule_start_date: ISO date, or "today"/"tomorrow"/"next_monday" resolved relative to now. */
+function parseScheduleStartDate(value: unknown): Date | null {
+  if (value == null) return null
+  const str = (typeof value === 'string' ? value.trim() : String(value)).toLowerCase()
+  if (!str) return null
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (str === 'today') return today
+  if (str === 'tomorrow') {
+    const t = new Date(today)
+    t.setDate(t.getDate() + 1)
+    return t
+  }
+  if (/^next?_?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/.test(str) || /^(monday|tue|wed|thu|fri|sat|sun)day?$/i.test(str)) {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const match = str.replace(/^next?_?/, '').toLowerCase()
+    let targetDay = dayNames.find((d) => d.startsWith(match) || match.startsWith(d.slice(0, 3)))
+    if (!targetDay) targetDay = 'monday'
+    const targetIdx = dayNames.indexOf(targetDay)
+    let currentIdx = today.getDay()
+    let days = targetIdx - currentIdx
+    if (days <= 0) days += 7
+    const out = new Date(today)
+    out.setDate(out.getDate() + days)
+    return out
+  }
+  return parseValidDate(str)
 }
 
 /** Canonical phases shape we store in DB and return to the client. */
@@ -387,6 +420,7 @@ export async function POST(request: Request) {
     if (extracted.user.preferred_session_length !== undefined && extracted.user.preferred_session_length !== null) userUpdates.preferred_session_length = extracted.user.preferred_session_length
     if (extracted.user.communication_style !== undefined && extracted.user.communication_style !== null) userUpdates.communication_style = extracted.user.communication_style
     if (extracted.user.userNotes !== undefined && extracted.user.userNotes !== null) userUpdates.userNotes = extracted.user.userNotes
+    if (extracted.user.energy_peak !== undefined && extracted.user.energy_peak !== null) userUpdates.energy_peak = extracted.user.energy_peak
 
     const projectUpdates: Record<string, unknown> = {}
     if (extracted.project.title !== undefined && extracted.project.title !== null) projectUpdates.title = extracted.project.title
@@ -402,6 +436,8 @@ export async function POST(request: Request) {
     if (extracted.project.motivation !== undefined && extracted.project.motivation !== null) projectUpdates.motivation = extracted.project.motivation
     if (extracted.project.phases !== undefined && extracted.project.phases !== null) projectUpdates.phases = extracted.project.phases
     if (extracted.project.projectNotes !== undefined && extracted.project.projectNotes !== null) projectUpdates.projectNotes = extracted.project.projectNotes
+    const scheduleStartDateParsed = parseScheduleStartDate(extracted.project.schedule_start_date)
+    if (scheduleStartDateParsed !== null) projectUpdates.schedule_start_date = scheduleStartDateParsed
 
     // If weekly_hours_commitment was not extracted, derive from availabilityWindows
     const hasWeeklyHours = extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null
@@ -454,6 +490,9 @@ export async function POST(request: Request) {
     console.log('[OnboardingExtract] Extracted project:', JSON.stringify(extracted.project, null, 2))
     if (Object.keys(userUpdates).length > 0) {
       console.log('[OnboardingExtract] Saved to DB (user):', Object.keys(userUpdates).join(', '))
+      if (extracted.user.energy_peak != null && String(extracted.user.energy_peak).trim() !== '') {
+        console.log('[OnboardingExtract] energy_peak:', extracted.user.energy_peak)
+      }
     }
     if (Object.keys(projectUpdates).length > 0) {
       console.log('[OnboardingExtract] Saved to DB (project):', Object.keys(projectUpdates).join(', '))

@@ -41,7 +41,7 @@ The Settings page lets users view and edit all constraints and preferences that 
 |------------------------------|------------------------------|
 | Work schedule, commute       | **User**.workSchedule, **User**.commute |
 | Availability blocks           | **Project**.contextData.available_time |
-| Energy peak, rest days       | **Project**.contextData.preferences     |
+| Energy peak, rest days       | **Project**.contextData.preferences (Settings UI). **User**.energy_peak is an **enriching field** Harvey asks about during onboarding (Session 4); when set, the scheduler uses it to place high-focus tasks in the user's peak time window. |
 | Session length, communication style | **User**.preferred_session_length, **User**.communication_style |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constraints, Project = project allocations” split.
@@ -63,7 +63,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 ## Availability blocks data model (including overnight)
 
 - Each block is stored as a single object: `{ day, start, end, type? }`. `day` is the **start** day (e.g. `"friday"`).
-- **Onboarding / User.availabilityWindows**: Windows can be **fixed** (exact time block every day) or **flexible** (X hours somewhere within a boundary); extraction uses `window_type: 'fixed' | 'flexible'` and optional `flexible_hours` (e.g. 3 for "3 hours during 9–5"). Settings availability blocks are currently fixed only; flexible windows from onboarding are used by the scheduler for capacity.
+- **Onboarding / User.availabilityWindows**: Windows can be **fixed** (exact time block every day) or **flexible** (X hours somewhere within a boundary); extraction uses `window_type: 'fixed' | 'flexible'` and optional `flexible_hours` (e.g. 3 for "3 hours during 9–5"). Settings availability blocks are currently fixed only; flexible windows from onboarding are used by the scheduler, where **slot capacity = flexible_hours** (not the boundary length). When building constraints for schedule generation, **User.availabilityWindows** is preferred over **contextData.available_time** when present (Session 2) so extracted **flexible_hours** is always used.
 - **Same-day**: `end` &gt; `start` (e.g. Monday 14:00–16:00). Renders as one segment on that day.
 - **Overnight**: `end` ≤ `start` (e.g. Friday 23:00 – 02:00). Stored as one block; in the week grid it is shown split across two days: `[day] start–24:00` and `nextDay(day) 00:00–end`. Day order is Monday → Tuesday → … → Sunday → Monday.
 - Edge cases: 22:00–00:00 is treated as overnight (segment until 24:00 on start day; next-day segment 0–0 is effectively empty). Full overnight (e.g. 00:00–23:59) is valid and spans the whole next day.

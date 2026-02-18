@@ -314,6 +314,16 @@ export interface DashboardTask {
    * Boundary end for flexible tasks (e.g. '17:30').
    */
   windowEnd?: string
+
+  /**
+   * Scheduling metadata: energy_required from generation (high | medium | low).
+   */
+  energyRequired?: string
+
+  /**
+   * Scheduling metadata: preferred_slot from generation (peak_energy | normal | flexible).
+   */
+  preferredSlot?: string
 }
 
 // ============================================

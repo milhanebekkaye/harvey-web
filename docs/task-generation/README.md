@@ -24,14 +24,20 @@ If you expect UI entry points or additional services to trigger this flow, they 
 ## Feature flow (end-to-end)
 1. Client calls `POST /api/schedule/generate-schedule` with `{ projectId }`.
 2. API authenticates the user via Supabase server client.
-3. API loads the `Discussion` for the project, then formats messages as `ROLE: content` blocks.
-4. **Extraction** (last 15 messages only): `extractConstraints(conversationTextForExtraction)` calls Claude with extended prompt; parses JSON into `ExtractedConstraints` (scheduling + enrichment). API saves scheduling subset to `Project.contextData`; writes enrichment to Project and User via `updateProject`/`updateUser` (only defined values; failures non-fatal).
-5. `generateTasks(conversationTextFull, constraints)` uses **full** conversation; Claude produces task text.
-6. `parseTasks(claudeResponse)` converts Claude output into `ParsedTask[]` and optional milestones.
-7. `calculateStartDate(constraints, userTimezone)` picks a schedule start date.
-8. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)` assigns tasks to time slots and splits them as needed. **available_time** can include **flexible** blocks (optional `flexible_hours`); for those, slot capacity = flexible_hours (not end − start) and work/commute are not subtracted. Tasks assigned to flexible slots get `scheduledStartTime`/`scheduledEndTime` = null and `window_start`/`window_end`/`is_flexible` set; the timeline shows "During work hours · Xh" (or morning/afternoon/evening).
-9. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma.
-10. API returns `{ success, taskCount, milestones }`.
+3. API loads the **Discussion** and the full **Project** and **User** from the database.
+4. API converts discussion messages to conversation text (for task generation context only).
+5. **Constraints from DB (no re-extraction)**: `buildConstraintsFromProjectAndUser(project, user)` builds `ExtractedConstraints` from already-persisted fields (e.g. `project.contextData`, `project.availabilityWindows` or User windows, `project.phases`, `user.energy_peak`, `user.preferred_session_length`, etc.). The onboarding flow is responsible for extraction and saving to Project/User; when the user clicks "Build my schedule", we **do not** call `extractConstraints` or re-parse the conversation for constraints — this avoids overwriting what the user already sees in the Project Shadow panel.
+6. API saves a scheduling subset of the built constraints to `Project.contextData` (so Settings/tools see `available_time`).
+7. `generateTasks(conversationTextFull, constraints)` uses the **full** conversation as context; Claude produces task text.
+8. `parseTasks(claudeResponse)` converts Claude output into `ParsedTask[]` and optional milestones.
+9. **Start date**: If `project.schedule_start_date` is set, the API uses it (normalized to the calendar day); otherwise `calculateStartDate(constraints, userTimezone)` picks a schedule start date (tomorrow/next Monday from preferences or default).
+10. `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks, userTimezone, userBlocked, options?)` assigns tasks to time slots (see Session 4 behavior below). **Same-day dependency ordering** (Session 2): a task is not placed in a slot if a dependency on the same day ends after that slot start. API logs **SchedulerOptions** and each task record with `energy_required`, `preferred_slot`, `is_flexible`.
+11. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma; resolves **depends_on** to task IDs. **Dependency validation** uses window bounds for flexible tasks (dependency’s latest end ≤ this task’s earliest start) so same-day flexible-before-fixed is not incorrectly dropped.
+12. API persists **milestones** and **schedule_duration_days** on the project. Milestones are displayed on the **Project Details** page when non-empty.
+13. **Post-generation coaching message** (Session 2): API builds a scheduling context and calls **generateScheduleCoachingMessage(context)** to produce a 3–4 sentence Harvey message (distribution, choices, what to focus on first). That message is saved as the project discussion's initial message; on Claude failure a fallback greeting is used.
+14. API returns `{ success, taskCount, milestones }`.
+
+**Scheduling details (Session 4)**: **available_time** can include **flexible** blocks (`flexible_hours` or `window_type === 'flexible'`). For flexible slots, **capacity = flexible_hours** (slot end = start + flexible_hours, never the boundary end); tasks get `window_start`/`window_end`/`is_flexible`. The scheduler classifies slots by type (peak_energy, normal, flexible, emergency) using the user's **energy_peak** and window type; it prefers placing tasks in slots that match their **preferred_slot**, adds a 15-minute gap between tasks, uses a 30-minute minimum fragment when splitting, and (when user notes indicate low motivation) limits day 1 to 2 tasks. Emergency slots are used only when other capacity is exhausted. **Weekend slots**: The scheduler iterates all days from start_date (including Saturday and Sunday); there is no weekday-only filter. When task volume or weekday capacity requires it, weekend slots are filled automatically.
 
 Reset flow:
 1. Client calls `POST /api/schedule/reset-schedule` with `{ projectId }`.
@@ -50,7 +56,7 @@ Reset flow:
 - `getDefaultConstraints()`
   - Returns a 2-week default constraint set with weekday evenings and full weekend availability.
 - `extractConstraints(conversationText)`
-  - Calls Claude with extended `EXTRACTION_SYSTEM_PROMPT` (max_tokens 4096). Returns scheduling fields plus enrichment (target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, motivation, phases, project_notes, preferred_session_length, communication_style, user_notes). Strips markdown; parses or repairs JSON; on failure returns defaults. The **caller** (generate-schedule route) passes only the last 15 messages for extraction; full conversation is used for `generateTasks`.
+  - Calls Claude with extended `EXTRACTION_SYSTEM_PROMPT` (max_tokens 4096). Returns scheduling fields plus enrichment. Used **only during onboarding** (e.g. after each message via `POST /api/onboarding/extract`). The **generate-schedule** route does **not** call this; it uses `buildConstraintsFromProjectAndUser(project, user)` so constraints come from DB only and the Project Shadow panel is not overwritten.
 - `repairJSON(jsonText)`
   - Heuristic cleanup for Claude JSON: removes trailing commas, closes truncated final string value if needed, then adds missing `]` before `}` (brackets before braces) so user constraints are preferred over defaults when output is cut off.
 - `generateTasks(conversationText, constraints)`
@@ -58,7 +64,7 @@ Reset flow:
 - `parseTasks(claudeResponse)`
   - Splits response into task blocks, extracts milestones, and returns `{ tasks, milestones }`.
 - `parseTaskBlock(block)`
-  - Parses one task block into `ParsedTask` fields: title, description, success, hours, priority, label, depends_on (optional 1-based indices).
+  - Parses one task block into `ParsedTask` fields: title, description, success, hours, priority, label, depends_on (optional 1-based indices), **energy_required** (optional "high"|"medium"|"low"), **preferred_slot** (optional "peak_energy"|"normal"|"flexible"). Task title is cleaned: leading and trailing `**` from markdown are stripped so titles do not show artifacts like "…user journey**".
 - `convertSuccessCriteriaToJson(successString)`
   - Converts a bullet list string into `{ id, text, done }[]` for database storage.
 
@@ -75,14 +81,13 @@ Reset flow:
   - Adds a number of days to a date.
 - `createDateTime(date, hours)`
   - Converts a date and decimal hours into a full datetime; supports hours >= 24 for overnight slots.
-- `buildAvailabilityMap(constraints, userBlocked?)`
-  - Builds day → time slots map from `available_time`. Fixed blocks are reduced by User work/commute. Blocks with **flexible_hours** create slots whose capacity = flexible_hours (no subtraction). Preserves overnight slots as continuous spans.
+- `buildAvailabilityMap(constraints, userBlocked?, energyPeak?)`
+  - Builds day → time slots map from `available_time`. Fixed blocks are reduced by User work/commute. Blocks with **flexible_hours** create slots whose capacity = flexible_hours (no subtraction). When **energyPeak** is provided, each slot gets a **slotType** (peak_energy | normal | flexible | emergency) for smart matching. Preserves overnight slots as continuous spans.
 - `calculateStartDate(constraints, userTimezone)`
   - Chooses start date using `preferences.start_preference` and user timezone.
   - Defaults to tomorrow, or next Monday if today is Fri/Sat/Sun.
-- `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks)`
-  - Core scheduling loop. Orders tasks by dependencies only (topological sort); no priority re-sort, so dependency order is preserved. Then fills available slots day by day.
-  - Splits tasks when they do not fit in a slot; minimum split block is 1 hour; ignores slots under 30 minutes remaining.
+- `assignTasksToSchedule(tasks, constraints, startDate, durationWeeks, userTimezone?, userBlocked?, options?)`
+  - Core scheduling loop. **Week structure**: Iterates from **start_date** for `durationWeeks * 7` days (day 0 = start_date, day 1 = next day, …). It does **not** align to calendar week boundaries (e.g. if start_date is Tuesday, the first week is Tue–Mon, not Mon–Sun). Logs `Schedule order (start_date forward)` so logs reflect this. Orders tasks by dependency, then within each layer by priority (high first) and energy_required (high first). Fills slots in two passes: non-emergency first, then emergency. Picks tasks that match slot type (preferred_slot) when possible; 15-minute gap between tasks in the same window; minimum fragment 30 minutes when splitting. **Split-part sequencing**: when a task is split into Part 1, Part 2, Part 3, etc., Part N+1 is only placed in slots that start **after** Part N ends (same day or later); all parts keep the original task's priority. **Consecutive parts**: Part 2, 3, … are scheduled immediately after Part 1 in the next available slot(s), so no other task is placed between parts of the same task. **options** (Session 4): energyPeak, preferredSessionLength, userNotes, projectNotes, phases, rampUpDay1 (max 2 tasks on day 1, prefer medium/low when notes mention motivation issues).
   - Returns scheduled tasks and unscheduled task indices with totals.
 - `getTaskScheduleData(taskIndex, scheduledTasks)`
   - Returns the first scheduled block for a given task for DB use.
@@ -90,8 +95,10 @@ Reset flow:
 ### `src/app/api/schedule/generate-schedule/route.ts`
 - `POST(request)`
   - Orchestrates the whole feature. See end-to-end flow above.
+  - **Step 5** loads constraints from DB via `buildConstraintsFromProjectAndUser(project, user)` (no re-extraction). Logs: `Step 5: Loading constraints from DB (no re-extraction) ✅` and `Loaded: energy_peak=…, skill_level=…, weekly_hours=…, windows=…`.
   - Includes a safeguard that skips generation if tasks already exist for the project.
   - Creates one `Task` record per scheduled block, appending "(Part N)" when a task is split.
+  - Logs **SchedulerOptions** and each task record with `energy_required`, `preferred_slot`, `is_flexible` for debugging.
 
 ### `src/app/api/schedule/reset-schedule/route.ts`
 - `POST(req)`
@@ -126,6 +133,15 @@ Allowed labels and colors:
 - Planning → Pink
 
 If a label is missing or invalid, it defaults to `Planning`.
+
+## Task scheduling metadata (Session 4)
+
+Each generated task can include two scheduling metadata fields used by the smart scheduler:
+
+- **energy_required**: `"high"` | `"medium"` | `"low"` — cognitive load (high = deep focus, medium = moderate focus, low = can be distracted).
+- **preferred_slot**: `"peak_energy"` | `"normal"` | `"flexible"` — ideal window type (peak_energy = user's best time of day, normal = standard windows, flexible = anywhere).
+
+Claude outputs these as **ENERGY_REQUIRED:** and **PREFERRED_SLOT:** lines in each task block. The scheduler uses **User.energy_peak** ("morning"|"afternoon"|"evening") to classify slots; tasks with preferred_slot matching a slot's type are placed there when possible. Slots are typed as peak_energy, normal, flexible, or emergency (late_night/emergency windows, used only when capacity is exhausted).
 
 ## Gaps / Not found in repo
 - UI entry point that triggers `POST /api/schedule/generate-schedule` is not documented in the files above.

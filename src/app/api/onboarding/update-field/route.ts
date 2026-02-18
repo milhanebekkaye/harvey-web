@@ -57,7 +57,7 @@ export async function PATCH(request: Request) {
       }
     } else {
       let projectValue: unknown = value
-      if (field === 'target_deadline' && value != null) {
+      if ((field === 'target_deadline' || field === 'schedule_start_date') && value != null) {
         projectValue = typeof value === 'string' ? new Date(value) : value
       }
       const payload: UpdateProjectData = { [field]: projectValue as never }

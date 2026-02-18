@@ -63,6 +63,8 @@ export default async function ProjectDetailsPage({
     motivation: project.motivation,
     phases: rawPhases ?? null,
     projectNotes,
+    milestones: (project.milestones as SerializedProject['milestones']) ?? null,
+    schedule_duration_days: project.schedule_duration_days ?? null,
   }
 
   return (

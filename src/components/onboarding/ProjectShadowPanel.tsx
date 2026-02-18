@@ -448,6 +448,40 @@ export function ProjectShadowPanel({
             )}
           />
         )}
+        {(project as { schedule_start_date?: Date | string | null }).schedule_start_date != null &&
+          (project as { schedule_start_date?: Date | string | null }).schedule_start_date !== '' && (
+          <EditableField
+            scope="project"
+            fieldKey="schedule_start_date"
+            label="Start date"
+            value={(project as { schedule_start_date?: Date | string | null }).schedule_start_date}
+            renderDisplay={(v) => (
+              <p className="text-gray-900">
+                {formatDate(
+                  typeof v === 'string' ? v : v instanceof Date ? v.toISOString().slice(0, 10) : String(v)
+                )}
+              </p>
+            )}
+            renderEdit={(v, onChange) => (
+              <input
+                type="date"
+                value={
+                  typeof v === 'string'
+                    ? v.slice(0, 10)
+                    : v instanceof Date
+                      ? v.toISOString().slice(0, 10)
+                      : ''
+                }
+                onChange={(e) => {
+                  const raw = e.target.value
+                  onChange(raw ? new Date(raw + 'T12:00:00Z') : null)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                autoFocus
+              />
+            )}
+          />
+        )}
         {project.target_deadline != null && project.target_deadline !== '' && (
           <EditableField
             scope="project"
@@ -969,6 +1003,28 @@ export function ProjectShadowPanel({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
                 autoFocus
               />
+            )}
+          />
+        )}
+        {user.energy_peak != null && user.energy_peak !== '' && (
+          <EditableField
+            scope="user"
+            fieldKey="energy_peak"
+            label="Energy peak"
+            value={user.energy_peak}
+            renderDisplay={(v) => <p className="text-gray-900 capitalize">{String(v)}</p>}
+            renderEdit={(v, onChange) => (
+              <select
+                value={typeof v === 'string' ? v : ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
+                autoFocus
+              >
+                <option value="">—</option>
+                <option value="morning">Morning</option>
+                <option value="afternoon">Afternoon</option>
+                <option value="evening">Evening</option>
+              </select>
             )}
           />
         )}

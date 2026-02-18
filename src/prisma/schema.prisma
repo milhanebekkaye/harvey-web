@@ -24,6 +24,7 @@ model User {
   preferred_session_length Int?    // minutes — how long user likes to work in one sitting
   communication_style      String? // "direct", "encouraging", "detailed"
   userNotes                Json?   // append-only array: [{ "note": string, "extracted_at": string }]
+  energy_peak              String? // "morning" | "afternoon" | "evening" — when user is most productive
 
   // Relations
   projects    Project[]
@@ -60,6 +61,11 @@ model Project {
   projectNotes    Json?
   // How many schedule generations have occurred
   generationCount Int      @default(1)
+  // From schedule generation (Session 3)
+  milestones            Json?   // array of milestone objects generated during schedule creation
+  schedule_duration_days Int?   // how many days the schedule spans — more precise than weeks; TODO: move to Schedule/Batch model when Feature 8 (multi-generation) ships
+  // First day of schedule; null = use default (tomorrow) in generate-schedule
+  schedule_start_date   DateTime?
 
   // Relations
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -119,6 +125,9 @@ model Task {
   priority     Int       @default(3) // 1-5
   depends_on   String[]  @default([]) // task IDs this task depends on
   label        String?
+  // Scheduling metadata (Session 4 — from task generation)
+  energy_required String? // "high" | "medium" | "low" — cognitive load of the task
+  preferred_slot  String? // "peak_energy" | "normal" | "flexible" — ideal window type
   
   // Feedback fields (Feature 3)
   actualDuration    Int?       // minutes — how long the task actually took

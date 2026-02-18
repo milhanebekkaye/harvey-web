@@ -139,6 +139,7 @@ function calculateFieldCompleteness(fields: { user: Record<string, unknown>; pro
     timezone: 3,
     userNotes: 4,
     projectNotes: 5,
+    energy_peak: 3,
   }
   let score = 0
   const p = fields.project
@@ -161,6 +162,7 @@ function calculateFieldCompleteness(fields: { user: Record<string, unknown>; pro
   if (u?.timezone) score += weights.timezone
   if (u?.userNotes != null) score += weights.userNotes
   if (p?.projectNotes != null) score += weights.projectNotes
+  if (u?.energy_peak != null && String(u.energy_peak).trim() !== '') score += weights.energy_peak
   return Math.min(100, Math.round(score))
 }
 

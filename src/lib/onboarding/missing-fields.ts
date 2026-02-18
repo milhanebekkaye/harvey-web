@@ -27,6 +27,8 @@ export const ENRICHING_FIELDS = [
   'projectNotes',
   'userNotes',
   'target_deadline',
+  'energy_peak',
+  'schedule_start_date',
 ] as const
 
 /** Human-readable guidance per field for the system prompt. */
@@ -42,6 +44,10 @@ export const fieldToNaturalDescription: Record<string, string> = {
     'How long they like to work in one sitting before taking a break',
   weekly_hours_commitment:
     'Roughly how many hours per week they can commit to this project',
+  energy_peak:
+    'Whether they are most productive in the morning, afternoon, or evening',
+  schedule_start_date:
+    'When they want to start working on this schedule (today, tomorrow, or a specific date)',
 }
 
 
@@ -149,6 +155,18 @@ export async function computeMissingFields(
   const hasUserNotes = userNotes != null && (Array.isArray(userNotes) ? userNotes.length > 0 : typeof userNotes === 'object' && Object.keys(userNotes as object).length > 0)
   if (!hasUserNotes) {
     enriching.push('userNotes')
+  }
+
+  // Enriching: energy_peak (user) — when user is most productive
+  const energyPeak = user && 'energy_peak' in user ? (user as { energy_peak?: string | null }).energy_peak : undefined
+  if (!energyPeak || String(energyPeak).trim() === '') {
+    enriching.push('energy_peak')
+  }
+
+  // Enriching: schedule_start_date (project) — when they want to start the schedule
+  const scheduleStartDate = project && 'schedule_start_date' in project ? (project as { schedule_start_date?: Date | string | null }).schedule_start_date : undefined
+  if (scheduleStartDate == null) {
+    enriching.push('schedule_start_date')
   }
 
   console.log(LOG_PREFIX, 'Result:', {
