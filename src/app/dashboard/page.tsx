@@ -565,6 +565,8 @@ export default function DashboardPage() {
       completionMsg.content,
       completionMsg.widget
     )
+    // If we were on this task's chat, switch to project chat so the user sees the completion check-in
+    if (activeConversation === taskId) setActiveConversation('project')
 
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
@@ -611,6 +613,8 @@ export default function DashboardPage() {
     }
     setAppendedByDashboard((prev) => [...prev, skipMsg])
     void appendMessageToDiscussion(skipMsg.role, skipMsg.content, skipMsg.widget)
+    // If we were on this task's chat, switch to project chat so the user sees the skip check-in
+    if (activeConversation === taskId) setActiveConversation('project')
 
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {

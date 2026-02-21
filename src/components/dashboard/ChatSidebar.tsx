@@ -188,6 +188,7 @@ export function ChatSidebar({
             />
           ) : activeTask ? (
             <TaskChatView
+              key={activeTask.id}
               taskId={activeTask.id}
               projectId={projectId}
               taskTitle={activeTask.title}

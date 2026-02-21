@@ -2,7 +2,7 @@
 
 ## Overview
 
-Per-task chat lets users open a dedicated Harvey conversation per task from the timeline. Step 1 was UI only. **Step 2** wired task chat to the database (create/get discussion, add message, list for refresh). **Step 3** makes the opening message AI-generated and task-specific (one-time Haiku call on first creation; stored in DB). Real streaming Harvey response in task chat is planned for a later step.
+Per-task chat lets users open a dedicated Harvey conversation per task from the timeline. Step 1 was UI only. **Step 2** wired task chat to the database (create/get discussion, add message, list for refresh). **Step 3** makes the opening message AI-generated and task-specific (one-time Haiku call on first creation; stored in DB). **Step 4** adds full context assembly and Harvey’s streaming responses: every user message gets a contextual reply, and all messages (user + assistant) are persisted.
 
 ## Step 1 Scope (Done)
 
@@ -33,7 +33,7 @@ Per-task chat lets users open a dedicated Harvey conversation per task from the 
 
 ### What Step 2 Does Not Do
 
-- No streaming, no full context assembly (Step 4). Harvey reply to user messages in task chat is still placeholder.
+- Streaming and full context assembly were added in Step 4.
 
 ## Step 3 Scope (Done)
 
@@ -41,13 +41,26 @@ Per-task chat lets users open a dedicated Harvey conversation per task from the 
 - **TaskContext** passed to the generator: `title`, `description`, `estimatedDuration`, `label`, `dependsOn` (array of `{ title, status }`), `unlocksCount`, `projectTitle`, `projectGoals` (all nullable where applicable).
 - **Fallback**: If the Haiku call fails or task data is missing, a generic fallback message is used (`"Ready to help you tackle this task. What would you like to work through first?"`) and the discussion is still created — opening message generation never blocks creation.
 
+## Step 4 Scope (Done)
+
+- **Full context assembly**: On every message in a task chat, the backend calls **buildTaskChatContext(taskId, userId)** in `src/lib/context-builders/build-task-chat-context.ts`. It returns a system prompt with five layers:
+  1. **Project context** — title, description, goals, deadline, tech stack, skill level, weekly hours.
+  2. **Current task** — title, category/label, status, estimated duration, scheduled date, description, success criteria.
+  3. **Dependencies** — tasks this task depends on (with status), incomplete dependencies to flag, and tasks this task unlocks.
+  4. **Schedule context** — recent work (last 7 days) and coming up after this task (next 5 pending).
+  5. **Behavioral patterns** — time estimation accuracy by label (from completed tasks with actual/estimated duration) and skip patterns (most common skip reason from skipped tasks).
+- **Harvey responds**: **POST /api/chat/task** streams the reply using **Claude Sonnet** (`claude-sonnet-4-20250514`). No tools; last 20 messages from the task discussion are sent as history. User message is persisted before stream; assistant message is persisted in onFinish.
+- **TaskChatView**: Uses **useChat** with `/api/chat/task`; displays streamed replies word-by-word; seed messages from load/cache/parent; in-memory cache updated on stream finish so switching tasks and back shows the latest. Step 5 will add model routing (e.g. Haiku for simple turns).
+
 ## Files
 
 | File | Purpose |
 |------|--------|
 | `src/components/dashboard/ConversationNavPanel.tsx` | Nav overlay: Pinned + TASKS + user row (OpenTaskChat has optional discussionId) |
 | `src/components/dashboard/ProjectChatView.tsx` | Project chat body (useChat, messages, rebuild) |
-| `src/components/dashboard/TaskChatView.tsx` | Task chat: load discussion, messages, input, typing placeholder |
+| `src/components/dashboard/TaskChatView.tsx` | Task chat: load discussion, useChat + streaming, messages, input |
+| `src/lib/context-builders/build-task-chat-context.ts` | buildTaskChatContext(taskId, userId) — 5-layer system prompt for task chat |
+| `src/app/api/chat/task/route.ts` | POST /api/chat/task — streaming task chat, Sonnet, persist user + assistant |
 | `src/components/dashboard/ChatSidebar.tsx` | Shell: header, overlay, panel; passes taskId, projectId, discussionId to TaskChatView |
 | `src/app/dashboard/page.tsx` | State: openTaskChats (with discussionId), handleAskHarvey (POST create), fetchTaskChatsList on load |
 | `src/app/api/discussions/task/route.ts` | POST create/get (Step 3: Haiku opening message), GET by taskId |

@@ -1,18 +1,18 @@
 /**
  * TaskChatView — Sidebar content when a task chat is active.
  *
- * Loads discussion from API on mount; shows messages and enabled input when
- * discussion exists. User messages are persisted; Harvey does not respond in Step 2
- * (placeholder "Harvey is thinking..." for 1.5s). Step 3 will plug in real streaming here.
- *
- * Recently opened task conversations are kept in an in-memory cache so switching
- * back to a task chat is instant (no loading spinner). Data is still fetched in the
- * background to stay in sync.
+ * Loads discussion from API on mount; shows messages and input when discussion exists.
+ * Uses useChat with POST /api/chat/task for streaming Harvey responses. User and
+ * assistant messages are persisted by the API. Recently opened task conversations
+ * are kept in an in-memory cache so switching back is instant.
  */
 
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
+import type { UIMessage } from 'ai'
 
 interface StoredMsg {
   role: 'assistant' | 'user'
@@ -28,7 +28,6 @@ type TaskChatCacheEntry = {
   state: 'loaded' | 'not_created'
 }
 
-/** In-memory cache of last opened task discussions for instant display when switching back. */
 const taskChatCache = new Map<string, TaskChatCacheEntry>()
 
 function getCached(taskId: string): TaskChatCacheEntry | undefined {
@@ -43,14 +42,28 @@ function setCached(taskId: string, entry: TaskChatCacheEntry): void {
   taskChatCache.set(taskId, entry)
 }
 
+function storedToUIMessages(stored: StoredMsg[]): UIMessage[] {
+  return stored.map((m, i) => ({
+    id: `stored-${i}-${m.timestamp}`,
+    role: m.role as 'user' | 'assistant',
+    parts: [{ type: 'text' as const, text: m.content }],
+  }))
+}
+
+function getTextFromParts(msg: UIMessage): string {
+  if (!msg.parts) return ''
+  return msg.parts
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('')
+}
+
 interface TaskChatViewProps {
   taskId: string
   projectId: string | null
   taskTitle: string
   taskLabel: string
-  /** When set, we already have a discussion; mount GET still loads latest messages. */
   initialDiscussionId?: string
-  /** When we just created the discussion (POST response), pass messages so the opening message shows immediately. */
   initialMessages?: Array<{ role: string; content: string; timestamp: string }>
   onBackToProject: () => void
 }
@@ -65,33 +78,65 @@ export function TaskChatView({
   onBackToProject,
 }: TaskChatViewProps) {
   const cached = getCached(taskId)
-  const [messages, setMessages] = useState<StoredMsg[]>(() => cached?.messages ?? [])
   const [discussionId, setDiscussionId] = useState<string | null>(() => cached?.discussionId ?? null)
   const [discussionState, setDiscussionState] = useState<'loaded' | 'not_created'>(
     () => (cached ? cached.state : 'not_created')
   )
+  const [seedMessages, setSeedMessages] = useState<StoredMsg[]>(() => cached?.messages ?? [])
   const [sendError, setSendError] = useState<string | null>(null)
-  const [isSending, setIsSending] = useState(false)
-  const [showTypingIndicator, setShowTypingIndicator] = useState(false)
   const [inputValue, setInputValue] = useState('')
+  const projectIdRef = useRef(projectId)
+  projectIdRef.current = projectId
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  /** Set when we apply initialMessages from parent (POST create); prevents load effect from wiping them when GET returns late */
+  const receivedInitialFromParentRef = useRef(false)
 
-  // When parent passes discussion + messages from POST create, show them immediately (real opening message)
+  // Key so useChat remounts when seed messages load (e.g. from API after cache was empty)
+  const chatKey = `${taskId}-${seedMessages.length}-${seedMessages[seedMessages.length - 1]?.timestamp ?? ''}`
+
+  const { messages, sendMessage, status } = useChat({
+    key: chatKey,
+    messages: storedToUIMessages(seedMessages),
+    transport: new DefaultChatTransport({
+      api: '/api/chat/task',
+      body: () => ({
+        taskId,
+        projectId: projectIdRef.current ?? undefined,
+      }),
+    }),
+    onFinish: ({ messages: finishedMessages }) => {
+      const asStored: StoredMsg[] = finishedMessages.map((m) => ({
+        role: m.role as 'assistant' | 'user',
+        content: getTextFromParts(m),
+        timestamp: new Date().toISOString(),
+      }))
+      setCached(taskId, {
+        discussionId: discussionId ?? null,
+        messages: asStored,
+        state: 'loaded',
+      })
+    },
+  })
+
+  const isTyping = status === 'streaming' || status === 'submitted'
+
+  // When parent passes discussion + messages from POST create, show them immediately
   useEffect(() => {
     if (
       initialDiscussionId &&
       initialMessages &&
       initialMessages.length > 0 &&
       discussionState === 'not_created' &&
-      messages.length === 0
+      seedMessages.length === 0
     ) {
+      receivedInitialFromParentRef.current = true
       const msgs: StoredMsg[] = initialMessages.map((m) => ({
         role: m.role as 'assistant' | 'user',
         content: m.content,
         timestamp: m.timestamp,
       }))
-      setMessages(msgs)
+      setSeedMessages(msgs)
       setDiscussionId(initialDiscussionId)
       setDiscussionState('loaded')
       setCached(taskId, {
@@ -100,23 +145,24 @@ export function TaskChatView({
         state: 'loaded',
       })
     }
-  }, [initialDiscussionId, initialMessages, taskId, discussionState, messages.length])
+  }, [initialDiscussionId, initialMessages, taskId, discussionState, seedMessages.length])
 
-  // Load discussion on mount: show cache or placeholder immediately, then fetch in background
+  // Load discussion on mount: show cache or placeholder, then fetch in background
   useEffect(() => {
+    receivedInitialFromParentRef.current = false
     if (!projectId) {
       setDiscussionState('not_created')
-      setMessages([])
+      setSeedMessages([])
       setDiscussionId(null)
       return
     }
     const cachedEntry = getCached(taskId)
     if (cachedEntry) {
-      setMessages(cachedEntry.messages)
+      setSeedMessages(cachedEntry.messages)
       setDiscussionId(cachedEntry.discussionId)
       setDiscussionState(cachedEntry.state)
     } else {
-      setMessages([])
+      setSeedMessages([])
       setDiscussionId(null)
       setDiscussionState('not_created')
     }
@@ -129,9 +175,11 @@ export function TaskChatView({
           `/api/discussions/task?taskId=${encodeURIComponent(taskId)}`
         )
         if (cancelled) return
+        // If we already received initial messages from parent (POST create), don't overwrite when GET fails or returns null (race)
+        if (receivedInitialFromParentRef.current) return
         if (!res.ok) {
           setDiscussionState('not_created')
-          setMessages([])
+          setSeedMessages([])
           setDiscussionId(null)
           setCached(taskId, {
             discussionId: null,
@@ -143,7 +191,7 @@ export function TaskChatView({
         const data = await res.json()
         const disc = data.discussion
         if (disc && Array.isArray(disc.messages)) {
-          setMessages(disc.messages)
+          setSeedMessages(disc.messages)
           setDiscussionId(disc.id)
           setDiscussionState('loaded')
           setCached(taskId, {
@@ -152,17 +200,19 @@ export function TaskChatView({
             state: 'loaded',
           })
         } else {
-          setMessages([])
-          setDiscussionId(null)
-          setDiscussionState('not_created')
-          setCached(taskId, {
-            discussionId: null,
-            messages: [],
-            state: 'not_created',
-          })
+          if (!receivedInitialFromParentRef.current) {
+            setSeedMessages([])
+            setDiscussionId(null)
+            setDiscussionState('not_created')
+            setCached(taskId, {
+              discussionId: null,
+              messages: [],
+              state: 'not_created',
+            })
+          }
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && !receivedInitialFromParentRef.current) {
           setDiscussionState('not_created')
         }
       }
@@ -173,69 +223,76 @@ export function TaskChatView({
     }
   }, [taskId, projectId])
 
-  // Placeholder typing indicator: show for 1.5s then hide (Step 3 will replace with real Harvey response)
+  // Poll for discussion when we're waiting for it (e.g. just created via POST). Shows opening message as soon as DB has it.
   useEffect(() => {
-    if (!showTypingIndicator) return
-    const t = setTimeout(() => {
-      setShowTypingIndicator(false)
-      setIsSending(false)
-    }, 1500)
-    return () => clearTimeout(t)
-  }, [showTypingIndicator])
+    if (
+      !projectId ||
+      !taskId ||
+      discussionState !== 'not_created' ||
+      seedMessages.length > 0
+    ) {
+      return
+    }
+    const POLL_INTERVAL_MS = 800
+    const MAX_ATTEMPTS = 25
+    let attempts = 0
+    let cancelled = false
+    const poll = async () => {
+      if (cancelled || attempts >= MAX_ATTEMPTS) return
+      attempts += 1
+      try {
+        const res = await fetch(
+          `/api/discussions/task?taskId=${encodeURIComponent(taskId)}`
+        )
+        if (cancelled) return
+        if (!res.ok) return
+        const data = await res.json()
+        const disc = data.discussion
+        if (disc && Array.isArray(disc.messages) && disc.messages.length > 0) {
+          const msgs: StoredMsg[] = disc.messages.map(
+            (m: { role: string; content: string; timestamp: string }) => ({
+              role: m.role as 'assistant' | 'user',
+              content: m.content,
+              timestamp: m.timestamp,
+            })
+          )
+          setSeedMessages(msgs)
+          setDiscussionId(disc.id)
+          setDiscussionState('loaded')
+          setCached(taskId, {
+            discussionId: disc.id,
+            messages: msgs,
+            state: 'loaded',
+          })
+          return
+        }
+      } catch {
+        // ignore, will retry
+      }
+      if (!cancelled && attempts < MAX_ATTEMPTS) {
+        timeoutId = window.setTimeout(poll, POLL_INTERVAL_MS)
+      }
+    }
+    let timeoutId = window.setTimeout(poll, POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [taskId, projectId, discussionState, seedMessages.length])
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    (e: React.FormEvent) => {
       e.preventDefault()
       const content = inputValue.trim()
-      if (!content || isSending || showTypingIndicator) return
-      if (!discussionId) {
-        setSendError('Open this task chat from the timeline first.')
-        return
-      }
+      if (!content || isTyping || !discussionId || !projectId) return
       setSendError(null)
-      const userMessage: StoredMsg = {
-        role: 'user',
-        content,
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, userMessage])
+      sendMessage({ text: content })
       setInputValue('')
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
       }
-      setIsSending(true)
-      setShowTypingIndicator(true)
-
-      try {
-        const res = await fetch('/api/discussions/task/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ discussionId, content }),
-        })
-        if (!res.ok) {
-          setSendError('Failed to save message. Try again.')
-          setShowTypingIndicator(false)
-          setIsSending(false)
-          return
-        }
-        // Success: update cache so next time we open this task it shows the new message instantly
-        setMessages((prev) => {
-          setCached(taskId, {
-            discussionId,
-            messages: prev,
-            state: 'loaded',
-          })
-          return prev
-        })
-        // Typing indicator will clear after 1.5s via effect. No Harvey reply in Step 2.
-        // Step 3: replace the timeout above with a real streaming call and append assistant message.
-      } catch {
-        setSendError('Failed to save message. Try again.')
-        setShowTypingIndicator(false)
-        setIsSending(false)
-      }
     },
-    [inputValue, discussionId, isSending, showTypingIndicator]
+    [inputValue, isTyping, discussionId, projectId, sendMessage]
   )
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -245,16 +302,18 @@ export function TaskChatView({
     }
   }
 
-  // While opening message is loading (first time): show Harvey typing indicator only
   const isLoadingOpening =
-    discussionState === 'not_created' && messages.length === 0 && projectId != null
-  const showHarveyTyping = isLoadingOpening || showTypingIndicator
+    discussionState === 'not_created' && seedMessages.length === 0 && projectId != null
+  const showHarveyTyping = isLoadingOpening || isTyping
 
-  const canSend = Boolean(discussionId && !isSending && !showTypingIndicator)
+  const canSend = Boolean(discussionId && projectId && !isTyping)
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
 
   return (
     <>
-      {/* Back link */}
       <div className="px-6 pt-2 pb-1">
         <button
           type="button"
@@ -266,11 +325,10 @@ export function TaskChatView({
         </button>
       </div>
 
-      {/* Chat area — messages or Harvey typing (opening or reply) */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
         {messages.map((msg, idx) => (
           <div
-            key={`${msg.timestamp}-${idx}`}
+            key={msg.id ?? `msg-${idx}`}
             className={`flex flex-col gap-2 max-w-[85%] ${
               msg.role === 'user' ? 'self-end items-end ml-auto' : ''
             }`}
@@ -283,7 +341,7 @@ export function TaskChatView({
               }`}
             >
               <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {msg.content}
+                {getTextFromParts(msg)}
               </p>
             </div>
             <span
@@ -296,7 +354,6 @@ export function TaskChatView({
           </div>
         ))}
 
-        {/* Harvey is typing... (opening message loading or reply placeholder) */}
         {showHarveyTyping && (
           <div className="flex flex-col gap-2 max-w-[85%]">
             <div className="p-4 rounded-2xl bg-white rounded-tl-none border border-white/50 shadow-sm">
@@ -313,14 +370,12 @@ export function TaskChatView({
         <div ref={chatEndRef} />
       </div>
 
-      {/* Inline error */}
       {sendError && (
         <div className="mx-6 mb-2 px-3 py-2 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs">
           {sendError}
         </div>
       )}
 
-      {/* Input bar — enabled when discussion exists */}
       <div className="p-6 border-t border-black/5 bg-white/20">
         <form onSubmit={handleSubmit} className="relative flex items-end gap-2">
           <textarea
@@ -348,7 +403,7 @@ export function TaskChatView({
             disabled={!inputValue.trim() || !canSend}
             className="bg-[#895af6] hover:bg-[#7849d9] text-white p-3 rounded-xl transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center justify-center"
           >
-            {isSending ? (
+            {isTyping ? (
               <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <span className="material-symbols-outlined text-lg">send</span>

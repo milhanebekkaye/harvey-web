@@ -123,6 +123,9 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/chat/checkin`.
   - **Daily check-in**: generates a contextual 2–3 sentence greeting for returning users. POST body: `{ projectId }`. Uses `assembleCheckInContext()` (time of day, today’s tasks, yesterday’s summary, streak, recent skipped tasks) and `streamText()` with a concise system prompt. Response is streaming plain text; the client persists the message to the project discussion with `messageType: 'check-in'`. Rate limiting is client-side via localStorage (3 hours or new calendar day per project). See `docs/checkin/README.md`.
 
+- **`chat/task/route.ts`**
+  - Endpoint under `POST /api/chat/task`. **Per-task chat (Step 4)**: streaming endpoint for task-specific Harvey. Body: `{ messages: UIMessage[], taskId: string, projectId?: string }`. Resolves projectId from task if omitted; verifies ownership. Loads task discussion via `getTaskDiscussion` (404 if none). Uses **buildTaskChatContext(taskId, userId)** for system prompt (five layers: project, current task, dependencies, schedule, behavioral patterns). Last 20 messages as history. Streams with **Claude Sonnet** (`claude-sonnet-4-20250514`), no tools. Persists user message before stream and assistant message in onFinish. See **Context builders** below and `docs/per-task-chat/README.md`.
+
 - **`discussions/[projectId]/route.ts`**
   - Endpoint under `/api/discussions/[projectId]`.
   - Manages AI or human discussions tied to a specific project (identified by `projectId`).
@@ -132,7 +135,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - **Per-task chat (Step 2 + 3)**. `POST /api/discussions/task`: body `{ taskId, projectId }` — create or return existing task discussion. On first creation, triggers a **one-time Haiku call** (`generateTaskOpeningMessage` in `src/lib/discussions/generate-task-opening-message.ts`) to generate a task-specific opening message; **TaskContext** includes task title, description, estimated duration, label, dependencies (title + status), unlocks count, project title/goals. Message stored in DB; subsequent opens load from DB with no extra API call. On API or task fetch failure, a fallback opening message is used and discussion is still created. `GET /api/discussions/task?taskId=` — fetch task discussion by taskId; returns `{ discussion }` or `{ discussion: null }`. Auth and project ownership required.
 
 - **`discussions/task/messages/route.ts`**
-  - **Per-task chat (Step 2)**. `POST /api/discussions/task/messages`: body `{ discussionId, content }` — append user message to task discussion. Harvey reply to user messages (streaming) is planned for a later step; Step 3 added only the opening message (Haiku) on discussion creation.
+  - **Per-task chat (Step 2)**. `POST /api/discussions/task/messages`: body `{ discussionId, content }` — append user message to task discussion. TaskChatView uses `POST /api/chat/task` for sending (which persists user + assistant); this endpoint remains for other clients or legacy use.
 
 - **`discussions/task/list/route.ts`**
   - **Per-task chat (Step 2)**. `GET /api/discussions/task/list?projectId=` — returns all task-type discussions for the project (with task title/label). Used on dashboard load to repopulate open task chats after refresh. Skips discussions whose task was deleted.
@@ -295,6 +298,10 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 - **`tools/getProgressSummary.ts`**: Simple completion statistics by period (today, this_week, all).
 - **`tools/regenerateSchedule.ts`**: Greedy reschedule of pending/skipped tasks (remaining) or full rebuild via Claude (full_rebuild). **Dependencies**: Remaining scope sorts tasks by `depends_on` (topological order) so dependents are never scheduled before their dependencies; full rebuild uses `assignTasksToSchedule`, which already respects dependencies. Returns a concise `message` and optional `change_summary` (moved count, completion date before/after) so Harvey can give a clear 2–3 sentence recap. Logs to console during regeneration (which tasks moved, old → new dates, completion date) for debugging.
 - **`tools/updateProjectNotes.ts`**: Timestamped notes Harvey stores about user preferences and patterns.
+
+### `src/lib/context-builders/` – Task chat context
+
+- **`build-task-chat-context.ts`**: Builds the system prompt for per-task chat (`POST /api/chat/task`). **buildTaskChatContext(taskId, userId)** returns a string with five sections: (1) **Project context** — project title, description, goals, deadline, tech stack, skill level, weekly hours (from Project + User); (2) **Current task** — title, label, status, estimated duration, scheduled date, description, success criteria; (3) **Dependencies** — tasks this task depends on (with status), incomplete dependencies, and tasks this task unlocks; (4) **Schedule context** — recent work (last 7 days, up to 5 tasks) and upcoming tasks (next 5 pending); (5) **Behavioral patterns** — time estimation accuracy by label (ratio actual/estimated, 2+ data points) and skip patterns (most common skip reason from skipped tasks). Queries run fresh on every call (no caching). On Prisma failure returns a minimal fallback prompt (task title + "context temporarily unavailable") and never throws.
 
 ### `src/lib/users/`
 

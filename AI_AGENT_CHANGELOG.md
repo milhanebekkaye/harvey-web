@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Per-task chat Step 4 (full context assembly + Harvey responds)
+
+- **Agent / context**: Cursor – Per-task chat Step 4: full context assembly for task chat and end-to-end streaming Harvey responses.
+- **Summary**:
+  - **buildTaskChatContext**: New `src/lib/context-builders/build-task-chat-context.ts` — `buildTaskChatContext(taskId, userId): Promise<string>`. Five layers: project context, current task, dependencies (and incomplete / downstream), schedule context (recent 7 days + upcoming), behavioral patterns (estimation accuracy by label, skip patterns). Queries run fresh each time; on Prisma failure returns a minimal fallback prompt and never throws.
+  - **POST /api/chat/task**: New streaming endpoint. Body: `{ messages, taskId, projectId? }`. Loads task discussion (getTaskDiscussion), last 20 messages, builds system prompt via buildTaskChatContext, streams with **Claude Sonnet** (`claude-sonnet-4-20250514`), no tools. Persists user message before stream and assistant message in onFinish. Same createUIMessageStream / createUIMessageStreamResponse pattern as project chat.
+  - **TaskChatView**: Switched to `useChat` with `/api/chat/task`; displays streamed replies word-by-word; seed messages from load/cache/parent; onFinish updates in-memory cache. No more POST to `/api/discussions/task/messages` on send — the chat API handles persistence.
+- **Files touched**: `src/lib/context-builders/build-task-chat-context.ts` (new), `src/app/api/chat/task/route.ts` (new), `src/components/dashboard/TaskChatView.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/per-task-chat/README.md`.
+- **Motivation**: Step 4 of per-task chat: Harvey now responds in task chat with full project/task/schedule/behavioral context; all messages (user + assistant) are stored in the Discussion.
+- **Risks / notes**: Sonnet used for all task chat responses; Step 5 will add model routing (e.g. Haiku for simple turns). POST /api/discussions/task/messages is still used only if something bypasses TaskChatView (e.g. future clients); TaskChatView itself no longer calls it.
+- **Related docs**: `ARCHITECTURE.md` (API routes, Context builders), `docs/per-task-chat/README.md`.
+
 ### 2026-02-21 – Per-task chat Step 3 (real opening message via Haiku)
 
 - **Agent / context**: Cursor – Per-task chat Step 3: replace hardcoded task-chat opening message with a one-time Claude Haiku API call that generates a task-specific opening message on first Discussion creation; result stored in DB so subsequent opens load from DB with no extra API call.
