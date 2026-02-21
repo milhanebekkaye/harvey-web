@@ -50,6 +50,21 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Per-task chat Step 2 (database wiring)
+
+- **Agent / context**: Cursor – Per-task chat Step 2: wire task chat creation, loading, and message persistence to the database. No real Harvey response yet (placeholder typing indicator only).
+- **Summary**:
+  - **Prisma**: Added Discussion–Task relation (`task Task?` on Discussion, `discussions Discussion[]` on Task). Migration `add_task_discussion_type`. Existing Discussion rows unchanged (type default "project", taskId null).
+  - **API**: New routes — `POST/GET /api/discussions/task` (create or get task discussion), `POST /api/discussions/task/messages` (append user message), `GET /api/discussions/task/list?projectId=` (list task discussions for project; excludes deleted tasks). All routes use existing Supabase auth and project-ownership checks.
+  - **Discussion service**: `getTaskDiscussion(projectId, userId, taskId)` and `listTaskDiscussions(projectId, userId)` with task include for title/label.
+  - **Dashboard**: `openTaskChats` extended with optional `discussionId`. `handleAskHarvey` calls POST /api/discussions/task and stores returned discussionId. On load, GET /api/discussions/task/list populates openTaskChats for persistence across refresh.
+  - **TaskChatView**: Loads discussion on mount via GET by taskId; shows messages, enabled input, optimistic send, "Harvey is thinking..." placeholder (1.5s), inline error on send failure. Step 3 will replace placeholder with real streaming.
+  - **ChatSidebar**: Passes taskId, projectId, discussionId (and taskTitle, taskLabel) to TaskChatView. **OpenTaskChat** type includes optional `discussionId`.
+- **Files touched**: `src/prisma/schema.prisma`, `src/lib/discussions/discussion-service.ts`, `src/app/api/discussions/task/route.ts` (new), `src/app/api/discussions/task/messages/route.ts` (new), `src/app/api/discussions/task/list/route.ts` (new), `src/components/dashboard/TaskChatView.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `src/components/dashboard/ConversationNavPanel.tsx`, `src/app/dashboard/page.tsx`, `ARCHITECTURE.md`, `docs/per-task-chat/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Implement Per-Task Chat Step 2 per plan: DB-backed task discussions, create/get/list and add-message APIs, frontend wiring with optimistic UI and persistence across refresh. No Claude/Harvey response in this step.
+- **Risks / notes**: Task chat sends only persist user messages; Harvey does not reply. List endpoint filters out discussions whose task was deleted (task relation null). Project chat behavior unchanged.
+- **Related docs**: `docs/per-task-chat/README.md`, `ARCHITECTURE.md` (API routes, Discussion/Task schema, dashboard per-task chat).
+
 ### 2026-02-21 – Per-task chat Step 1 (UI only, zero logic)
 
 - **Agent / context**: Cursor – Per-task chat feature, Step 1: conversation navigation and sidebar content switching with React state only; no API, DB, or persistence.
@@ -57,7 +72,7 @@ You don’t need to paste large code snippets here—this file is about **narrat
   - **Conversation nav panel**: New `ConversationNavPanel` overlay (Pinned: Project Chat; TASKS list; user row). No History section. Dashboard state: `isPanelOpen`, `activeConversation`, `openTaskChats`. Sidebar header shows "Harvey AI" / "Conversations" or task title / "Task Chat" and a conversations toggle.
   - **Sidebar content switching**: `ChatSidebar` refactored to shell; project chat body moved to `ProjectChatView` (useChat, messages, project pill, rebuild, input). New `TaskChatView` for task chat placeholder (back link, hardcoded message, disabled input). Content switches based on `activeConversation`.
   - **Ask Harvey on task cards**: "Ask Harvey" button in `TaskDetails` (with Complete/Skip); adds task to `openTaskChats`, sets `activeConversation`, switches sidebar to task chat. Active task card gets purple ring and chat bubble badge.
-  - **Project name visibility**: Timeline header "Project Timeline" + subtitle (project name • Week 1 of 12 placeholder). Project context chip in sidebar below project pill when on project chat.
+  - **Project name visibility**: Timeline header "Project Timeline" + subtitle (project name placeholder). Project context chip in sidebar below project pill when on project chat.
 - **Files touched**: `src/components/dashboard/ConversationNavPanel.tsx` (new), `ProjectChatView.tsx` (new), `TaskChatView.tsx` (new), `ChatSidebar.tsx` (refactor), `TimelineView.tsx`, `TaskDetails.tsx`, `TaskTile.tsx`, `src/app/dashboard/page.tsx`, `src/components/dashboard/index.ts`, `docs/per-task-chat.md` (new), `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
 - **Motivation**: Implement Per-Task Chat Step 1 per plan: UI and navigation only before wiring task chat API and persistence in Step 2.
 - **Risks / notes**: Task chat input is disabled; no persistence across refresh. Rebuild button moved from sidebar header into ProjectChatView (below project chip). All existing project chat behavior preserved in ProjectChatView.

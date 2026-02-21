@@ -79,7 +79,7 @@ interface TimelineViewProps {
   projectTitle?: string
 
   /**
-   * Subtitle below timeline title (e.g. "[Project Name] • Week 1 of 12")
+   * Subtitle below timeline title (e.g. "[Project Name]")
    */
   projectSubtitle?: string
 

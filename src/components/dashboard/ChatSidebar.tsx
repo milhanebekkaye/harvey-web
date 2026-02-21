@@ -188,8 +188,11 @@ export function ChatSidebar({
             />
           ) : activeTask ? (
             <TaskChatView
+              taskId={activeTask.id}
+              projectId={projectId}
               taskTitle={activeTask.title}
-              taskLabel={activeTask.label}
+              taskLabel={activeTask.label ?? 'general'}
+              initialDiscussionId={activeTask.discussionId}
               onBackToProject={onBackToProject ?? (() => {})}
             />
           ) : (

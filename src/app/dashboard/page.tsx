@@ -154,7 +154,7 @@ export default function DashboardPage() {
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [activeConversation, setActiveConversation] = useState<'project' | string>('project')
   const [openTaskChats, setOpenTaskChats] = useState<
-    Array<{ id: string; title: string; label: string }>
+    Array<{ id: string; title: string; label: string; discussionId?: string }>
   >([])
 
   /**
@@ -224,6 +224,29 @@ export default function DashboardPage() {
   }, [router])
 
   /**
+   * Fetch task discussions list for the project (persistence across refresh).
+   * Populates openTaskChats so task chats reappear in the nav panel after reload.
+   */
+  const fetchTaskChatsList = useCallback(async (projId: string) => {
+    try {
+      const response = await fetch(`/api/discussions/task/list?projectId=${encodeURIComponent(projId)}`)
+      if (!response.ok) return
+      const data = await response.json()
+      const list = (data.discussions ?? []).map(
+        (d: { id: string; taskId: string | null; task: { title: string; label: string | null } | null }) => ({
+          id: d.taskId ?? d.id,
+          title: d.task?.title ?? 'Unknown Task',
+          label: d.task?.label ?? 'general',
+          discussionId: d.id,
+        })
+      )
+      setOpenTaskChats(list)
+    } catch (err) {
+      console.warn('[Dashboard] Error fetching task chats list:', err)
+    }
+  }, [])
+
+  /**
    * Fetch conversation messages from API
    */
   const fetchMessages = useCallback(async (projId: string) => {
@@ -269,6 +292,13 @@ export default function DashboardPage() {
       setAppendedByDashboard([])
     }
   }, [projectId, fetchMessages])
+
+  /**
+   * Fetch task discussions list when projectId is available (repopulate nav after refresh)
+   */
+  useEffect(() => {
+    if (projectId) fetchTaskChatsList(projectId)
+  }, [projectId, fetchTaskChatsList])
 
   /** Run check-in (shared logic for auto and test). timeOfDayOverride skips rate limit and "brand new" check. */
   const runCheckIn = useCallback(
@@ -413,15 +443,37 @@ export default function DashboardPage() {
 
   /**
    * Open or focus task chat for a task (from "Ask Harvey" on task card).
-   * If task not in openTaskChats, add it; then set activeConversation to this task.
+   * Adds task to openTaskChats, creates or fetches task discussion via API, stores discussionId.
    * Does not open the nav panel.
    */
-  const handleAskHarvey = (taskId: string, title: string, label: string) => {
+  const handleAskHarvey = async (taskId: string, title: string, label: string) => {
     setOpenTaskChats((prev) => {
       if (prev.some((t) => t.id === taskId)) return prev
       return [...prev, { id: taskId, title, label }]
     })
     setActiveConversation(taskId)
+
+    if (!projectId) return
+    try {
+      const res = await fetch('/api/discussions/task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, projectId }),
+      })
+      if (!res.ok) {
+        console.warn('[Dashboard] Could not create/fetch task discussion:', await res.text())
+        return
+      }
+      const data = await res.json()
+      const discussionId = data.discussion?.id
+      if (discussionId) {
+        setOpenTaskChats((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, discussionId } : t))
+        )
+      }
+    } catch (err) {
+      console.warn('[Dashboard] handleAskHarvey API error:', err)
+    }
   }
 
   /**
@@ -895,7 +947,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             isActionLoading={isActionLoading}
             isLoading={isLoadingTasks}
             projectTitle={projectTitle}
-            projectSubtitle={projectTitle ? `${projectTitle} • Week 1 of 12` : undefined}
+            projectSubtitle={projectTitle ? `${projectTitle}` : undefined}
             activeConversationTaskId={activeConversation === 'project' ? null : activeConversation}
             onAskHarvey={handleAskHarvey}
           />

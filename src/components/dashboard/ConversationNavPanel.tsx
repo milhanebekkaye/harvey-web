@@ -25,6 +25,8 @@ export interface OpenTaskChat {
   id: string
   title: string
   label: string
+  /** Set when task discussion exists (from POST create or list); internal only, not shown in UI. */
+  discussionId?: string
 }
 
 interface ConversationNavPanelProps {

@@ -2,58 +2,52 @@
 
 ## Overview
 
-Per-task chat lets users open a dedicated Harvey conversation per task from the timeline. Step 1 is **UI only** (no API, no DB, no persistence). Step 2 will wire task chat API, persistence, and real Harvey responses.
+Per-task chat lets users open a dedicated Harvey conversation per task from the timeline. Step 1 was UI only. **Step 2** wires task chat to the database (create/get discussion, add message, list for refresh). No real Harvey response yet — Step 3 will add streaming.
 
-## Step 1 Scope (Current)
+## Step 1 Scope (Done)
+
+- **State**: `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (id, title, label).
+- **UI**: ConversationNavPanel, TaskChatView placeholder (hardcoded message, disabled input), ChatSidebar content switch, "Ask Harvey" on task cards.
+
+## Step 2 Scope (Done)
+
+### Schema and API
+
+- **Discussion** has `type` (default "project"), `taskId`, and **Task** relation; **Task** has `discussions Discussion[]`. Migration: `add_task_discussion_type`.
+- **POST /api/discussions/task**: Body `{ taskId, projectId }`. Create or return existing task discussion (initial Harvey message stored in DB). Returns `{ discussion }`.
+- **GET /api/discussions/task?taskId=**: Fetch task discussion; returns `{ discussion }` or `{ discussion: null }`.
+- **POST /api/discussions/task/messages**: Body `{ discussionId, content }`. Append user message; no Harvey reply in Step 2.
+- **GET /api/discussions/task/list?projectId=**: List task discussions for the project (for nav panel after refresh). Excludes discussions whose task was deleted.
 
 ### State (Dashboard)
 
-- **`isPanelOpen`**: Whether the conversation navigation panel is visible.
-- **`activeConversation`**: `'project'` or a task id (string). Drives which content the sidebar shows.
-- **`openTaskChats`**: Array of `{ id, title, label }` for tasks the user has opened a chat for (in-session only).
+- **`openTaskChats`**: Array of `{ id, title, label, discussionId? }`. Populated on "Ask Harvey" (POST create) and on load from list API.
+- **handleAskHarvey**: Calls POST /api/discussions/task, stores `discussionId` in openTaskChats.
+- On dashboard load: GET /api/discussions/task/list populates openTaskChats so task chats persist across refresh.
 
-### UI Components
+### TaskChatView
 
-- **ConversationNavPanel**: Overlay panel with Pinned (Project Chat), TASKS list, and static user row. No History section. Clicking an item switches conversation and closes the panel.
-- **ProjectChatView**: Existing project chat (useChat, messages, project pill, rebuild, input). Used when `activeConversation === 'project'`.
-- **TaskChatView**: Placeholder task chat: back link, task title, category pill, one hardcoded Harvey message, **disabled** input with tooltip "Task chat coming soon".
-- **ChatSidebar**: Shell with dynamic header (Harvey AI or task title + "Task Chat"), conversations toggle, dim overlay when panel open, and either ProjectChatView or TaskChatView.
+- **Props**: taskId, projectId, taskTitle, taskLabel, initialDiscussionId?, onBackToProject.
+- **On mount**: GET /api/discussions/task?taskId= → set messages, discussionId, or `not_created` (show hardcoded message only).
+- **Input**: Enabled when discussion exists. On send: optimistic append, POST /api/discussions/task/messages, "Harvey is thinking..." placeholder for 1.5s (Step 3 will replace with real streaming). On failure: inline error "Failed to save message. Try again."
 
-### Task Card
+### What Step 2 Does Not Do
 
-- **Ask Harvey** button on expanded task (with Complete, Skip). Outlined, purple, chat icon. Click: add task to `openTaskChats` if new, set `activeConversation` to task id, switch sidebar to TaskChatView (panel stays closed).
-- Active task card (when its chat is open): purple ring/glow and small chat bubble badge top-right.
-
-### Project Name
-
-- Timeline header: "Project Timeline" + subtitle `[Project Name] • Week X of Y` (Week placeholder for Step 1).
-- Sidebar (Project Chat): project context chip below project pill (folder icon + project name).
-
-### What Step 1 Does Not Do
-
-- No API calls, no DB reads/writes.
-- No real Harvey responses in task chat (one hardcoded message only).
-- No persistence across refresh (openTaskChats and activeConversation are React state only).
-- No delete/close on task chat items.
-- No History / "Previous 7 Days" section in the nav panel.
-- Task chat input is disabled and not wired.
-
-## Step 2 (Planned)
-
-- Task chat API endpoint and persistence (e.g. Discussion type `task` + `taskId`).
-- Load/save task chat messages; stream Harvey responses.
-- Enable task chat input and wire to API.
-- Optional: unread indicator, "Week X of Y" from project/schedule data.
+- No Claude API, no real Harvey response, no streaming, no context assembly.
 
 ## Files
 
 | File | Purpose |
 |------|--------|
-| `src/components/dashboard/ConversationNavPanel.tsx` | Nav overlay: Pinned + TASKS + user row |
+| `src/components/dashboard/ConversationNavPanel.tsx` | Nav overlay: Pinned + TASKS + user row (OpenTaskChat has optional discussionId) |
 | `src/components/dashboard/ProjectChatView.tsx` | Project chat body (useChat, messages, rebuild) |
-| `src/components/dashboard/TaskChatView.tsx` | Task chat placeholder UI |
-| `src/components/dashboard/ChatSidebar.tsx` | Shell: header, overlay, panel, content switch |
-| `src/app/dashboard/page.tsx` | State: isPanelOpen, activeConversation, openTaskChats; handlers |
+| `src/components/dashboard/TaskChatView.tsx` | Task chat: load discussion, messages, input, typing placeholder |
+| `src/components/dashboard/ChatSidebar.tsx` | Shell: header, overlay, panel; passes taskId, projectId, discussionId to TaskChatView |
+| `src/app/dashboard/page.tsx` | State: openTaskChats (with discussionId), handleAskHarvey (POST create), fetchTaskChatsList on load |
+| `src/app/api/discussions/task/route.ts` | POST create/get, GET by taskId |
+| `src/app/api/discussions/task/messages/route.ts` | POST append user message |
+| `src/app/api/discussions/task/list/route.ts` | GET list by projectId |
+| `src/lib/discussions/discussion-service.ts` | getTaskDiscussion, listTaskDiscussions |
 
 ## Design Tokens (Step 1)
 

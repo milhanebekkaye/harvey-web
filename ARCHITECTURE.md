@@ -128,6 +128,15 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Manages AI or human discussions tied to a specific project (identified by `projectId`).
   - Likely uses `src/lib/discussions/discussion-service.ts` and `src/lib/projects/project-service.ts`.
 
+- **`discussions/task/route.ts`**
+  - **Per-task chat (Step 2)**. `POST /api/discussions/task`: body `{ taskId, projectId }` — create or return existing task discussion (initial Harvey message stored in DB). `GET /api/discussions/task?taskId=` — fetch task discussion by taskId; returns `{ discussion }` or `{ discussion: null }`. Auth and project ownership required.
+
+- **`discussions/task/messages/route.ts`**
+  - **Per-task chat (Step 2)**. `POST /api/discussions/task/messages`: body `{ discussionId, content }` — append user message to task discussion. No Harvey response in Step 2; Step 3 will add streaming here.
+
+- **`discussions/task/list/route.ts`**
+  - **Per-task chat (Step 2)**. `GET /api/discussions/task/list?projectId=` — returns all task-type discussions for the project (with task title/label). Used on dashboard load to repopulate open task chats after refresh. Skips discussions whose task was deleted.
+
 - **`schedule/generate-schedule/route.ts`**
   - Endpoint under `/api/schedule/generate-schedule`.
   - Loads Project and User from DB, then builds constraints via **buildConstraintsFromProjectAndUser** (no re-extraction); conversation text is used only as context for task generation, so the Project Shadow panel is not overwritten when the user clicks "Build my schedule".
@@ -199,7 +208,7 @@ Dashboard UI for authenticated users:
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open).
-- **Per-task chat (Step 1, UI only)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats`. "Ask Harvey" on task cards (TaskDetails) opens/focuses that task’s chat in the sidebar. Timeline shows "Project Timeline" + project subtitle; active task card gets purple ring and chat badge. See `docs/per-task-chat.md`.
+- **Per-task chat (Step 2)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (includes optional `discussionId`). "Ask Harvey" calls `POST /api/discussions/task` and stores discussionId. **TaskChatView** loads discussion via `GET /api/discussions/task?taskId=`, shows messages, enabled input; user messages persisted via `POST /api/discussions/task/messages`. Placeholder "Harvey is thinking..." (1.5s); no real Harvey response yet (Step 3). On dashboard load, `GET /api/discussions/task/list` repopulates openTaskChats for persistence across refresh. See `docs/per-task-chat/README.md`.
 - **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
 - **`ViewToggle.tsx`**: Control for toggling between different dashboard views (e.g. Calendar vs Timeline).
 
@@ -253,7 +262,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/discussions/`
 
-- **`discussion-service.ts`**: Service layer for discussion entities (create/fetch discussions, append messages, link them to projects). Used by the `/api/discussions/[projectId]` route and possibly UI.
+- **`discussion-service.ts`**: Service layer for discussion entities (create/fetch discussions, append messages, link them to projects). Used by `/api/discussions/[projectId]`, `/api/discussions/task`, and task list/messages routes. Exposes **getTaskDiscussion(projectId, userId, taskId)** and **listTaskDiscussions(projectId, userId)** for per-task chat (Step 2).
 
 ### `src/lib/projects/`
 
@@ -310,9 +319,11 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 > Note: There is also a generated Prisma client under `src/node_modules/.prisma/`. That generated code should not be modified directly.
 
-- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **User** model includes `timezone`, **life constraints** (`workSchedule` Json: workDays, startTime, endTime; `commute` Json: morning/evening duration + startTime), `availabilityWindows` Json (array of windows; each can be **fixed** = exact time block or **flexible** = X hours within a boundary via `window_type`, `flexible_hours`), and enrichment: `preferred_session_length`, `communication_style`, `userNotes Json?`. The **Project** model includes `contextData Json?` (project allocations only: schedule_duration_weeks, **available_time**, preferences, exclusions, one_off_blocks — **blocked_time is not stored**; scheduling derives it from User), enrichment fields (`target_deadline`, `skill_level`, etc.), `projectNotes Json?`, `generationCount Int`, **`milestones Json?`** (array of milestone objects from schedule generation; displayed on Project Details page), **`schedule_duration_days Int?`** (calendar days the schedule spans; TODO: move to Schedule/Batch model when Feature 8 multi-generation ships), and **`schedule_start_date DateTime?`** (optional first day of schedule; generate-schedule uses it when set, else defaults to tomorrow/next Monday). The **Task** model includes `depends_on String[]`, `batchNumber Int`, for flexible-scheduled tasks: `window_start`, `window_end` (String?), `is_flexible` (Boolean), and (Session 4) **`energy_required`** (String?: "high"|"medium"|"low"), **`preferred_slot`** (String?: "peak_energy"|"normal"|"flexible"). The **Discussion** model includes `type String` ("project" | "onboarding" | "task") and `taskId String?`.
+- **`schema.prisma`**: Source of truth for the database schema (models such as User, Project, Task, Schedule, Discussion, etc.). Changes here are applied to the DB via migrations. The **User** model includes `timezone`, **life constraints** (`workSchedule` Json: workDays, startTime, endTime; `commute` Json: morning/evening duration + startTime), `availabilityWindows` Json (array of windows; each can be **fixed** = exact time block or **flexible** = X hours within a boundary via `window_type`, `flexible_hours`), and enrichment: `preferred_session_length`, `communication_style`, `userNotes Json?`. The **Project** model includes `contextData Json?` (project allocations only: schedule_duration_weeks, **available_time**, preferences, exclusions, one_off_blocks — **blocked_time is not stored**; scheduling derives it from User), enrichment fields (`target_deadline`, `skill_level`, etc.), `projectNotes Json?`, `generationCount Int`, **`milestones Json?`** (array of milestone objects from schedule generation; displayed on Project Details page), **`schedule_duration_days Int?`** (calendar days the schedule spans; TODO: move to Schedule/Batch model when Feature 8 multi-generation ships), and **`schedule_start_date DateTime?`** (optional first day of schedule; generate-schedule uses it when set, else defaults to tomorrow/next Monday). The **Task** model includes `depends_on String[]`, `batchNumber Int`, for flexible-scheduled tasks: `window_start`, `window_end` (String?), `is_flexible` (Boolean), and (Session 4) **`energy_required`** (String?: "high"|"medium"|"low"), **`preferred_slot`** (String?: "peak_energy"|"normal"|"flexible"). The **Discussion** model includes `type String` (default "project"; values "onboarding" | "project" | "task"), `taskId String?`, and optional **`task Task?`** relation (onDelete: Cascade). The **Task** model has **`discussions Discussion[]`** (inverse). Per-task chat (Step 2) uses type "task" and taskId to store one discussion per task.
 
 - **`migrations/`**: Auto-generated migration history:
+  - **`20260221064457_add_task_discussion_type/`**
+    - **`migration.sql`**: Adds Discussion–Task relation (task Task?, Task.discussions). Per-task chat Step 2.
   - **`20260217153250_add_energy_peak_and_task_scheduling_metadata/`**
     - **`migration.sql`**: Adds User.energy_peak (TEXT), Task.energy_required (TEXT), Task.preferred_slot (TEXT). Session 4 smart scheduler.
   - **`20260217160000_add_project_milestones_and_schedule_duration_days/`**

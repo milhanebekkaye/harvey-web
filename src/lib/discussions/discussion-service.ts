@@ -274,6 +274,88 @@ export async function getOnboardingDiscussion(
 }
 
 /**
+ * Get the task discussion for a given task.
+ * Used by task chat view to load existing messages.
+ *
+ * @param projectId - Project UUID (for ownership)
+ * @param userId - User ID for ownership validation
+ * @param taskId - Task UUID
+ * @returns Task discussion or null if not found
+ */
+export async function getTaskDiscussion(
+  projectId: string,
+  userId: string,
+  taskId: string
+): Promise<DiscussionServiceResponse['discussion'] | null> {
+  try {
+    const discussion = await prisma.discussion.findFirst({
+      where: {
+        projectId,
+        userId,
+        type: 'task',
+        taskId,
+      },
+    })
+    if (!discussion) return null
+    return {
+      ...discussion,
+      messages: toStoredMessages(discussion.messages),
+    }
+  } catch (error) {
+    console.error('[DiscussionService] Error fetching task discussion:', error)
+    return null
+  }
+}
+
+/**
+ * List all task discussions for a project.
+ * Used by dashboard on load to repopulate open task chats after refresh.
+ * Excludes discussions whose task was deleted (task relation null).
+ *
+ * @param projectId - Project UUID
+ * @param userId - User ID for ownership validation
+ * @returns Array of task discussions with task title/label
+ */
+export async function listTaskDiscussions(
+  projectId: string,
+  userId: string
+): Promise<
+  Array<
+    DiscussionServiceResponse['discussion'] & {
+      taskId: string | null
+      task: { title: string; label: string | null } | null
+    }
+  >
+> {
+  try {
+    const rows = await prisma.discussion.findMany({
+      where: {
+        projectId,
+        userId,
+        type: 'task',
+      },
+      include: {
+        task: { select: { title: true, label: true } },
+      },
+    })
+    const withMessages = rows.map((d) => ({
+      ...d,
+      messages: toStoredMessages(d.messages),
+      task: d.task,
+    }))
+    return withMessages.filter((d) => d.task != null) as Array<
+      DiscussionServiceResponse['discussion'] & {
+        taskId: string | null
+        task: { title: string; label: string | null }
+      }
+    >
+  } catch (error) {
+    console.error('[DiscussionService] Error listing task discussions:', error)
+    return []
+  }
+}
+
+/**
  * Get discussion by project ID (legacy).
  * Fetches onboarding discussion for backward compatibility.
  *
