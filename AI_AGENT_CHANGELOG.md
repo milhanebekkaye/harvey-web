@@ -50,6 +50,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Task chat opening message sync fix (no reload needed)
+
+- **Agent / context**: Codex (GPT-5) – Fix bug where a newly created task chat showed “Harvey is typing…” but the opening assistant message stayed invisible until full page reload.
+- **Summary**:
+  - Updated `TaskChatView` to stop relying on `useChat` reinitialization from changing seed state (the `key` option used previously is not handled by this `@ai-sdk/react` `useChat` implementation).
+  - Added message reconciliation helpers (`areMessagesEquivalent`, `isMessagePrefix`, `mergeSeedIntoChatMessages`) and a sync effect that pushes late-arriving `seedMessages` into `useChat` via `setMessages`.
+  - Sync behavior is non-destructive: if chat already contains the seed prefix, it keeps current chat state; if seed is newer, it upgrades to seed; if seed is missing, it prepends seed so the opening message is visible immediately.
+- **Files touched**: `src/components/dashboard/TaskChatView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Opening task-chat messages are created/stored correctly by API/DB, but `useChat` only consumed initial messages once and ignored later `seedMessages` updates from parent/poller.
+- **Risks / notes**: Reconciliation compares `role + text` (not ids/timestamps). If server-side text transformations are introduced later, monitor for potential duplicate-prepend edge cases.
+- **Related docs**: `ARCHITECTURE.md` (dashboard chat sidebar and per-task chat flow).
+
 ### 2026-02-21 – Per-task chat Step 4 (full context assembly + Harvey responds)
 
 - **Agent / context**: Cursor – Per-task chat Step 4: full context assembly for task chat and end-to-end streaming Harvey responses.

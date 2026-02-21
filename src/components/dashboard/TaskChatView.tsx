@@ -9,7 +9,7 @@
 
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
@@ -58,6 +58,26 @@ function getTextFromParts(msg: UIMessage): string {
     .join('')
 }
 
+function areMessagesEquivalent(a: UIMessage, b: UIMessage): boolean {
+  return a.role === b.role && getTextFromParts(a) === getTextFromParts(b)
+}
+
+function isMessagePrefix(prefix: UIMessage[], full: UIMessage[]): boolean {
+  if (prefix.length > full.length) return false
+  for (let i = 0; i < prefix.length; i += 1) {
+    if (!areMessagesEquivalent(prefix[i], full[i])) return false
+  }
+  return true
+}
+
+function mergeSeedIntoChatMessages(current: UIMessage[], seed: UIMessage[]): UIMessage[] {
+  if (seed.length === 0) return current
+  if (current.length === 0) return seed
+  if (isMessagePrefix(seed, current)) return current
+  if (isMessagePrefix(current, seed)) return seed
+  return [...seed, ...current]
+}
+
 interface TaskChatViewProps {
   taskId: string
   projectId: string | null
@@ -85,24 +105,21 @@ export function TaskChatView({
   const [seedMessages, setSeedMessages] = useState<StoredMsg[]>(() => cached?.messages ?? [])
   const [sendError, setSendError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
-  const projectIdRef = useRef(projectId)
-  projectIdRef.current = projectId
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   /** Set when we apply initialMessages from parent (POST create); prevents load effect from wiping them when GET returns late */
   const receivedInitialFromParentRef = useRef(false)
 
-  // Key so useChat remounts when seed messages load (e.g. from API after cache was empty)
-  const chatKey = `${taskId}-${seedMessages.length}-${seedMessages[seedMessages.length - 1]?.timestamp ?? ''}`
+  const uiSeedMessages = useMemo(() => storedToUIMessages(seedMessages), [seedMessages])
 
-  const { messages, sendMessage, status } = useChat({
-    key: chatKey,
-    messages: storedToUIMessages(seedMessages),
+  const { messages, setMessages, sendMessage, status } = useChat({
+    id: `task-chat-${taskId}-${projectId ?? 'none'}`,
+    messages: uiSeedMessages,
     transport: new DefaultChatTransport({
       api: '/api/chat/task',
       body: () => ({
         taskId,
-        projectId: projectIdRef.current ?? undefined,
+        projectId: projectId ?? undefined,
       }),
     }),
     onFinish: ({ messages: finishedMessages }) => {
@@ -120,6 +137,10 @@ export function TaskChatView({
   })
 
   const isTyping = status === 'streaming' || status === 'submitted'
+  const renderedMessages = useMemo(
+    () => mergeSeedIntoChatMessages(messages, uiSeedMessages),
+    [messages, uiSeedMessages]
+  )
 
   // When parent passes discussion + messages from POST create, show them immediately
   useEffect(() => {
@@ -280,6 +301,13 @@ export function TaskChatView({
     }
   }, [taskId, projectId, discussionState, seedMessages.length])
 
+  // useChat reads initial messages once; sync in opening/seeded messages that arrive later.
+  useEffect(() => {
+    if (status === 'submitted' || status === 'streaming') return
+    if (renderedMessages === messages) return
+    setMessages(renderedMessages)
+  }, [messages, renderedMessages, setMessages, status])
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
@@ -310,7 +338,7 @@ export function TaskChatView({
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping])
+  }, [renderedMessages, isTyping])
 
   return (
     <>
@@ -326,7 +354,7 @@ export function TaskChatView({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-        {messages.map((msg, idx) => (
+        {renderedMessages.map((msg, idx) => (
           <div
             key={msg.id ?? `msg-${idx}`}
             className={`flex flex-col gap-2 max-w-[85%] ${
