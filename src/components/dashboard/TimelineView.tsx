@@ -74,16 +74,6 @@ interface TimelineViewProps {
   isLoading?: boolean
 
   /**
-   * Project name for timeline header (e.g. "Project Timeline" + subtitle)
-   */
-  projectTitle?: string
-
-  /**
-   * Subtitle below timeline title (e.g. "[Project Name]")
-   */
-  projectSubtitle?: string
-
-  /**
    * Task id whose chat is currently active in the sidebar; card gets purple glow + chat badge
    */
   activeConversationTaskId?: string | null
@@ -118,8 +108,6 @@ export function TimelineView({
   onChecklistToggle,
   isActionLoading = false,
   isLoading = false,
-  projectTitle,
-  projectSubtitle,
   activeConversationTaskId = null,
   onAskHarvey,
 }: TimelineViewProps) {
@@ -286,18 +274,6 @@ export function TimelineView({
 
   return (
     <div className="px-8 pb-12">
-      {/* Project Timeline header */}
-      {(projectTitle || projectSubtitle) && (
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Project Timeline
-          </h2>
-          {projectSubtitle && (
-            <p className="text-slate-500 text-sm mt-1">{projectSubtitle}</p>
-          )}
-        </div>
-      )}
-
       {/* Show past tasks toggle – subtle button at top */}
       {pastCount > 0 && (
         <button

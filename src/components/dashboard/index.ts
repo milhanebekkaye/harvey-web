@@ -95,13 +95,13 @@ export { TaskChatView } from './TaskChatView'
 export { TimelineView } from './TimelineView'
 
 /**
- * CalendarView - Calendar display of tasks (Coming Soon)
- * Weekly grid with hourly time slots
+ * ProjectTimelineView - Vertical timeline visualization of project tasks
+ * Shows completed, active, and upcoming tasks on a rail
  */
-export { CalendarView } from './CalendarView'
+export { ProjectTimelineView } from './ProjectTimelineView'
 
 /**
- * ViewToggle - Toggle between Timeline and Calendar views
+ * ViewToggle - Toggle between List and Timeline views
  * Includes search bar
  */
 export { ViewToggle } from './ViewToggle'

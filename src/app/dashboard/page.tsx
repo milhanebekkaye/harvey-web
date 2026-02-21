@@ -1,30 +1,28 @@
 /**
- * Dashboard Page - Timeline & Calendar Views
+ * Dashboard Page - List & Timeline Views
  *
- * Main app interface with chat sidebar (40%) and timeline/calendar view (60%).
+ * Main app interface with chat sidebar (40%) and list/timeline view (60%).
  * Fetches real data from API endpoints.
  *
- * Timeline View: Tasks organized by TODAY, TOMORROW,..., NEXT WEEK,
- * Calendar View: Coming soon placeholder
+ * List View: Tasks organized by date sections (current timeline list)
+ * Timeline View: Expanded vertical project timeline card view
  *
  * Features:
  * - Real task data from /api/tasks
  * - Real conversation history from /api/discussions/[projectId]
  * - Task status updates (complete, skip)
  * - Glass-morphism chat sidebar with Harvey AI
- * - View toggle between Timeline/Calendar
+ * - Unified right-header with Filter + View popover (List/Timeline switch)
  *
  * Components Used:
  * - ChatSidebar: Left sidebar with conversation
  * - TimelineView: Task list grouped by date
- * - CalendarView: Coming soon placeholder
- * - ViewToggle: View mode toggle + search
+ * - ProjectTimelineView: Expanded timeline cards
  */
 
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
 
@@ -32,8 +30,7 @@ import { signOut } from '@/lib/auth/auth-service'
 import {
   ChatSidebar,
   TimelineView,
-  CalendarView,
-  ViewToggle,
+  ProjectTimelineView,
 } from '@/components/dashboard'
 import type { ViewMode } from '@/components/dashboard'
 
@@ -95,7 +92,7 @@ export default function DashboardPage() {
    */
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
-  const [isActionLoading, setIsActionLoading] = useState(false)
+  const [isActionLoading] = useState(false)
 
   /**
    * Error state
@@ -108,17 +105,13 @@ export default function DashboardPage() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   /**
-   * Current view mode: timeline or calendar
+   * Current view mode: list or timeline
    */
-  const [view, setView] = useState<ViewMode>('timeline')
+  const [view, setView] = useState<ViewMode>('list')
 
-  /**
-   * Search query for filtering tasks
-   */
-  const [searchQuery, setSearchQuery] = useState('')
-
-  /** Test extract button: loading state */
-  const [isExtractLoading, setIsExtractLoading] = useState(false)
+  /** Floating "View" selector (List/Timeline) visibility. */
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
+  const viewMenuRef = useRef<HTMLDivElement>(null)
 
   /** Only auto-expand first task once on initial load; avoids refetch when expandedTaskId changes */
   const hasAutoExpandedRef = useRef(false)
@@ -417,6 +410,33 @@ export default function DashboardPage() {
     return () => clearTimeout(t)
   }, [checkInError])
 
+  /**
+   * Close the floating view selector when clicking outside or pressing Escape.
+   */
+  useEffect(() => {
+    if (!isViewMenuOpen) return
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!viewMenuRef.current) return
+      if (viewMenuRef.current.contains(event.target as Node)) return
+      setIsViewMenuOpen(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsViewMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isViewMenuOpen])
+
   // ===== HANDLERS =====
 
   /**
@@ -656,37 +676,6 @@ export default function DashboardPage() {
   }
 
   /**
-   * Test button: call onboarding extract API. Result is logged in the server terminal.
-   * Temporary – remove after testing.
-   */
-  const handleTestExtract = async () => {
-    if (!projectId) {
-      alert('No project loaded.')
-      return
-    }
-    setIsExtractLoading(true)
-    try {
-      const res = await fetch('/api/onboarding/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ projectId }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        alert(`Extract failed (${res.status}): ${data.error ?? res.statusText}`)
-        return
-      }
-      alert('OK – check the terminal where npm run dev is running for the full result.')
-    } catch (e) {
-      console.error('[Dashboard] Test extract error:', e)
-      alert('Request failed – see console.')
-    } finally {
-      setIsExtractLoading(false)
-    }
-  }
-
-  /**
  * Helper: Find task by ID across all groups
  */
 function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask | null {
@@ -871,87 +860,106 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         onBackToProject={() => setActiveConversation('project')}
       />
 
-      {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}
-      <main className="w-[60%] h-full overflow-y-auto flex flex-col">
-        {/* Top bar: View Toggle (left) + Toolbar (right) */}
-        <div className="flex items-center justify-between gap-2 shrink-0 px-4 pt-3 pb-1 border-b border-black/5">
-          <ViewToggle
-            view={view}
-            onViewChange={setView}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-          />
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {projectId && (
-              <>
+      {/* ========== RIGHT AREA - List OR Timeline (60%) ========== */}
+      <main className="w-[60%] h-full overflow-y-auto flex flex-col bg-[#FAF9F6]">
+        {/* Unified right-header: project title + filter/view actions */}
+        <div className="sticky top-0 z-20 bg-[#FAF9F6]/95 backdrop-blur-md px-8 py-6 border-b border-black/5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                Project Timeline
+              </h2>
+              <p className="text-slate-500 text-sm mt-1">
+                {projectTitle || 'Your project plan'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                aria-label="Filter tasks"
+              >
+                <span className="material-symbols-outlined text-[18px]">filter_list</span>
+                Filter
+              </button>
+
+              <div className="relative" ref={viewMenuRef}>
                 <button
                   type="button"
-                  onClick={() => setShowRebuildModal(true)}
-                  disabled={isRebuilding}
-                  className="p-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 transition-colors"
-                  title="Rebuild Schedule"
+                  onClick={() => setIsViewMenuOpen((open) => !open)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                  aria-haspopup="menu"
+                  aria-expanded={isViewMenuOpen}
+                  aria-label="Open view selector"
                 >
-                  <span className="material-symbols-outlined text-lg">refresh</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    {view === 'timeline' ? 'view_timeline' : 'view_list'}
+                  </span>
+                  View
+                  <span className="material-symbols-outlined text-[16px] text-slate-400">
+                    expand_more
+                  </span>
                 </button>
-                {runCheckIn && (
-                  <>
+
+                {isViewMenuOpen && (
+                  <div
+                    className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-200/70"
+                    role="menu"
+                    aria-label="View selector"
+                  >
                     <button
                       type="button"
-                      onClick={() => runCheckIn('morning')}
-                      className="p-1.5 rounded text-xs font-medium bg-sky-100 hover:bg-sky-200 text-sky-700"
-                      title="Test check-in: morning"
+                      onClick={() => {
+                        setView('list')
+                        setIsViewMenuOpen(false)
+                      }}
+                      className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                        view === 'list'
+                          ? 'bg-[#895af6]/10 text-[#895af6] font-semibold'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                      role="menuitem"
                     >
-                      AM
+                      <span className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">view_list</span>
+                        List View
+                      </span>
+                      {view === 'list' && (
+                        <span className="material-symbols-outlined text-[18px]">check</span>
+                      )}
                     </button>
+
                     <button
                       type="button"
-                      onClick={() => runCheckIn('afternoon')}
-                      className="p-1.5 rounded text-xs font-medium bg-orange-100 hover:bg-orange-200 text-orange-700"
-                      title="Test check-in: afternoon"
+                      onClick={() => {
+                        setView('timeline')
+                        setIsViewMenuOpen(false)
+                      }}
+                      className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                        view === 'timeline'
+                          ? 'bg-[#895af6]/10 text-[#895af6] font-semibold'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                      role="menuitem"
                     >
-                      PM
+                      <span className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">view_timeline</span>
+                        Timeline View
+                      </span>
+                      {view === 'timeline' && (
+                        <span className="material-symbols-outlined text-[18px]">check</span>
+                      )}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => runCheckIn('evening')}
-                      className="p-1.5 rounded text-xs font-medium bg-indigo-100 hover:bg-indigo-200 text-indigo-700"
-                      title="Test check-in: evening"
-                    >
-                      Eve
-                    </button>
-                  </>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={handleTestExtract}
-                  disabled={isExtractLoading}
-                  className="p-2 rounded-lg text-slate-500 hover:text-[#895af6] disabled:opacity-50"
-                  title="Test extract"
-                >
-                  <span className="material-symbols-outlined text-lg">science</span>
-                </button>
-              </>
-            )}
-            <Link
-              href="/dashboard/settings"
-              className="p-2 rounded-lg bg-[#8B5CF6]/10 hover:bg-[#8B5CF6]/20 text-[#8B5CF6] transition-colors"
-              title="Settings"
-            >
-              <span className="material-symbols-outlined text-lg">settings</span>
-            </Link>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors"
-              title="Sign Out"
-            >
-              <span className="material-symbols-outlined text-lg">logout</span>
-            </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Timeline View */}
-        {view === 'timeline' && (
+        {/* List View (current timeline implementation) */}
+        {view === 'list' && (
           <TimelineView
             tasks={tasks}
             expandedTaskId={expandedTaskId}
@@ -962,15 +970,15 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             onChecklistToggle={handleChecklistToggle}
             isActionLoading={isActionLoading}
             isLoading={isLoadingTasks}
-            projectTitle={projectTitle}
-            projectSubtitle={projectTitle ? `${projectTitle}` : undefined}
             activeConversationTaskId={activeConversation === 'project' ? null : activeConversation}
             onAskHarvey={handleAskHarvey}
           />
         )}
 
-        {/* Calendar View */}
-        {view === 'calendar' && <CalendarView />}
+        {/* Timeline View */}
+        {view === 'timeline' && (
+          <ProjectTimelineView />
+        )}
       </main>
 
       {/* Rebuild Schedule modal (triggered from top-right toolbar) */}

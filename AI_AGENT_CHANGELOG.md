@@ -50,6 +50,71 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Timeline card detail update: rail-center markers + dependencies section
+
+- **Agent / context**: Codex (GPT-5) – User requested two UI fixes: marker/dot stacking exactly over the rail and replacing task-card attachments with dependency visibility.
+- **Summary**:
+  - **Rail-centered markers**: Updated completed, active, and upcoming marker positioning so the marker center is aligned with the rail axis (stacked over the line, not offset to the side).
+  - **Dependencies instead of attachments**: Removed the “Attachments & Links” panel in the active task card and replaced it with a “Dependencies” panel split into:
+    - “This Task Depends On”
+    - “Tasks Depending On This”
+  - Added matching hardcoded dependency sample data in the timeline shell for the active task.
+- **Files touched**: `src/components/dashboard/ProjectTimelineView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Improve timeline readability and make task-card context more useful for planning by surfacing dependency flow directly.
+- **Risks / notes**: Dependency data here is still hardcoded timeline-shell data (not yet wired to real task relations).
+- **Related docs**: `ARCHITECTURE.md` (dashboard components; no architecture update required).
+
+### 2026-02-21 – Timeline rail alignment fix (dot centers on rail axis)
+
+- **Agent / context**: Codex (GPT-5) – User-reported UI bug: timeline dots were visually sitting on cards instead of centered on the vertical rail.
+- **Summary**:
+  - Adjusted completed, active, and upcoming marker horizontal offsets in `ProjectTimelineView` so each marker center aligns with the rail axis.
+  - Removed the previous centering transform-based placement for markers in favor of fixed offsets that match the current rail geometry.
+- **Files touched**: `src/components/dashboard/ProjectTimelineView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Fix visual misalignment and restore clear rail-to-marker relationship in the timeline UI.
+- **Risks / notes**: Marker offset is tied to current rail/card spacing. If timeline horizontal spacing changes later (`pl-14` / rail `left-5`), marker offsets should be re-tuned.
+- **Related docs**: `ARCHITECTURE.md` (dashboard components; no architecture update required).
+
+### 2026-02-21 – Timeline view UI polish: unified right header + floating view selector + rail marker alignment
+
+- **Agent / context**: Codex (GPT-5) – User-requested visual cleanup for the new timeline experience to match a more modern layout.
+- **Summary**:
+  - **Unified right header**: Replaced the old top toggle/search bar in dashboard right pane with a cleaner header matching timeline style: "Project Timeline" title + subtitle + `Filter` and `View` buttons.
+  - **Floating view selector**: `View` now opens a floating popover menu with `List View` and `Timeline View` options (with active-state checkmark), and closes on outside click / `Escape`.
+  - **Removed duplicate headers**: Deleted internal headers from `TimelineView` and `ProjectTimelineView` so the right pane has one consistent header.
+  - **Removed week progress text**: Deleted the hardcoded "Week 4 of 12" timeline subtitle text.
+  - **Rail marker fix**: Reworked timeline vertical rail and marker placement in `ProjectTimelineView` with a single aligned rail axis and cleaner completed (green), active (purple), and upcoming (grey) dots.
+- **Files touched**: `src/app/dashboard/page.tsx`, `src/components/dashboard/ProjectTimelineView.tsx`, `src/components/dashboard/TimelineView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Improve timeline UI quality and consistency, remove clutter, and provide a more modern view switch interaction matching requested behavior.
+- **Risks / notes**: `Filter` button remains visual-only in this pass (no filtering logic attached yet). Timeline content is still hardcoded in `ProjectTimelineView` as in Step 2 shell.
+- **Related docs**: `ARCHITECTURE.md` (dashboard layout/components; no structural change required).
+
+### 2026-02-21 – Timeline View Step 2: Hardcoded UI Shell
+
+- **Agent / context**: Claude Code – Feature: Timeline View Step 2 — build full timeline UI with hardcoded data matching Stitch design.
+- **Summary**:
+  - **ProjectTimelineView**: New component `src/components/dashboard/ProjectTimelineView.tsx` — vertical timeline visualization with completed task (green checkmark, strikethrough, DONE pill), active task (purple dot with glow, expanded card with description, success criteria, Harvey's Tip, action buttons), and upcoming tasks (grey dots, 50% opacity, UPCOMING pills).
+  - **Dashboard integration**: Timeline view now renders `ProjectTimelineView` instead of "Coming Soon" placeholder.
+  - **Header cleanup**: Removed settings, extract, AM/PM/Eve test buttons from dashboard header. Kept only ViewToggle.
+  - **Logout relocated**: Moved logout button from dashboard header to ChatSidebar left rail, below the conversations toggle button.
+  - **Code cleanup**: Removed unused `Link` import, `isExtractLoading` state, and `handleTestExtract` function.
+- **Files touched**: `src/components/dashboard/ProjectTimelineView.tsx` (new), `src/components/dashboard/index.ts`, `src/app/dashboard/page.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Step 2 of Timeline View feature — build the complete UI shell with hardcoded data before wiring to real task data.
+- **Risks / notes**: All data is hardcoded (1 completed, 1 active, 2 upcoming tasks). Success criteria checkboxes are not interactive yet. Action buttons (Mark as Complete, Skip, Ask Harvey) are not wired. Step 3 will make success criteria interactive.
+- **Related docs**: `ARCHITECTURE.md` (dashboard components).
+
+### 2026-02-21 – Timeline View Step 1: View toggle (List / Timeline)
+
+- **Agent / context**: Claude Code – Feature: Timeline View Step 1 — replace Calendar view system with List/Timeline toggle.
+- **Summary**:
+  - **ViewToggle**: Changed `ViewMode` type from `'timeline' | 'calendar'` to `'list' | 'timeline'`. Button labels now "List" and "Timeline".
+  - **Dashboard page**: Default view is now `'list'`. List view renders `TimelineView` (unchanged behavior). Timeline view renders a "Coming Soon" placeholder with centered text and subtitle "Harvey Timeline View — in progress".
+  - **CalendarView removed**: Deleted `CalendarView.tsx`, removed export from `index.ts`, removed import from dashboard page.
+- **Files touched**: `src/components/dashboard/ViewToggle.tsx`, `src/app/dashboard/page.tsx`, `src/components/dashboard/index.ts`, `src/components/dashboard/CalendarView.tsx` (deleted), `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Step 1 of Timeline View feature — establish two-option view toggle (List/Timeline) with List as default showing current task list, and Timeline showing placeholder for future implementation.
+- **Risks / notes**: No functional changes to task list behavior. Timeline view is placeholder only — future steps will implement actual timeline functionality.
+- **Related docs**: `ARCHITECTURE.md` (dashboard components).
+
 ### 2026-02-21 – Task chat opening message sync fix (no reload needed)
 
 - **Agent / context**: Codex (GPT-5) – Fix bug where a newly created task chat showed “Harvey is typing…” but the opening assistant message stayed invisible until full page reload.

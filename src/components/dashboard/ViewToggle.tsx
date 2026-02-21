@@ -1,7 +1,7 @@
 /**
  * View Toggle Component
  *
- * Toggle buttons to switch between Timeline and Calendar views.
+ * Toggle buttons to switch between List and Timeline views.
  * Includes search bar for filtering tasks.
  *
  * Features:
@@ -15,7 +15,7 @@
 /**
  * View modes available
  */
-export type ViewMode = 'timeline' | 'calendar'
+export type ViewMode = 'list' | 'timeline'
 
 /**
  * Props for ViewToggle component
@@ -50,7 +50,7 @@ interface ViewToggleProps {
 /**
  * ViewToggle Component
  *
- * Renders a toggle for switching between Timeline and Calendar views.
+ * Renders a toggle for switching between List and Timeline views.
  * Optionally includes a search bar for filtering tasks.
  *
  * @example
@@ -72,6 +72,23 @@ export function ViewToggle({
     <div className="sticky top-0 z-20 bg-[#FAF9F6]/95 backdrop-blur-md px-8 py-6 flex items-center justify-between border-b border-black/5">
       {/* View Toggle Buttons */}
       <div className="flex h-11 w-64 items-center justify-center rounded-xl bg-slate-200/50 p-1">
+        {/* List Option */}
+        <label
+          className={`flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 text-sm font-bold leading-normal transition-all ${
+            view === 'list' ? 'bg-white shadow-sm text-[#895af6]' : 'text-slate-600 hover:text-slate-800'
+          }`}
+        >
+          <span className="truncate">List</span>
+          <input
+            type="radio"
+            name="view-toggle"
+            value="list"
+            checked={view === 'list'}
+            onChange={() => onViewChange('list')}
+            className="invisible w-0"
+          />
+        </label>
+
         {/* Timeline Option */}
         <label
           className={`flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 text-sm font-bold leading-normal transition-all ${
@@ -85,23 +102,6 @@ export function ViewToggle({
             value="timeline"
             checked={view === 'timeline'}
             onChange={() => onViewChange('timeline')}
-            className="invisible w-0"
-          />
-        </label>
-
-        {/* Calendar Option */}
-        <label
-          className={`flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-lg px-2 text-sm font-bold leading-normal transition-all ${
-            view === 'calendar' ? 'bg-white shadow-sm text-[#895af6]' : 'text-slate-600 hover:text-slate-800'
-          }`}
-        >
-          <span className="truncate">Calendar</span>
-          <input
-            type="radio"
-            name="view-toggle"
-            value="calendar"
-            checked={view === 'calendar'}
-            onChange={() => onViewChange('calendar')}
             className="invisible w-0"
           />
         </label>

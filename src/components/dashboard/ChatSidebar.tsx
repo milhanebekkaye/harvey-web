@@ -119,6 +119,19 @@ export function ChatSidebar({
             )}
             <span className="material-symbols-outlined text-[26px]">chat_bubble</span>
           </button>
+
+          {/* Logout button */}
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200 ease-out"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <span className="material-symbols-outlined text-[24px]">logout</span>
+            </button>
+          )}
         </div>
 
         {/* Main: header + content */}
