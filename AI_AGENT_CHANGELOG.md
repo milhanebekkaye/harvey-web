@@ -50,6 +50,58 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Timeline action buttons now reliably use list-view Complete/Skip flow
+
+- **Agent / context**: Codex (GPT-5) – User requested Timeline "Skip" and "Mark as Complete" to trigger the same behavior as list view (`TaskDetails` actions).
+- **Summary**:
+  - Updated dashboard action handlers so `handleCompleteTask` and `handleSkipTask` no longer early-return when the task is missing from list-view grouped state.
+  - Timeline action buttons now always execute the same PATCH + chat-side effects flow used by list view, even when timeline data arrives before grouped list data.
+  - Preserved optimistic list-state updates when task exists locally; fallback path still executes API action and background refresh when it does not.
+- **Files touched**: `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Ensure Timeline action buttons behave identically to list view and never no-op because of temporary state mismatch.
+- **Risks / notes**: On rare failure when task is absent from grouped state, UI reversion relies on `fetchTasks()` refresh rather than exact local rollback (same end result after refresh).
+- **Related docs**: `docs/dashboard/README.md` (dashboard action flow), `ARCHITECTURE.md` (dashboard page handlers; no structure change).
+
+### 2026-02-21 – Dashboard default view switched to Timeline
+
+- **Agent / context**: Codex (GPT-5) – User requested Timeline to be the main default view when loading dashboard.
+- **Summary**:
+  - Changed dashboard initial view state from `'list'` to `'timeline'`.
+  - Dashboard now opens directly on Timeline View by default.
+- **Files touched**: `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Make Timeline the primary landing experience in the dashboard.
+- **Risks / notes**: List view remains available via the existing View selector; only the initial default changed.
+- **Related docs**: `ARCHITECTURE.md` (no structural change required).
+
+### 2026-02-21 – Timeline upcoming ordering fix (from now, not from active task date)
+
+- **Agent / context**: Codex (GPT-5) – User reported Timeline “Upcoming” cards were skipping later-today tasks and showing tomorrow first in some cases.
+- **Summary**:
+  - Updated timeline upcoming-task logic to use **current time** as the baseline instead of `activeTask.scheduledDate`.
+  - Upcoming now selects the next pending tasks in chronological order from now:
+    - later today first (if any),
+    - then future days (e.g. tomorrow),
+    - while excluding the currently active task to avoid duplication.
+  - Added timezone-aware filtering using the user’s timezone for same-day comparisons.
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Ensure Timeline “Upcoming” reflects true next tasks in time order and does not hide remaining same-day tasks.
+- **Risks / notes**: For tasks scheduled today without a `scheduledStartTime`, they are treated as still upcoming for today and sorted after timed tasks on the same date.
+- **Related docs**: `ARCHITECTURE.md` (`src/lib/timeline/` and `/api/timeline` sections; no structural documentation change required).
+
+### 2026-02-21 – Timeline View Step 3: component architecture + real data wiring
+
+- **Agent / context**: Codex (GPT-5) – User request to refactor timeline UI into reusable components before data wiring, then connect real DB data and persist success criteria from timeline mode.
+- **Summary**:
+  - Added a dedicated timeline module under `src/components/timeline/` (`TimelineView`, `TimelineRail`, `CompletedTaskCard`, `ActiveTaskCard`, `HarveysTip`, `SuccessCriteriaList`, `UpcomingTaskCard`) while preserving the Step 2 visual styling.
+  - Added timeline data service + API endpoint: `getTimelineData(projectId, userId)` in `src/lib/timeline/get-timeline-data.ts` and `GET /api/timeline` in `src/app/api/timeline/route.ts` for real completed/active/upcoming task data and dependency metadata.
+  - Replaced hardcoded timeline rendering with live data in dashboard timeline mode through `ProjectTimelineView` wrapper + new `TimelineView` shell; wired active-card actions (`Complete`, `Skip`, `Ask Harvey`) to existing dashboard handlers.
+  - Wired success criteria toggles in timeline mode with optimistic updates and rollback on failure via `PATCH /api/tasks/[taskId]`, including API/service support for `successCriteria` payloads.
+  - Implemented Step 3 edge cases: hide completed slot when none, show empty-state message when no active task, hide upcoming slots when none.
+- **Files touched**: `src/components/timeline/*` (new module), `src/components/dashboard/ProjectTimelineView.tsx`, `src/app/dashboard/page.tsx`, `src/lib/timeline/get-timeline-data.ts`, `src/app/api/timeline/route.ts`, `src/types/timeline.types.ts`, `src/app/api/tasks/[taskId]/route.ts`, `src/lib/tasks/task-service.ts`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Complete Step 3 requested architecture split before backend wiring, then deliver real timeline data and DB-backed success-criteria persistence without changing timeline visual design.
+- **Risks / notes**: Timeline mode now depends on `/api/timeline`; if API/auth/project resolution fails, the shell shows a brief toast and empty-state message. Harvey tip remains placeholder (`"..."`) per Step 3 scope; Step 4 should replace with real tip API call.
+- **Related docs**: `ARCHITECTURE.md` (`src/components/timeline/`, `src/lib/timeline/`, `/api/timeline`, `/api/tasks/[taskId]`).
+
 ### 2026-02-21 – Timeline card detail update: rail-center markers + dependencies section
 
 - **Agent / context**: Codex (GPT-5) – User requested two UI fixes: marker/dot stacking exactly over the rail and replacing task-card attachments with dependency visibility.

@@ -39,6 +39,7 @@ interface UpdateTaskRequest {
   status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
   title?: string
   description?: string
+  successCriteria?: Array<{ id: string; text: string; done: boolean }>
   // Feedback (Feature 3)
   actualDuration?: number
   durationAccuracy?: 'less' | 'same' | 'more'
@@ -109,6 +110,25 @@ export async function PATCH(
         { success: false, error: 'Invalid status', code: 'INVALID_STATUS' },
         { status: 400 }
       )
+    }
+
+    if (body.successCriteria !== undefined) {
+      const isValidCriteria =
+        Array.isArray(body.successCriteria) &&
+        body.successCriteria.every(
+          (item) =>
+            item != null &&
+            typeof item.id === 'string' &&
+            typeof item.text === 'string' &&
+            typeof item.done === 'boolean'
+        )
+
+      if (!isValidCriteria) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid successCriteria payload', code: 'INVALID_SUCCESS_CRITERIA' },
+          { status: 400 }
+        )
+      }
     }
 
     console.log('[TaskUpdateAPI] Update data:', body)

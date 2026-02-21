@@ -154,6 +154,15 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating).
   - Uses `src/lib/tasks/task-service.ts` for domain logic.
 
+- **`timeline/route.ts`**
+  - Endpoint under `/api/timeline`.
+  - GET route for Timeline View Step 3. Resolves project (query `projectId` or active project), validates ownership, then returns:
+    - `lastCompletedTask`
+    - `activeTask` (oldest pending/skipped by scheduled date)
+    - `upcomingTasks` (next two pending after active scheduled date)
+    - `dependencies` and `dependentTasks` for the active task card.
+  - Uses `src/lib/timeline/get-timeline-data.ts`.
+
 - **`settings/route.ts`**
   - GET `/api/settings`. Returns current user (workSchedule, commute, preferred_session_length, communication_style, timezone) and active project (id, contextData.available_time, contextData.preferences) for the Settings page.
 - **`settings/update/route.ts`**
@@ -165,7 +174,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.
-  - Handles single-task operations (fetch, update, delete) based on `taskId`. PATCH returns the updated task and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
+  - Handles single-task operations (fetch, update, delete) based on `taskId`. PATCH supports task field updates (including `status` and `successCriteria` checklist JSON), returns the updated task, and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
 
 - **`tasks/[taskId]/checklist/route.ts`**
   - Endpoint under `/api/tasks/[taskId]/checklist`.
@@ -196,7 +205,6 @@ Auth-related UI used on sign-in/sign-up flows:
 Dashboard UI for authenticated users:
 
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
-- **`CalendarView.tsx`**: Visual calendar representation of tasks/schedule.
 - **`ChatSidebar.tsx`**: Shell for project and task conversations. Renders dynamic header (Harvey AI or task title + "Task Chat"), conversations toggle (opens **ConversationNavPanel**), optional dim overlay, and either **ProjectChatView** or **TaskChatView** based on `activeConversation` (dashboard state). All project chat logic (useChat, messages, rebuild) lives in ProjectChatView. See **Per-task chat** below and `docs/per-task-chat.md`.
 - **`ConversationNavPanel.tsx`**: Overlay panel to switch conversations: Pinned "Project Chat", TASKS list (from `openTaskChats`), and static user row. No History section. Step 1: UI only; Step 2 will wire persistence.
 - **`ProjectChatView.tsx`**: Project chat body: project pill + **ProjectDropdownMenu**, project context chip, rebuild button, check-in error, message list (useChat → `/api/chat/project`), and input. Merges message sources (initial/useChat, dashboard-appended, widget-appended, streaming check-in); supports `messageType: 'check-in'`; calls `onTasksChanged` when assistant message contains tool invocation. Rebuild modal lives here.
@@ -211,9 +219,23 @@ Dashboard UI for authenticated users:
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open).
+- **`ProjectTimelineView.tsx`**: Thin dashboard wrapper around `src/components/timeline/TimelineView.tsx`; accepts `projectId` and action callbacks (`onComplete`, `onSkip`, `onAskHarvey`).
 - **Per-task chat (Step 2)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (includes optional `discussionId`). "Ask Harvey" calls `POST /api/discussions/task` and stores discussionId. **TaskChatView** loads discussion via `GET /api/discussions/task?taskId=`, shows messages, enabled input; user messages persisted via `POST /api/discussions/task/messages`. Placeholder "Harvey is thinking..." (1.5s); no real Harvey response yet (Step 3). On dashboard load, `GET /api/discussions/task/list` repopulates openTaskChats for persistence across refresh. See `docs/per-task-chat/README.md`.
 - **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
-- **`ViewToggle.tsx`**: Control for toggling between different dashboard views (e.g. Calendar vs Timeline).
+- **`ViewToggle.tsx`**: Control for toggling between dashboard views (List vs Timeline).
+
+### `src/components/timeline/`
+
+Dedicated Timeline View module (Step 3 refactor):
+
+- **`TimelineView.tsx`**: Timeline shell for right-pane timeline mode. Fetches `/api/timeline`, handles edge states, wires optimistic success-criteria save (`PATCH /api/tasks/[taskId]`), and passes data to card components.
+- **`TimelineRail.tsx`**: Vertical rail wrapper (purple/grey gradient line with child card slots).
+- **`CompletedTaskCard.tsx`**: Completed slot card with green check marker.
+- **`ActiveTaskCard.tsx`**: Expanded active card (description, success criteria, dependencies, Harvey tip slot, action buttons).
+- **`SuccessCriteriaList.tsx`**: Interactive checklist list used inside ActiveTaskCard.
+- **`HarveysTip.tsx`**: Tip UI slot with Harvey avatar, refresh button, and loading spinner support.
+- **`UpcomingTaskCard.tsx`**: Collapsed upcoming task slot card.
+- **`index.ts`**: Barrel exports for timeline module components.
 
 ### `src/components/settings/`
 
@@ -284,6 +306,10 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 ### `src/lib/tasks/`
 
 - **`task-service.ts`**: Service layer for task entities (CRUD operations, checklist operations, status transitions). **Task grouping** (`groupTasksByDate(tasks, userTimezone)`) uses the user’s timezone for “today” so that Past (completed tasks from previous days), Overdue (past-date, not completed), and Today (scheduledDate = today in user TZ) are correct. When a task is set to **skipped**, all tasks that depend on it (via `depends_on`) are cascade-skipped. **getTodayProgress(userId)** returns today’s completed/skipped/pending counts, **userTimezone**, and **nextTask** (first pending today, or if none, the nearest upcoming pending task by date). Used by `/api/progress/today` and the completion feedback widget. Used heavily by task-related API routes and dashboard UI.
+
+### `src/lib/timeline/`
+
+- **`get-timeline-data.ts`**: Timeline data assembly for Step 3. Exposes `getTimelineData(projectId, userId)` and performs timeline-specific queries for last completed task, oldest pending/skipped active task, dependency metadata, and next two upcoming pending tasks.
 
 ### `src/lib/chat/`
 
@@ -359,6 +385,7 @@ Type definitions for different aspects of the app:
 - **`auth.types.ts`**: Types for authentication flows (session, user, tokens, auth state).
 - **`chat.types.ts`**: Types used in chat flows (message roles, content structures, conversation metadata).
 - **`task.types.ts`**: Types describing tasks, checklists, task statuses, categories, and scheduling metadata.
+- **`timeline.types.ts`**: Types for timeline mode payloads (completed/active/upcoming tasks, dependencies, and timeline card data contracts).
 - **`user.types.ts`**: Types for user entities, profiles, onboarding state, and preferences.
 
 These types should be reused across UI, services, and API routes to keep the app type-safe and consistent.

@@ -95,8 +95,8 @@ export { TaskChatView } from './TaskChatView'
 export { TimelineView } from './TimelineView'
 
 /**
- * ProjectTimelineView - Vertical timeline visualization of project tasks
- * Shows completed, active, and upcoming tasks on a rail
+ * ProjectTimelineView - Wrapper around new timeline module
+ * Loads real timeline data and renders completed/active/upcoming rail cards
  */
 export { ProjectTimelineView } from './ProjectTimelineView'
 

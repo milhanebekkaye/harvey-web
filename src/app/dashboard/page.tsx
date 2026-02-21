@@ -107,7 +107,7 @@ export default function DashboardPage() {
   /**
    * Current view mode: list or timeline
    */
-  const [view, setView] = useState<ViewMode>('list')
+  const [view, setView] = useState<ViewMode>('timeline')
 
   /** Floating "View" selector (List/Timeline) visibility. */
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
@@ -563,14 +563,15 @@ export default function DashboardPage() {
    */
   const handleCompleteTask = async (taskId: string) => {
     const previousTask = findTaskById(tasks, taskId)
-    if (!previousTask) return
 
-    // Optimistic: show task as completed in timeline immediately
-    setTasks((prev) =>
-      prev
-        ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'completed' }))
-        : prev
-    )
+    // Optimistic update when task is already present in list-view state.
+    if (previousTask) {
+      setTasks((prev) =>
+        prev
+          ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'completed' }))
+          : prev
+      )
+    }
     // Show feedback message + widget in chat immediately (no wait for API)
     const completionMsg = {
       id: `complete-${taskId}-${Date.now()}`,
@@ -604,9 +605,13 @@ export default function DashboardPage() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to complete task'
       console.error('[Dashboard] Error completing task:', errorMessage)
-      setTasks((prev) =>
-        prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
-      )
+      if (previousTask) {
+        setTasks((prev) =>
+          prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
+        )
+      } else {
+        void fetchTasks()
+      }
       setAppendedByDashboard((prev) => prev.filter((m) => m.id !== completionMsg.id))
       alert(errorMessage)
     }
@@ -617,13 +622,14 @@ export default function DashboardPage() {
    */
   const handleSkipTask = async (taskId: string) => {
     const previousTask = findTaskById(tasks, taskId)
-    if (!previousTask) return
 
-    setTasks((prev) =>
-      prev
-        ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'skipped' }))
-        : prev
-    )
+    if (previousTask) {
+      setTasks((prev) =>
+        prev
+          ? updateTaskInGroups(prev, taskId, (t) => ({ ...t, status: 'skipped' }))
+          : prev
+      )
+    }
     const skipMsg = {
       id: `skip-${taskId}-${Date.now()}`,
       role: 'assistant' as const,
@@ -658,9 +664,13 @@ export default function DashboardPage() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to skip task'
       console.error('[Dashboard] Error skipping task:', errorMessage)
-      setTasks((prev) =>
-        prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
-      )
+      if (previousTask) {
+        setTasks((prev) =>
+          prev ? updateTaskInGroups(prev, taskId, () => previousTask) : prev
+        )
+      } else {
+        void fetchTasks()
+      }
       setAppendedByDashboard((prev) => prev.filter((m) => m.id !== skipMsg.id))
       alert(errorMessage)
     }
@@ -977,7 +987,12 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
         {/* Timeline View */}
         {view === 'timeline' && (
-          <ProjectTimelineView />
+          <ProjectTimelineView
+            projectId={projectId}
+            onComplete={handleCompleteTask}
+            onSkip={handleSkipTask}
+            onAskHarvey={handleAskHarvey}
+          />
         )}
       </main>
 

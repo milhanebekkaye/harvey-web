@@ -29,6 +29,7 @@ export interface UpdateTaskData {
   title?: string
   description?: string
   status?: 'pending' | 'in_progress' | 'completed' | 'skipped'
+  successCriteria?: Array<{ id: string; text: string; done: boolean }>
   // Feedback (Feature 3)
   actualDuration?: number
   durationAccuracy?: 'less' | 'same' | 'more'
@@ -848,6 +849,10 @@ export async function updateTask(
 
     if (data.description !== undefined) {
       updateData.description = data.description
+    }
+
+    if (data.successCriteria !== undefined) {
+      updateData.successCriteria = data.successCriteria
     }
 
     if (data.status !== undefined) {
