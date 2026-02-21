@@ -50,6 +50,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Timeline View Step 4: Harvey tip API integration (Haiku)
+
+- **Agent / context**: Codex (GPT-5) – User request to complete Timeline View Step 4 by wiring `HarveysTip` to a real backend call and keeping prior Timeline behavior unchanged.
+- **Summary**:
+  - Added new authenticated route `POST /api/tasks/tip` that validates task ownership through project ownership, loads task + project context, optionally loads dependency statuses, calls Claude Haiku (`claude-haiku-4-5-20251001`, `max_tokens: 100`), and returns `{ tip }`.
+  - Implemented strict fallback behavior in tip API: on any error (including auth/body/task/model errors), returns HTTP 200 with fallback tip text instead of 500.
+  - Wired `src/components/timeline/ActiveTaskCard.tsx` to fetch tip on mount (per active task) and on refresh, with local `tip` and `tipLoading` state.
+  - Updated `src/components/timeline/HarveysTip.tsx` loading UX: spinner now appears in tip content area while loading, and Refresh is disabled until completion.
+  - Added timeline feature documentation file `docs/timeline-view.md` and updated architecture docs to mark Timeline Step 4 as complete and document `/api/tasks/tip`.
+- **Files touched**: `src/app/api/tasks/tip/route.ts`, `src/components/timeline/ActiveTaskCard.tsx`, `src/components/timeline/HarveysTip.tsx`, `docs/timeline-view.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Complete the final Timeline View step by replacing placeholder tip content with real AI-generated, task-specific coaching while preserving existing Timeline UX and actions.
+- **Risks / notes**: Tip quality depends on model response quality and available task context. API is intentionally fail-safe (always fallback tip) to avoid breaking Timeline rendering.
+- **Related docs**: `ARCHITECTURE.md` (`/api/tasks/tip`, `src/components/timeline/`, `src/lib/timeline/`), `docs/timeline-view.md`.
+
 ### 2026-02-21 – Timeline action buttons now reliably use list-view Complete/Skip flow
 
 - **Agent / context**: Codex (GPT-5) – User requested Timeline "Skip" and "Mark as Complete" to trigger the same behavior as list view (`TaskDetails` actions).

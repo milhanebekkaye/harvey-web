@@ -18,18 +18,24 @@ export function HarveysTip({ tip, isLoading, onRefresh }: HarveysTipProps) {
           <button
             type="button"
             onClick={onRefresh}
-            className="text-[10px] text-slate-400 hover:text-slate-600 flex items-center gap-0.5 transition-colors"
+            className="text-[10px] text-slate-400 hover:text-slate-600 disabled:text-slate-300 disabled:cursor-not-allowed flex items-center gap-0.5 transition-colors"
             disabled={isLoading}
           >
-            {isLoading ? (
-              <span className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin" />
-            ) : (
-              <span className="material-symbols-outlined text-[12px]">refresh</span>
-            )}
+            <span className="material-symbols-outlined text-[12px]">refresh</span>
             Refresh
           </button>
         </div>
-        <p className="text-slate-600 text-xs leading-relaxed">{tip}</p>
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-1">
+            <span
+              aria-label="Loading tip"
+              className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"
+            />
+            <span className="text-slate-500 text-xs">Generating tip...</span>
+          </div>
+        ) : (
+          <p className="text-slate-600 text-xs leading-relaxed">{tip}</p>
+        )}
       </div>
     </div>
   )

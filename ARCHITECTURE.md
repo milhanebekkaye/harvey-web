@@ -154,12 +154,19 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating).
   - Uses `src/lib/tasks/task-service.ts` for domain logic.
 
+- **`tasks/tip/route.ts`**
+  - Endpoint under `POST /api/tasks/tip`.
+  - Timeline View Step 4 route for Harvey tip generation. Body: `{ taskId }`.
+  - Authenticates with Supabase, validates that the task belongs to a project owned by the current user, loads task + project context (`title`, `goals`), and fetches dependency statuses when `depends_on` is present.
+  - Calls Claude Haiku (`claude-haiku-4-5-20251001`, max tokens 100) with a strict “single concrete next action” prompt.
+  - Never returns 500; always responds `200` with `{ tip }`, using fallback tip text on any error.
+
 - **`timeline/route.ts`**
   - Endpoint under `/api/timeline`.
-  - GET route for Timeline View Step 3. Resolves project (query `projectId` or active project), validates ownership, then returns:
+  - GET route for Timeline View. Resolves project (query `projectId` or active project), validates ownership, then returns:
     - `lastCompletedTask`
     - `activeTask` (oldest pending/skipped by scheduled date)
-    - `upcomingTasks` (next two pending after active scheduled date)
+    - `upcomingTasks` (next two pending from now, timezone-aware)
     - `dependencies` and `dependentTasks` for the active task card.
   - Uses `src/lib/timeline/get-timeline-data.ts`.
 
@@ -226,14 +233,15 @@ Dashboard UI for authenticated users:
 
 ### `src/components/timeline/`
 
-Dedicated Timeline View module (Step 3 refactor):
+Dedicated Timeline View module (Step 4 complete):
+See `docs/timeline-view.md` for feature-level behavior and API contracts.
 
 - **`TimelineView.tsx`**: Timeline shell for right-pane timeline mode. Fetches `/api/timeline`, handles edge states, wires optimistic success-criteria save (`PATCH /api/tasks/[taskId]`), and passes data to card components.
 - **`TimelineRail.tsx`**: Vertical rail wrapper (purple/grey gradient line with child card slots).
 - **`CompletedTaskCard.tsx`**: Completed slot card with green check marker.
-- **`ActiveTaskCard.tsx`**: Expanded active card (description, success criteria, dependencies, Harvey tip slot, action buttons).
+- **`ActiveTaskCard.tsx`**: Expanded active card (description, success criteria, dependencies, Harvey tip slot, action buttons). Manages tip state and calls `POST /api/tasks/tip` on mount/refresh.
 - **`SuccessCriteriaList.tsx`**: Interactive checklist list used inside ActiveTaskCard.
-- **`HarveysTip.tsx`**: Tip UI slot with Harvey avatar, refresh button, and loading spinner support.
+- **`HarveysTip.tsx`**: Tip UI slot with Harvey avatar; shows in-content loading spinner while generating and disables refresh during requests.
 - **`UpcomingTaskCard.tsx`**: Collapsed upcoming task slot card.
 - **`index.ts`**: Barrel exports for timeline module components.
 
@@ -309,7 +317,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/timeline/`
 
-- **`get-timeline-data.ts`**: Timeline data assembly for Step 3. Exposes `getTimelineData(projectId, userId)` and performs timeline-specific queries for last completed task, oldest pending/skipped active task, dependency metadata, and next two upcoming pending tasks.
+- **`get-timeline-data.ts`**: Timeline data assembly. Exposes `getTimelineData(projectId, userId)` and performs timeline-specific queries for last completed task, oldest pending/skipped active task, dependency metadata, and next two upcoming pending tasks from current time (user timezone aware).
 
 ### `src/lib/chat/`
 

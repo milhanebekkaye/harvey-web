@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCategoryIcon } from '@/components/dashboard/TaskCategoryBadge'
 import type { ChecklistItem, TaskLabel } from '@/types/task.types'
 import type { TimelineActiveTask, TimelineDependencyTask } from '@/types/timeline.types'
@@ -13,6 +14,8 @@ interface ActiveTaskCardProps {
   onAskHarvey: (taskId: string, title: string, label: string) => void | Promise<void>
   onCriteriaChange: (criteria: ChecklistItem[]) => void | Promise<void>
 }
+
+const FALLBACK_TIP = 'Break this task into the first small step and start there.'
 
 function formatDueDate(scheduledDate: string | Date): string {
   const parsed = new Date(scheduledDate)
@@ -68,6 +71,49 @@ export function ActiveTaskCard({
   const dueDate = formatDueDate(task.scheduledDate)
   const label = normalizeLabel(task.label)
   const icon = getCategoryIcon(label)
+  const [tip, setTip] = useState('')
+  const [tipLoading, setTipLoading] = useState(true)
+  const latestTipRequestRef = useRef(0)
+
+  const loadTip = useCallback(async () => {
+    const requestId = latestTipRequestRef.current + 1
+    latestTipRequestRef.current = requestId
+    setTipLoading(true)
+
+    try {
+      const response = await fetch('/api/tasks/tip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: task.id }),
+      })
+
+      const json = (await response.json().catch(() => ({}))) as { tip?: unknown }
+      const nextTip =
+        typeof json.tip === 'string' && json.tip.trim().length > 0
+          ? json.tip.trim()
+          : FALLBACK_TIP
+
+      if (latestTipRequestRef.current === requestId) {
+        setTip(nextTip)
+      }
+    } catch {
+      if (latestTipRequestRef.current === requestId) {
+        setTip(FALLBACK_TIP)
+      }
+    } finally {
+      if (latestTipRequestRef.current === requestId) {
+        setTipLoading(false)
+      }
+    }
+  }, [task.id])
+
+  useEffect(() => {
+    void loadTip()
+  }, [loadTip])
+
+  const handleRefresh = useCallback(() => {
+    void loadTip()
+  }, [loadTip])
 
   return (
     <div className="relative mb-6">
@@ -171,11 +217,9 @@ export function ActiveTaskCard({
           </div>
 
           <HarveysTip
-            tip="..."
-            isLoading={false}
-            onRefresh={() => {
-              // Placeholder for Step 4 API integration.
-            }}
+            tip={tip}
+            isLoading={tipLoading}
+            onRefresh={handleRefresh}
           />
 
           <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
