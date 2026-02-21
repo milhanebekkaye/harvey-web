@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Per-task chat Step 1 (UI only, zero logic)
+
+- **Agent / context**: Cursor – Per-task chat feature, Step 1: conversation navigation and sidebar content switching with React state only; no API, DB, or persistence.
+- **Summary**:
+  - **Conversation nav panel**: New `ConversationNavPanel` overlay (Pinned: Project Chat; TASKS list; user row). No History section. Dashboard state: `isPanelOpen`, `activeConversation`, `openTaskChats`. Sidebar header shows "Harvey AI" / "Conversations" or task title / "Task Chat" and a conversations toggle.
+  - **Sidebar content switching**: `ChatSidebar` refactored to shell; project chat body moved to `ProjectChatView` (useChat, messages, project pill, rebuild, input). New `TaskChatView` for task chat placeholder (back link, hardcoded message, disabled input). Content switches based on `activeConversation`.
+  - **Ask Harvey on task cards**: "Ask Harvey" button in `TaskDetails` (with Complete/Skip); adds task to `openTaskChats`, sets `activeConversation`, switches sidebar to task chat. Active task card gets purple ring and chat bubble badge.
+  - **Project name visibility**: Timeline header "Project Timeline" + subtitle (project name • Week 1 of 12 placeholder). Project context chip in sidebar below project pill when on project chat.
+- **Files touched**: `src/components/dashboard/ConversationNavPanel.tsx` (new), `ProjectChatView.tsx` (new), `TaskChatView.tsx` (new), `ChatSidebar.tsx` (refactor), `TimelineView.tsx`, `TaskDetails.tsx`, `TaskTile.tsx`, `src/app/dashboard/page.tsx`, `src/components/dashboard/index.ts`, `docs/per-task-chat.md` (new), `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Implement Per-Task Chat Step 1 per plan: UI and navigation only before wiring task chat API and persistence in Step 2.
+- **Risks / notes**: Task chat input is disabled; no persistence across refresh. Rebuild button moved from sidebar header into ProjectChatView (below project chip). All existing project chat behavior preserved in ProjectChatView.
+- **Related docs**: `docs/per-task-chat.md`, `ARCHITECTURE.md` (dashboard / ChatSidebar / per-task chat).
+
 ### 2026-02-18 – Claude scheduler validation fix: allow partial slot usage
 
 - **Agent / context**: Codex (GPT-5) – User-requested bug fix for `assignTasksWithClaude` duration validation causing unnecessary fallback.

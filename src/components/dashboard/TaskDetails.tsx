@@ -46,6 +46,11 @@ interface TaskDetailsProps {
   onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
 
   /**
+   * Callback when "Ask Harvey" is clicked (opens/focuses task chat in sidebar)
+   */
+  onAskHarvey?: (taskId: string, title: string, label: string) => void
+
+  /**
    * Whether action buttons are disabled (e.g., during API call)
    */
   isLoading?: boolean
@@ -82,6 +87,7 @@ export function TaskDetails({
   onSkip,
   onEdit,
   onChecklistToggle,
+  onAskHarvey,
   isLoading = false,
   className = '',
   showHeader = false,
@@ -164,7 +170,7 @@ export function TaskDetails({
 
       {/* Action Buttons */}
       {isActionable && (
-        <div className="flex items-center gap-2 pt-3 mt-2 border-t border-slate-100">
+        <div className="flex flex-wrap items-center gap-2 pt-3 mt-2 border-t border-slate-100">
           {/* Complete Button */}
           <button
             type="button"
@@ -207,6 +213,25 @@ export function TaskDetails({
             Skip
           </button>
 
+          {/* Ask Harvey Button — opens task chat in sidebar */}
+          {onAskHarvey && (
+            <button
+              type="button"
+              onClick={() => onAskHarvey(task.id, task.title, task.label)}
+              className="
+                flex items-center gap-1.5 px-3 py-2
+                border border-[#8B5CF6] text-[#8B5CF6] text-sm font-medium
+                rounded-lg bg-transparent
+                hover:bg-[#8B5CF6]/10
+                active:scale-95
+                transition-all duration-150
+              "
+            >
+              <span className="material-symbols-outlined text-base">chat</span>
+              Ask Harvey
+            </button>
+          )}
+
           {/* Edit Button - pushed to right */}
           <button
             type="button"
@@ -232,11 +257,21 @@ export function TaskDetails({
 
       {/* Completed: clear success state */}
       {task.status === 'completed' && (
-        <div className="pt-3 mt-2 border-t border-slate-100">
+        <div className="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
             <span className="material-symbols-outlined text-base">check_circle</span>
             <span className="text-sm font-medium">Task completed</span>
           </div>
+          {onAskHarvey && (
+            <button
+              type="button"
+              onClick={() => onAskHarvey(task.id, task.title, task.label)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-[#8B5CF6] text-[#8B5CF6] text-sm font-medium rounded-lg bg-transparent hover:bg-[#8B5CF6]/10 transition-all"
+            >
+              <span className="material-symbols-outlined text-base">chat</span>
+              Ask Harvey
+            </button>
+          )}
         </div>
       )}
 
@@ -252,8 +287,18 @@ export function TaskDetails({
               You can still mark it complete if you do it later.
             </p>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-xs text-slate-500"> Finally completed?</span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {onAskHarvey && (
+              <button
+                type="button"
+                onClick={() => onAskHarvey(task.id, task.title, task.label)}
+                className="flex items-center gap-1.5 px-3 py-2 border border-[#8B5CF6] text-[#8B5CF6] text-sm font-medium rounded-lg bg-transparent hover:bg-[#8B5CF6]/10 transition-all"
+              >
+                <span className="material-symbols-outlined text-base">chat</span>
+                Ask Harvey
+              </button>
+            )}
+            <span className="text-xs text-slate-500">Finally completed?</span>
             <button
               type="button"
               onClick={() => onComplete?.(task.id)}

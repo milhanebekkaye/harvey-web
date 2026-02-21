@@ -66,10 +66,27 @@ export { TaskChecklistItem, TaskChecklist } from './TaskChecklistItem'
 // ============================================
 
 /**
- * ChatSidebar - Left sidebar with conversation history
- * Displays onboarding messages in chat format
+ * ChatSidebar - Left sidebar with project/task conversation switching
+ * Shell: header, nav panel overlay, ProjectChatView or TaskChatView
  */
 export { ChatSidebar } from './ChatSidebar'
+export type { ChatSidebarProps } from './ChatSidebar'
+
+/**
+ * ConversationNavPanel - Overlay panel to switch between project and task chats
+ */
+export { ConversationNavPanel, type OpenTaskChat } from './ConversationNavPanel'
+
+/**
+ * ProjectChatView - Project chat content (messages, input, rebuild)
+ */
+export { ProjectChatView } from './ProjectChatView'
+export type { ProjectChatViewProps } from './ProjectChatView'
+
+/**
+ * TaskChatView - Task chat placeholder (Step 1: UI only, disabled input)
+ */
+export { TaskChatView } from './TaskChatView'
 
 /**
  * TimelineView - Timeline display of tasks grouped by date

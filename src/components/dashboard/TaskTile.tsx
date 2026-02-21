@@ -48,6 +48,12 @@ interface TaskTileProps {
    * - 'calendar': Styled for calendar grid
    */
   variant?: 'default' | 'compact' | 'calendar'
+
+  /**
+   * Whether this task's chat is currently active in the sidebar (shows subtle purple glow).
+   * Badge and ring are rendered by the parent wrapper; this prop is for tile-level styling if needed.
+   */
+  isActiveConversation?: boolean
 }
 
 /**
@@ -146,6 +152,7 @@ export function TaskTile({
   onClick,
   className = '',
   variant = 'default',
+  isActiveConversation = false,
 }: TaskTileProps) {
   const borderClass = getStatusBorderClass(task.status)
 

@@ -24,6 +24,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
 
@@ -143,6 +144,24 @@ export default function DashboardPage() {
 
   /** Guard: don't run a second check-in while one is already in progress. */
   const checkInInProgressRef = useRef(false)
+
+  /**
+   * Per-task chat UI state (Step 1: UI only, no API/DB).
+   * - isPanelOpen: conversation nav panel visibility
+   * - activeConversation: 'project' or task id
+   * - openTaskChats: list of task chats the user has opened
+   */
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [activeConversation, setActiveConversation] = useState<'project' | string>('project')
+  const [openTaskChats, setOpenTaskChats] = useState<
+    Array<{ id: string; title: string; label: string }>
+  >([])
+
+  /**
+   * Rebuild schedule modal (moved from sidebar header to top-right toolbar).
+   */
+  const [showRebuildModal, setShowRebuildModal] = useState(false)
+  const [isRebuilding, setIsRebuilding] = useState(false)
 
   // ===== DATA FETCHING =====
 
@@ -381,6 +400,60 @@ export default function DashboardPage() {
    */
   const handleTaskClick = (taskId: string) => {
     setExpandedTaskId(expandedTaskId === taskId ? null : taskId)
+  }
+
+  /**
+   * Switch active conversation (project or task). Closes nav panel.
+   * Used when user selects an item in ConversationNavPanel.
+   */
+  const handleSelectConversation = (id: 'project' | string) => {
+    setActiveConversation(id)
+    setIsPanelOpen(false)
+  }
+
+  /**
+   * Open or focus task chat for a task (from "Ask Harvey" on task card).
+   * If task not in openTaskChats, add it; then set activeConversation to this task.
+   * Does not open the nav panel.
+   */
+  const handleAskHarvey = (taskId: string, title: string, label: string) => {
+    setOpenTaskChats((prev) => {
+      if (prev.some((t) => t.id === taskId)) return prev
+      return [...prev, { id: taskId, title, label }]
+    })
+    setActiveConversation(taskId)
+  }
+
+  /**
+   * Rebuild schedule: reset and redirect to loading. Used by top-right toolbar.
+   */
+  const handleRebuild = async () => {
+    if (!projectId) return
+    setIsRebuilding(true)
+    try {
+      const response = await fetch('/api/schedule/reset-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      })
+      if (!response.ok) {
+        const rawText = await response.text()
+        let errorMessage = `Server Error: ${response.status} ${response.statusText}`
+        try {
+          const json = JSON.parse(rawText)
+          if (json.error) errorMessage = json.error
+        } catch {
+          // ignore
+        }
+        throw new Error(errorMessage)
+      }
+      router.push(`/loading?projectId=${projectId}`)
+    } catch (err) {
+      console.error('[Dashboard] Rebuild failed:', err)
+      setIsRebuilding(false)
+      setShowRebuildModal(false)
+      alert(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
   }
 
   /** Append message to discussion (persist and show in chat) */
@@ -721,29 +794,92 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         streamingCheckIn={checkInStreaming}
         checkInError={checkInError}
         onTestCheckIn={runCheckIn}
+        activeConversation={activeConversation}
+        openTaskChats={openTaskChats}
+        isPanelOpen={isPanelOpen}
+        onPanelOpen={() => setIsPanelOpen(true)}
+        onPanelClose={() => setIsPanelOpen(false)}
+        onSelectConversation={handleSelectConversation}
+        onBackToProject={() => setActiveConversation('project')}
       />
 
       {/* ========== RIGHT AREA - Timeline OR Calendar (60%) ========== */}
       <main className="w-[60%] h-full overflow-y-auto flex flex-col">
-        {/* View Toggle & Search + Test extract (temporary) */}
-        <div className="flex items-center justify-between gap-2 shrink-0 px-4 pt-3 pb-1">
+        {/* Top bar: View Toggle (left) + Toolbar (right) */}
+        <div className="flex items-center justify-between gap-2 shrink-0 px-4 pt-3 pb-1 border-b border-black/5">
           <ViewToggle
             view={view}
             onViewChange={setView}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
           />
-          {projectId && (
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {projectId && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowRebuildModal(true)}
+                  disabled={isRebuilding}
+                  className="p-2 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 transition-colors"
+                  title="Rebuild Schedule"
+                >
+                  <span className="material-symbols-outlined text-lg">refresh</span>
+                </button>
+                {runCheckIn && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => runCheckIn('morning')}
+                      className="p-1.5 rounded text-xs font-medium bg-sky-100 hover:bg-sky-200 text-sky-700"
+                      title="Test check-in: morning"
+                    >
+                      AM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runCheckIn('afternoon')}
+                      className="p-1.5 rounded text-xs font-medium bg-orange-100 hover:bg-orange-200 text-orange-700"
+                      title="Test check-in: afternoon"
+                    >
+                      PM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runCheckIn('evening')}
+                      className="p-1.5 rounded text-xs font-medium bg-indigo-100 hover:bg-indigo-200 text-indigo-700"
+                      title="Test check-in: evening"
+                    >
+                      Eve
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={handleTestExtract}
+                  disabled={isExtractLoading}
+                  className="p-2 rounded-lg text-slate-500 hover:text-[#895af6] disabled:opacity-50"
+                  title="Test extract"
+                >
+                  <span className="material-symbols-outlined text-lg">science</span>
+                </button>
+              </>
+            )}
+            <Link
+              href="/dashboard/settings"
+              className="p-2 rounded-lg bg-[#8B5CF6]/10 hover:bg-[#8B5CF6]/20 text-[#8B5CF6] transition-colors"
+              title="Settings"
+            >
+              <span className="material-symbols-outlined text-lg">settings</span>
+            </Link>
             <button
               type="button"
-              onClick={handleTestExtract}
-              disabled={isExtractLoading}
-              className="shrink-0 text-xs text-slate-500 hover:text-[#895af6] disabled:opacity-50"
-              title="Call POST /api/onboarding/extract – result in terminal"
+              onClick={handleSignOut}
+              className="p-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 transition-colors"
+              title="Sign Out"
             >
-              {isExtractLoading ? 'Extract…' : 'Test extract'}
+              <span className="material-symbols-outlined text-lg">logout</span>
             </button>
-          )}
+          </div>
         </div>
 
         {/* Timeline View */}
@@ -758,12 +894,67 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             onChecklistToggle={handleChecklistToggle}
             isActionLoading={isActionLoading}
             isLoading={isLoadingTasks}
+            projectTitle={projectTitle}
+            projectSubtitle={projectTitle ? `${projectTitle} • Week 1 of 12` : undefined}
+            activeConversationTaskId={activeConversation === 'project' ? null : activeConversation}
+            onAskHarvey={handleAskHarvey}
           />
         )}
 
         {/* Calendar View */}
         {view === 'calendar' && <CalendarView />}
       </main>
+
+      {/* Rebuild Schedule modal (triggered from top-right toolbar) */}
+      {showRebuildModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm border border-slate-100 scale-100 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-6">
+                <span className="material-symbols-outlined text-amber-600 text-3xl">
+                  warning
+                </span>
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">
+                Rebuild Schedule?
+              </h3>
+              <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+                This will{' '}
+                <strong className="text-slate-700">
+                  permanently delete all tasks
+                </strong>{' '}
+                for this project and regenerate a new schedule from scratch
+                based on our discussion.
+              </p>
+              <div className="flex flex-col gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={handleRebuild}
+                  disabled={isRebuilding}
+                  className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                >
+                  {isRebuilding ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Rebuilding...</span>
+                    </>
+                  ) : (
+                    'Yes, Rebuild Schedule'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRebuildModal(false)}
+                  disabled={isRebuilding}
+                  className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

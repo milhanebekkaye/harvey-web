@@ -72,6 +72,26 @@ interface TimelineViewProps {
    * Whether tasks are loading
    */
   isLoading?: boolean
+
+  /**
+   * Project name for timeline header (e.g. "Project Timeline" + subtitle)
+   */
+  projectTitle?: string
+
+  /**
+   * Subtitle below timeline title (e.g. "[Project Name] • Week 1 of 12")
+   */
+  projectSubtitle?: string
+
+  /**
+   * Task id whose chat is currently active in the sidebar; card gets purple glow + chat badge
+   */
+  activeConversationTaskId?: string | null
+
+  /**
+   * Callback when "Ask Harvey" is clicked on a task (opens/focuses task chat)
+   */
+  onAskHarvey?: (taskId: string, title: string, label: string) => void
 }
 
 /**
@@ -98,6 +118,10 @@ export function TimelineView({
   onChecklistToggle,
   isActionLoading = false,
   isLoading = false,
+  projectTitle,
+  projectSubtitle,
+  activeConversationTaskId = null,
+  onAskHarvey,
 }: TimelineViewProps) {
   const [showPast, setShowPast] = useState(false)
 
@@ -140,12 +164,13 @@ export function TimelineView({
         <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
           {sectionTasks.map((task) => {
             const isExpanded = expandedTaskId === task.id
+            const isActiveConversation = activeConversationTaskId === task.id
 
             return (
               <div
                 key={task.id}
                 className={`
-                  rounded-xl overflow-hidden
+                  rounded-xl overflow-hidden relative
                   transition-all duration-300 ease-out
                   ${isPast && !isExpanded ? 'opacity-60' : ''}
                   ${isExpanded
@@ -153,14 +178,26 @@ export function TimelineView({
                     : 'hover:scale-[1.005]'
                   }
                   ${isOverdue && !isExpanded ? 'ring-2 ring-red-200' : ''}
+                  ${isActiveConversation ? 'ring-2 ring-[#8B5CF6]/30 shadow-[0_0_0_2px_rgba(139,92,246,0.3)]' : ''}
                 `}
               >
+                {isActiveConversation && (
+                  <div
+                    className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
+                    title="Task chat open"
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      chat
+                    </span>
+                  </div>
+                )}
                 <TaskTile
                   task={task}
                   isExpanded={isExpanded}
                   onClick={onTaskClick}
                   variant={gridLayout ? 'compact' : 'default'}
                   className={isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
+                  isActiveConversation={isActiveConversation}
                 />
 
                 {/* Task detail uses same task from list — no extra fetch on expand */}
@@ -174,6 +211,7 @@ export function TimelineView({
                       onSkip={onSkip}
                       onEdit={onEdit}
                       onChecklistToggle={onChecklistToggle}
+                      onAskHarvey={onAskHarvey}
                       isLoading={isActionLoading}
                       showHeader={false}
                     />
@@ -248,6 +286,18 @@ export function TimelineView({
 
   return (
     <div className="px-8 pb-12">
+      {/* Project Timeline header */}
+      {(projectTitle || projectSubtitle) && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Project Timeline
+          </h2>
+          {projectSubtitle && (
+            <p className="text-slate-500 text-sm mt-1">{projectSubtitle}</p>
+          )}
+        </div>
+      )}
+
       {/* Show past tasks toggle – subtle button at top */}
       {pastCount > 0 && (
         <button
