@@ -154,7 +154,13 @@ export default function DashboardPage() {
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [activeConversation, setActiveConversation] = useState<'project' | string>('project')
   const [openTaskChats, setOpenTaskChats] = useState<
-    Array<{ id: string; title: string; label: string; discussionId?: string }>
+    Array<{
+      id: string
+      title: string
+      label: string
+      discussionId?: string
+      initialMessages?: Array<{ role: string; content: string; timestamp: string }>
+    }>
   >([])
 
   /**
@@ -465,10 +471,16 @@ export default function DashboardPage() {
         return
       }
       const data = await res.json()
-      const discussionId = data.discussion?.id
+      const discussion = data.discussion
+      const discussionId = discussion?.id
+      const messages = Array.isArray(discussion?.messages) ? discussion.messages : undefined
       if (discussionId) {
         setOpenTaskChats((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, discussionId } : t))
+          prev.map((t) =>
+            t.id === taskId
+              ? { ...t, discussionId, initialMessages: messages }
+              : t
+          )
         )
       }
     } catch (err) {

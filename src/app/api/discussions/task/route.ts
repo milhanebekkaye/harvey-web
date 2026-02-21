@@ -4,7 +4,8 @@
  * POST /api/discussions/task — Create (or return existing) task discussion.
  * GET  /api/discussions/task?taskId= — Get task discussion by taskId.
  *
- * Step 2: Persistence only; no Harvey/Claude response. Step 3 will plug in streaming here.
+ * Step 3: Opening message is generated via Haiku (task-specific). Step 4 will replace
+ * this with full context assembly (behavioral patterns, schedule data).
  */
 
 import { NextResponse } from 'next/server'
@@ -15,13 +16,11 @@ import {
   createDiscussion,
   getTaskDiscussion,
 } from '@/lib/discussions/discussion-service'
-
-const TASK_CHAT_INITIAL_MESSAGE = {
-  role: 'assistant' as const,
-  content:
-    "I'm ready to help you with this task. What would you like to work through?",
-  timestamp: new Date().toISOString(),
-}
+import {
+  generateTaskOpeningMessage,
+  TASK_OPENING_FALLBACK_MESSAGE,
+} from '@/lib/discussions/generate-task-opening-message'
+import type { TaskContext } from '@/lib/discussions/generate-task-opening-message'
 
 /**
  * POST — Create task discussion (or return existing).
@@ -77,13 +76,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ discussion: existing }, { status: 200 })
     }
 
-    // Create new task discussion with initial Harvey message
+    // Step 4 will replace this with full context assembly including behavioral patterns and schedule data.
+    let openingContent = TASK_OPENING_FALLBACK_MESSAGE
+
+    const task = await prisma.task.findFirst({
+      where: { id: taskId, projectId },
+      include: { project: { select: { title: true, goals: true } } },
+    })
+
+    if (task) {
+      const [unlocksCount, dependencyTasks] = await Promise.all([
+        prisma.task.count({ where: { depends_on: { has: taskId } } }),
+        task.depends_on.length > 0
+          ? prisma.task.findMany({
+              where: { id: { in: task.depends_on } },
+              select: { title: true, status: true },
+            })
+          : Promise.resolve([]),
+      ])
+
+      const taskContext: TaskContext = {
+        title: task.title,
+        description: task.description ?? null,
+        estimatedDuration: task.estimatedDuration ?? null,
+        label: task.label ?? null,
+        dependsOn: dependencyTasks.map((d) => ({ title: d.title, status: d.status })),
+        unlocksCount,
+        projectTitle: task.project?.title ?? null,
+        projectGoals: task.project?.goals ?? null,
+      }
+
+      openingContent = await generateTaskOpeningMessage(taskContext)
+    }
+
     const created = await createDiscussion({
       projectId,
       userId: user.id,
       type: 'task',
       taskId,
-      initialMessage: TASK_CHAT_INITIAL_MESSAGE,
+      initialMessage: {
+        role: 'assistant',
+        content: openingContent,
+        timestamp: new Date().toISOString(),
+      },
     })
 
     if (!created.success || !created.discussion) {

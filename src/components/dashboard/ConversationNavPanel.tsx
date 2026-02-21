@@ -27,6 +27,8 @@ export interface OpenTaskChat {
   label: string
   /** Set when task discussion exists (from POST create or list); internal only, not shown in UI. */
   discussionId?: string
+  /** When we just created the discussion via POST, pass messages so the opening message shows immediately. */
+  initialMessages?: Array<{ role: string; content: string; timestamp: string }>
 }
 
 interface ConversationNavPanelProps {

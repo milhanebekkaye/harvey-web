@@ -193,6 +193,7 @@ export function ChatSidebar({
               taskTitle={activeTask.title}
               taskLabel={activeTask.label ?? 'general'}
               initialDiscussionId={activeTask.discussionId}
+              initialMessages={activeTask.initialMessages}
               onBackToProject={onBackToProject ?? (() => {})}
             />
           ) : (

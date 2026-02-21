@@ -50,6 +50,17 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-21 – Per-task chat Step 3 (real opening message via Haiku)
+
+- **Agent / context**: Cursor – Per-task chat Step 3: replace hardcoded task-chat opening message with a one-time Claude Haiku API call that generates a task-specific opening message on first Discussion creation; result stored in DB so subsequent opens load from DB with no extra API call.
+- **Summary**:
+  - **New**: `src/lib/discussions/generate-task-opening-message.ts` — `generateTaskOpeningMessage(task: TaskContext): Promise<string>`, exported `TaskContext` type. Uses Anthropic SDK (shared `anthropic` from `claude-client`), model `claude-haiku-4-5-20251001`, max_tokens 200. System prompt: Harvey accountability coach, short/specific/encouraging, mention unlocks and incomplete dependencies, one concrete suggestion, max 3 sentences. User message built from TaskContext (title, category, duration, description, dependencies with status, unlocks count, project title/goals). On success returns generated text; on error logs and returns fallback string (never throws — discussion creation is never blocked).
+  - **API**: `POST /api/discussions/task` — after existing-discussion check, fetches task (scoped to project) with project title/goals, unlocks count, dependency tasks (title + status); builds TaskContext; calls `generateTaskOpeningMessage`; creates discussion with that message as initialMessage. If task missing or fetch fails, uses same fallback and still creates discussion.
+- **Files touched**: `src/lib/discussions/generate-task-opening-message.ts` (new), `src/app/api/discussions/task/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/per-task-chat/README.md`.
+- **Motivation**: Step 3 of per-task chat: first message in a new task chat is now task-specific and useful instead of generic; no streaming or full context assembly yet (Step 4).
+- **Risks / notes**: Opening message generation is best-effort; fallback ensures creation never fails. Model used: `claude-haiku-4-5-20251001`. Step 4 will add full context assembly (behavioral patterns, schedule data).
+- **Related docs**: `ARCHITECTURE.md` (discussions/task, discussion-service), `docs/per-task-chat/README.md`.
+
 ### 2026-02-21 – Per-task chat Step 2 (database wiring)
 
 - **Agent / context**: Cursor – Per-task chat Step 2: wire task chat creation, loading, and message persistence to the database. No real Harvey response yet (placeholder typing indicator only).
@@ -72,7 +83,7 @@ You don’t need to paste large code snippets here—this file is about **narrat
   - **Conversation nav panel**: New `ConversationNavPanel` overlay (Pinned: Project Chat; TASKS list; user row). No History section. Dashboard state: `isPanelOpen`, `activeConversation`, `openTaskChats`. Sidebar header shows "Harvey AI" / "Conversations" or task title / "Task Chat" and a conversations toggle.
   - **Sidebar content switching**: `ChatSidebar` refactored to shell; project chat body moved to `ProjectChatView` (useChat, messages, project pill, rebuild, input). New `TaskChatView` for task chat placeholder (back link, hardcoded message, disabled input). Content switches based on `activeConversation`.
   - **Ask Harvey on task cards**: "Ask Harvey" button in `TaskDetails` (with Complete/Skip); adds task to `openTaskChats`, sets `activeConversation`, switches sidebar to task chat. Active task card gets purple ring and chat bubble badge.
-  - **Project name visibility**: Timeline header "Project Timeline" + subtitle (project name placeholder). Project context chip in sidebar below project pill when on project chat.
+  - **Project name visibility**: Timeline header "Project Timeline" + subtitle (project name). Project context chip in sidebar below project pill when on project chat.
 - **Files touched**: `src/components/dashboard/ConversationNavPanel.tsx` (new), `ProjectChatView.tsx` (new), `TaskChatView.tsx` (new), `ChatSidebar.tsx` (refactor), `TimelineView.tsx`, `TaskDetails.tsx`, `TaskTile.tsx`, `src/app/dashboard/page.tsx`, `src/components/dashboard/index.ts`, `docs/per-task-chat.md` (new), `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
 - **Motivation**: Implement Per-Task Chat Step 1 per plan: UI and navigation only before wiring task chat API and persistence in Step 2.
 - **Risks / notes**: Task chat input is disabled; no persistence across refresh. Rebuild button moved from sidebar header into ProjectChatView (below project chip). All existing project chat behavior preserved in ProjectChatView.

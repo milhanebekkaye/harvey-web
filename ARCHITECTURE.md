@@ -129,10 +129,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Likely uses `src/lib/discussions/discussion-service.ts` and `src/lib/projects/project-service.ts`.
 
 - **`discussions/task/route.ts`**
-  - **Per-task chat (Step 2)**. `POST /api/discussions/task`: body `{ taskId, projectId }` — create or return existing task discussion (initial Harvey message stored in DB). `GET /api/discussions/task?taskId=` — fetch task discussion by taskId; returns `{ discussion }` or `{ discussion: null }`. Auth and project ownership required.
+  - **Per-task chat (Step 2 + 3)**. `POST /api/discussions/task`: body `{ taskId, projectId }` — create or return existing task discussion. On first creation, triggers a **one-time Haiku call** (`generateTaskOpeningMessage` in `src/lib/discussions/generate-task-opening-message.ts`) to generate a task-specific opening message; **TaskContext** includes task title, description, estimated duration, label, dependencies (title + status), unlocks count, project title/goals. Message stored in DB; subsequent opens load from DB with no extra API call. On API or task fetch failure, a fallback opening message is used and discussion is still created. `GET /api/discussions/task?taskId=` — fetch task discussion by taskId; returns `{ discussion }` or `{ discussion: null }`. Auth and project ownership required.
 
 - **`discussions/task/messages/route.ts`**
-  - **Per-task chat (Step 2)**. `POST /api/discussions/task/messages`: body `{ discussionId, content }` — append user message to task discussion. No Harvey response in Step 2; Step 3 will add streaming here.
+  - **Per-task chat (Step 2)**. `POST /api/discussions/task/messages`: body `{ discussionId, content }` — append user message to task discussion. Harvey reply to user messages (streaming) is planned for a later step; Step 3 added only the opening message (Haiku) on discussion creation.
 
 - **`discussions/task/list/route.ts`**
   - **Per-task chat (Step 2)**. `GET /api/discussions/task/list?projectId=` — returns all task-type discussions for the project (with task title/label). Used on dashboard load to repopulate open task chats after refresh. Skips discussions whose task was deleted.
@@ -262,7 +262,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/discussions/`
 
-- **`discussion-service.ts`**: Service layer for discussion entities (create/fetch discussions, append messages, link them to projects). Used by `/api/discussions/[projectId]`, `/api/discussions/task`, and task list/messages routes. Exposes **getTaskDiscussion(projectId, userId, taskId)** and **listTaskDiscussions(projectId, userId)** for per-task chat (Step 2).
+- **`discussion-service.ts`**: Service layer for discussion entities (create/fetch discussions, append messages, link them to projects). Used by `/api/discussions/[projectId]`, `/api/discussions/task`, and task list/messages routes. Exposes **getTaskDiscussion(projectId, userId, taskId)** and **listTaskDiscussions(projectId, userId)** for per-task chat. Task discussion creation (POST /api/discussions/task) uses **generateTaskOpeningMessage** (Haiku) for the initial message; see `src/lib/discussions/generate-task-opening-message.ts` and TaskContext shape.
 
 ### `src/lib/projects/`
 

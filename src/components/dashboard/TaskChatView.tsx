@@ -50,17 +50,18 @@ interface TaskChatViewProps {
   taskLabel: string
   /** When set, we already have a discussion; mount GET still loads latest messages. */
   initialDiscussionId?: string
+  /** When we just created the discussion (POST response), pass messages so the opening message shows immediately. */
+  initialMessages?: Array<{ role: string; content: string; timestamp: string }>
   onBackToProject: () => void
 }
-
-const HARVEY_PLACEHOLDER_MESSAGE =
-  "I'm ready to help you with this task. What would you like to work through?"
 
 export function TaskChatView({
   taskId,
   projectId,
   taskTitle,
   taskLabel,
+  initialDiscussionId,
+  initialMessages,
   onBackToProject,
 }: TaskChatViewProps) {
   const cached = getCached(taskId)
@@ -75,6 +76,31 @@ export function TaskChatView({
   const [inputValue, setInputValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+
+  // When parent passes discussion + messages from POST create, show them immediately (real opening message)
+  useEffect(() => {
+    if (
+      initialDiscussionId &&
+      initialMessages &&
+      initialMessages.length > 0 &&
+      discussionState === 'not_created' &&
+      messages.length === 0
+    ) {
+      const msgs: StoredMsg[] = initialMessages.map((m) => ({
+        role: m.role as 'assistant' | 'user',
+        content: m.content,
+        timestamp: m.timestamp,
+      }))
+      setMessages(msgs)
+      setDiscussionId(initialDiscussionId)
+      setDiscussionState('loaded')
+      setCached(taskId, {
+        discussionId: initialDiscussionId,
+        messages: msgs,
+        state: 'loaded',
+      })
+    }
+  }, [initialDiscussionId, initialMessages, taskId, discussionState, messages.length])
 
   // Load discussion on mount: show cache or placeholder immediately, then fetch in background
   useEffect(() => {
@@ -219,10 +245,10 @@ export function TaskChatView({
     }
   }
 
-  const displayMessages =
-    discussionState === 'not_created' && messages.length === 0
-      ? [{ role: 'assistant' as const, content: HARVEY_PLACEHOLDER_MESSAGE, timestamp: '' }]
-      : messages
+  // While opening message is loading (first time): show Harvey typing indicator only
+  const isLoadingOpening =
+    discussionState === 'not_created' && messages.length === 0 && projectId != null
+  const showHarveyTyping = isLoadingOpening || showTypingIndicator
 
   const canSend = Boolean(discussionId && !isSending && !showTypingIndicator)
 
@@ -240,41 +266,41 @@ export function TaskChatView({
         </button>
       </div>
 
-      {/* Chat area — no loading spinner; cache or placeholder show immediately */}
+      {/* Chat area — messages or Harvey typing (opening or reply) */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-        {displayMessages.map((msg, idx) => (
+        {messages.map((msg, idx) => (
+          <div
+            key={`${msg.timestamp}-${idx}`}
+            className={`flex flex-col gap-2 max-w-[85%] ${
+              msg.role === 'user' ? 'self-end items-end ml-auto' : ''
+            }`}
+          >
             <div
-              key={`${msg.timestamp}-${idx}`}
-              className={`flex flex-col gap-2 max-w-[85%] ${
-                msg.role === 'user' ? 'self-end items-end ml-auto' : ''
+              className={`p-4 rounded-2xl shadow-sm ${
+                msg.role === 'user'
+                  ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
+                  : 'bg-white rounded-tl-none border border-white/50'
               }`}
             >
-              <div
-                className={`p-4 rounded-2xl shadow-sm ${
-                  msg.role === 'user'
-                    ? 'bg-[#895af6] text-white rounded-tr-none shadow-md'
-                    : 'bg-white rounded-tl-none border border-white/50'
-                }`}
-              >
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
-                </p>
-              </div>
-              <span
-                className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${
-                  msg.role === 'user' ? 'mr-1' : 'ml-1'
-                }`}
-              >
-                {msg.role === 'user' ? 'You' : 'Harvey'}
-              </span>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                {msg.content}
+              </p>
             </div>
-          ))}
+            <span
+              className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${
+                msg.role === 'user' ? 'mr-1' : 'ml-1'
+              }`}
+            >
+              {msg.role === 'user' ? 'You' : 'Harvey'}
+            </span>
+          </div>
+        ))}
 
-        {/* Harvey is thinking... (placeholder for Step 3 streaming) */}
-        {showTypingIndicator && (
+        {/* Harvey is typing... (opening message loading or reply placeholder) */}
+        {showHarveyTyping && (
           <div className="flex flex-col gap-2 max-w-[85%]">
             <div className="p-4 rounded-2xl bg-white rounded-tl-none border border-white/50 shadow-sm">
-              <p className="text-xs text-slate-500 mb-2">Harvey is thinking...</p>
+              <p className="text-xs text-slate-500 mb-2">Harvey is typing...</p>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:0ms]" />
                 <span className="w-2 h-2 bg-[#895af6] rounded-full animate-bounce [animation-delay:150ms]" />
