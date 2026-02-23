@@ -16,6 +16,7 @@ import type { ChatWidget } from '@/types/api.types'
 import { CompletionFeedbackWidget } from './chat/CompletionFeedbackWidget'
 import { SkipFeedbackWidget } from './chat/SkipFeedbackWidget'
 import { ReschedulePromptWidget } from './chat/ReschedulePromptWidget'
+import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
 
 interface StoredMsg {
   role: 'assistant' | 'user'
@@ -285,9 +286,13 @@ export function ProjectChatView({
                             : 'bg-white rounded-tl-none border border-white/50'
                       }`}
                     >
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {text}
-                      </p>
+                      {message.role === 'assistant' ? (
+                        <MarkdownMessage content={text} className="text-sm" />
+                      ) : (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {text}
+                        </p>
+                      )}
                     </div>
                     {showToolCall && (
                       <div className="flex items-center gap-1 ml-1 text-[10px] text-emerald-600 font-medium">

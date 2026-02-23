@@ -50,6 +50,32 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-23 – Fix react-markdown v10 runtime assertion (`className` prop removed)
+
+- **Agent / context**: Codex (GPT-5) – User reported runtime crash in `MarkdownMessage` after markdown rollout: `Unexpected className prop` from `react-markdown`.
+- **Summary**:
+  - Removed the unsupported `className` prop from `<ReactMarkdown />` in `MarkdownMessage`.
+  - Wrapped the markdown output in a `<div>` that now holds all markdown styling classes previously passed to `ReactMarkdown`.
+  - Kept assistant markdown behavior unchanged across onboarding, project chat, and task chat while restoring runtime compatibility with `react-markdown@10`.
+- **Files touched**: `src/components/ui/MarkdownMessage.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: `react-markdown` v10 removed `className` on the component; passing it triggers a hard runtime assertion in Next.js dev.
+- **Risks / notes**: No expected UI regressions; styles are preserved via wrapper container. Targeted lint check on the modified file passes.
+- **Related docs**: `ARCHITECTURE.md` (`src/components/ui/MarkdownMessage.tsx`).
+
+### 2026-02-23 – Assistant chat bubbles now render Markdown across onboarding/project/task chats
+
+- **Agent / context**: Codex (GPT-5) – User requested markdown rendering for assistant responses in all Harvey chat contexts (onboarding, project sidebar chat, per-task chat) using `react-markdown` + `remark-gfm`.
+- **Summary**:
+  - Installed `react-markdown` and `remark-gfm` and added shared `src/components/ui/MarkdownMessage.tsx` with compact, chat-optimized markdown styling.
+  - Wired markdown rendering into assistant bubbles only in `src/components/onboarding/ChatMessage.tsx`, `src/components/dashboard/ProjectChatView.tsx`, and `src/components/dashboard/TaskChatView.tsx`.
+  - Kept user bubbles as plain text rendering and preserved existing bubble containers (shape/padding/avatar/timestamps/layout).
+  - Added link safety (`target="_blank"` + `rel="noopener noreferrer"`), inline code styling, and code-block horizontal scrolling to avoid layout breaks on long snippets.
+  - Updated architecture and feature docs to document the shared markdown renderer and assistant-only usage in each chat surface.
+- **Files touched**: `package.json`, `package-lock.json`, `src/components/ui/MarkdownMessage.tsx`, `src/components/onboarding/ChatMessage.tsx`, `src/components/dashboard/ProjectChatView.tsx`, `src/components/dashboard/TaskChatView.tsx`, `ARCHITECTURE.md`, `docs/onboarding/README.md`, `docs/chat-router/README.md`, `docs/per-task-chat/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Harvey responses include markdown syntax; rendering plain text made responses harder to read and exposed raw markdown tokens.
+- **Risks / notes**: Repo-wide `npm run lint` currently fails because of many pre-existing unrelated lint errors; targeted chat renderer files were updated and integrate without introducing additional lint issues in the modified markdown-related files.
+- **Related docs**: `ARCHITECTURE.md` (`src/components/ui/`, dashboard/onboarding component sections), `docs/onboarding/README.md`, `docs/chat-router/README.md`, `docs/per-task-chat/README.md`.
+
 ### 2026-02-23 – Timeline Harvey tips now cached in DB (generate once per task)
 
 - **Agent / context**: Codex (GPT-5) – User requested timeline tips to be generated only on first view, then reused from database instead of regenerating every load.

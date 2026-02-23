@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
+import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
 
 interface StoredMsg {
   role: 'assistant' | 'user'
@@ -368,9 +369,13 @@ export function TaskChatView({
                   : 'bg-white rounded-tl-none border border-white/50'
               }`}
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {getTextFromParts(msg)}
-              </p>
+              {msg.role === 'assistant' ? (
+                <MarkdownMessage content={getTextFromParts(msg)} className="text-sm" />
+              ) : (
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {getTextFromParts(msg)}
+                </p>
+              )}
             </div>
             <span
               className={`text-[10px] text-slate-500 uppercase font-bold tracking-wider ${

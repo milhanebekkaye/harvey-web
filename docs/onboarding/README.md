@@ -13,7 +13,9 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
 - `src/app/api/onboarding/update-field/route.ts`
   - **Feature D Step 7**. `PATCH /api/onboarding/update-field`. Body: `{ projectId, scope: 'user' | 'project', field, value }`. Auth required; project ownership verified. Updates a single user or project field via `updateUser` / `updateProject`. Used by the Shadow Panel when the user saves an edited field.
 - `src/components/onboarding/ChatMessage.tsx`
-  - Renders chat bubbles and message list.
+  - Renders chat bubbles and message list. Assistant bubbles render markdown through `MarkdownMessage` (`react-markdown` + `remark-gfm`); user bubbles stay plain text.
+- `src/components/ui/MarkdownMessage.tsx`
+  - Shared markdown renderer used by onboarding/project/task assistant chat bubbles. Handles GFM lists/tables/task lists, inline code, fenced code blocks, and link target/rel safety.
 - `src/components/onboarding/ChatInput.tsx`
   - Text input with auto-expanding textarea and submit handling.
 - `src/components/onboarding/OnboardingProgress.tsx`

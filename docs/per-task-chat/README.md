@@ -51,6 +51,7 @@ Per-task chat lets users open a dedicated Harvey conversation per task from the 
   5. **Behavioral patterns** — time estimation accuracy by label (from completed tasks with actual/estimated duration) and skip patterns (most common skip reason from skipped tasks).
 - **Harvey responds**: **POST /api/chat/task** streams the reply using **Claude Sonnet** (`claude-sonnet-4-20250514`). No tools; last 20 messages from the task discussion are sent as history. User message is persisted before stream; assistant message is persisted in onFinish.
 - **TaskChatView**: Uses **useChat** with `/api/chat/task`; displays streamed replies word-by-word; seed messages from load/cache/parent; in-memory cache updated on stream finish so switching tasks and back shows the latest. Step 5 will add model routing (e.g. Haiku for simple turns).
+- **Message rendering**: Assistant bubbles in `TaskChatView` use shared `src/components/ui/MarkdownMessage.tsx` (`react-markdown` + `remark-gfm`) for markdown formatting (lists/code/links/etc.); user bubbles remain plain text.
 
 ## Files
 
@@ -59,6 +60,7 @@ Per-task chat lets users open a dedicated Harvey conversation per task from the 
 | `src/components/dashboard/ConversationNavPanel.tsx` | Nav overlay: Pinned + TASKS + user row (OpenTaskChat has optional discussionId) |
 | `src/components/dashboard/ProjectChatView.tsx` | Project chat body (useChat, messages, rebuild) |
 | `src/components/dashboard/TaskChatView.tsx` | Task chat: load discussion, useChat + streaming, messages, input |
+| `src/components/ui/MarkdownMessage.tsx` | Shared assistant-message markdown renderer used by project and task chat UIs |
 | `src/lib/context-builders/build-task-chat-context.ts` | buildTaskChatContext(taskId, userId) — 5-layer system prompt for task chat |
 | `src/app/api/chat/task/route.ts` | POST /api/chat/task — streaming task chat, Sonnet, persist user + assistant |
 | `src/components/dashboard/ChatSidebar.tsx` | Shell: header, overlay, panel; passes taskId, projectId, discussionId to TaskChatView |

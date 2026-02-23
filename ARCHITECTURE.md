@@ -208,6 +208,12 @@ Auth-related UI used on sign-in/sign-up flows:
 - **`EmailLoginForm.tsx`**: Form component for logging in with email/password or magic link.
 - **`EmailSignupForm.tsx`**: Form component for user registration via email, likely tied into Supabase auth.
 
+### `src/components/ui/`
+
+Shared UI primitives used across features:
+
+- **`MarkdownMessage.tsx`**: Shared assistant-message markdown renderer (uses `react-markdown` + `remark-gfm`). Provides compact chat-friendly markdown styles (bold/italic, bullet + numbered lists, inline code, fenced code blocks with horizontal scroll, safe external links) using Harvey color accents. Used in onboarding, project chat, and per-task chat assistant bubbles. User bubbles remain plain text.
+
 ### `src/components/dashboard/`
 
 Dashboard UI for authenticated users:
@@ -215,8 +221,8 @@ Dashboard UI for authenticated users:
 - **`index.ts`**: Barrel file re-exporting dashboard components for simpler imports.
 - **`ChatSidebar.tsx`**: Shell for project and task conversations. Renders dynamic header (Harvey AI or task title + "Task Chat"), conversations toggle (opens **ConversationNavPanel**), optional dim overlay, and either **ProjectChatView** or **TaskChatView** based on `activeConversation` (dashboard state). All project chat logic (useChat, messages, rebuild) lives in ProjectChatView. See **Per-task chat** below and `docs/per-task-chat.md`.
 - **`ConversationNavPanel.tsx`**: Overlay panel to switch conversations: Pinned "Project Chat", TASKS list (from `openTaskChats`), and static user row. No History section. Step 1: UI only; Step 2 will wire persistence.
-- **`ProjectChatView.tsx`**: Project chat body: project pill + **ProjectDropdownMenu**, project context chip, rebuild button, check-in error, message list (useChat → `/api/chat/project`), and input. Merges message sources (initial/useChat, dashboard-appended, widget-appended, streaming check-in); supports `messageType: 'check-in'`; calls `onTasksChanged` when assistant message contains tool invocation. Rebuild modal lives here.
-- **`TaskChatView.tsx`**: Task chat placeholder (Step 1): back link to project chat, task title + category pill, one hardcoded Harvey message, disabled input with tooltip "Task chat coming soon". Step 2 will wire task chat API.
+- **`ProjectChatView.tsx`**: Project chat body: project pill + **ProjectDropdownMenu**, project context chip, rebuild button, check-in error, message list (useChat → `/api/chat/project`), and input. Merges message sources (initial/useChat, dashboard-appended, widget-appended, streaming check-in); supports `messageType: 'check-in'`; calls `onTasksChanged` when assistant message contains tool invocation. Assistant bubbles render with **MarkdownMessage**; user bubbles remain plain text. Rebuild modal lives here.
+- **`TaskChatView.tsx`**: Per-task chat body: back link to project chat, task metadata, task discussion loading (`GET /api/discussions/task?taskId=`), streaming replies via `useChat` (`POST /api/chat/task`), in-memory cache, and input. Assistant bubbles render with **MarkdownMessage**; user bubbles remain plain text.
 - **`ProjectDropdownMenu.tsx`**: Dropdown menu below the project pill in the chat sidebar. Options: Project Details (link to `/dashboard/project/[projectId]`), User Settings (link to `/dashboard/settings`), and disabled placeholders for Archive Project / Switch Project. Closes on outside click or item click.
 - **`EditableField.tsx`**: Reusable inline-editable field. Types: text, textarea, date, select, tags, number. Display mode by default with placeholder when empty; click to edit; pencil icon on hover; optional maxLength, options (select), min/max/step (number), maxTags (tags). Used by Project Details form.
 - **`ProjectDetailsForm.tsx`**: Client form for the Project Details page. Two cards (Project Info: description, goals, target deadline, project type; Your Context: skill level, tools & stack, weekly hours, motivation). Editable title at top; status badge; Back to Dashboard and User Settings links; Save Changes when dirty; PATCH to `/api/projects/[projectId]`; toast and unsaved-changes guard (beforeunload + confirm on navigation).
@@ -228,7 +234,7 @@ Dashboard UI for authenticated users:
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open).
 - **`ProjectTimelineView.tsx`**: Thin dashboard wrapper around `src/components/timeline/TimelineView.tsx`; accepts `projectId` and action callbacks (`onComplete`, `onSkip`, `onAskHarvey`).
-- **Per-task chat (Step 2)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (includes optional `discussionId`). "Ask Harvey" calls `POST /api/discussions/task` and stores discussionId. **TaskChatView** loads discussion via `GET /api/discussions/task?taskId=`, shows messages, enabled input; user messages persisted via `POST /api/discussions/task/messages`. Placeholder "Harvey is thinking..." (1.5s); no real Harvey response yet (Step 3). On dashboard load, `GET /api/discussions/task/list` repopulates openTaskChats for persistence across refresh. See `docs/per-task-chat/README.md`.
+- **Per-task chat (Step 4)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (includes optional `discussionId`). "Ask Harvey" calls `POST /api/discussions/task` and stores discussionId. **TaskChatView** loads discussion via `GET /api/discussions/task?taskId=` and sends messages through streaming `POST /api/chat/task` (user + assistant persisted by API). On dashboard load, `GET /api/discussions/task/list` repopulates `openTaskChats` for refresh persistence. See `docs/per-task-chat/README.md`.
 - **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Past (collapsible, completed tasks from previous days), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled. Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
 - **`ViewToggle.tsx`**: Control for toggling between dashboard views (List vs Timeline).
 
@@ -261,7 +267,7 @@ Components used on the onboarding/chat-style experience:
 - **`index.ts`**: Barrel file re-exporting onboarding components.
 - **`ChatAvatar.tsx`**: Avatar component representing the AI assistant or user in chat messages.
 - **`ChatInput.tsx`**: Input area for sending messages or onboarding responses.
-- **`ChatMessage.tsx`**: Render of a single chat message bubble (user or AI). Supports streaming: shows content progressively or loading dots.
+- **`ChatMessage.tsx`**: Render of a single chat message bubble (user or AI). Supports streaming: shows content progressively or loading dots. Assistant bubbles render with **MarkdownMessage**; user bubbles remain plain text.
 - **`OnboardingCTA.tsx`**: Call-to-action component used during onboarding (buttons, prompts).
 - **`OnboardingHeader.tsx`**: Header section for onboarding pages (title, subtitle, progress).
 - **`OnboardingProgress.tsx`**: Visual indicator of user’s progress through onboarding steps (“Setting up your project” / progress bar). Not currently used on the onboarding page (only the Shadow Panel completion bar is shown).
