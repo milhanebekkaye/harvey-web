@@ -32,8 +32,8 @@ interface DiscussionApiResponse {
 /**
  * Transform StoredMessage to ChatMessage for frontend
  *
- * StoredMessage has: role, content, timestamp (ISO string), optional widget, optional messageType
- * ChatMessage needs: id, role, content, timestamp (Date), status, optional widget, optional messageType
+ * StoredMessage has: role, content, timestamp (ISO string), optional widget, optional messageType, optional answered
+ * ChatMessage needs: id, role, content, timestamp (Date), status, optional widget, optional messageType, optional answered
  */
 function transformToClientMessages(storedMessages: StoredMessage[]): ChatMessage[] {
   return storedMessages.map((msg, index) => ({
@@ -44,6 +44,7 @@ function transformToClientMessages(storedMessages: StoredMessage[]): ChatMessage
     status: 'complete' as const,
     ...(msg.widget != null ? { widget: msg.widget } : {}),
     ...(msg.messageType != null ? { messageType: msg.messageType } : {}),
+    ...(msg.answered != null ? { answered: msg.answered } : {}),
   }))
 }
 

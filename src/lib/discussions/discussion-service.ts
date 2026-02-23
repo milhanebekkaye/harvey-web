@@ -11,7 +11,10 @@
  */
 
 import { prisma } from '../db/prisma'
-import type { StoredMessage } from '../../types/api.types'
+import type {
+  FeedbackWidgetType,
+  StoredMessage,
+} from '../../types/api.types'
 import type { Prisma } from '@prisma/client'
 
 /** Discussion type: onboarding (during intake), project (post-schedule chat), or task (future) */
@@ -396,7 +399,13 @@ export async function appendMessage(
  */
 export async function appendMessages(
   discussionId: string,
-  messages: StoredMessage[]
+  messages: StoredMessage[],
+  options?: {
+    markWidgetAnswered?: {
+      widgetType: FeedbackWidgetType
+      taskId: string
+    }
+  }
 ): Promise<DiscussionServiceResponse> {
   try {
     console.log('[DiscussionService] Appending', messages.length, 'messages to:', discussionId)
@@ -422,6 +431,28 @@ export async function appendMessages(
 
     // Parse current messages and append new ones
     const currentMessages = toStoredMessages(current.messages)
+
+    if (options?.markWidgetAnswered) {
+      const { widgetType, taskId } = options.markWidgetAnswered
+      for (let i = currentMessages.length - 1; i >= 0; i -= 1) {
+        const existing = currentMessages[i]
+        const widget = existing.widget
+        const widgetTaskId =
+          widget?.data &&
+          typeof widget.data === 'object' &&
+          'taskId' in widget.data
+            ? String(widget.data.taskId)
+            : null
+        if (widget?.type === widgetType && widgetTaskId === taskId) {
+          currentMessages[i] = {
+            ...existing,
+            answered: true,
+          }
+          break
+        }
+      }
+    }
+
     const updatedMessages = [...currentMessages, ...messages]
 
     // Update with new messages array

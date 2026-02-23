@@ -1,13 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 import { getDateStringInTimezone } from '@/lib/timezone'
 
 interface CompletionFeedbackWidgetProps {
   taskId: string
   projectId: string
-  onAppendMessage: (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => void
+  onAppendMessage: (
+    role: 'user' | 'assistant',
+    content: string,
+    widget?: ChatWidget,
+    widgetAnswer?: WidgetAnswerMeta
+  ) => void
   onTasksChanged?: () => void
 }
 
@@ -33,7 +38,10 @@ export function CompletionFeedbackWidget({
       more: 'The task took me longer than planned.',
     }
     // Show user message in chat immediately (DB persist runs in background via parent)
-    onAppendMessage('user', userMessages[durationAccuracy])
+    onAppendMessage('user', userMessages[durationAccuracy], undefined, {
+      widgetType: 'completion_feedback',
+      taskId,
+    })
     setSubmitted(true)
     setLoading(true)
     try {

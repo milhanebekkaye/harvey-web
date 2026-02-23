@@ -10,9 +10,13 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
-import { getProjectDiscussion, appendMessage, createDiscussion } from '@/lib/discussions/discussion-service'
+import {
+  appendMessages,
+  createDiscussion,
+  getProjectDiscussion,
+} from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 
 interface AppendMessageBody {
   role: 'assistant' | 'user'
@@ -20,6 +24,8 @@ interface AppendMessageBody {
   widget?: ChatWidget
   /** Optional type for styling (e.g. 'check-in' for daily check-in message) */
   messageType?: 'check-in'
+  /** Optional metadata to mark a feedback widget as answered in this same write. */
+  widgetAnswer?: WidgetAnswerMeta
 }
 
 export async function POST(
@@ -68,6 +74,17 @@ export async function POST(
         { status: 400 }
       )
     }
+    if (body.widgetAnswer) {
+      const { taskId, widgetType } = body.widgetAnswer
+      const validType =
+        widgetType === 'completion_feedback' || widgetType === 'skip_feedback'
+      if (!validType || typeof taskId !== 'string' || taskId.trim() === '') {
+        return NextResponse.json(
+          { success: false, error: 'Invalid widgetAnswer payload', code: 'INVALID_WIDGET_ANSWER' },
+          { status: 400 }
+        )
+      }
+    }
 
     let discussion = await getProjectDiscussion(projectId, user.id)
     if (!discussion) {
@@ -93,7 +110,16 @@ export async function POST(
       ...(body.messageType != null ? { messageType: body.messageType } : {}),
     }
 
-    const result = await appendMessage(discussion.id, message)
+    const result = await appendMessages(discussion.id, [message], {
+      ...(body.widgetAnswer
+        ? {
+            markWidgetAnswered: {
+              widgetType: body.widgetAnswer.widgetType,
+              taskId: body.widgetAnswer.taskId,
+            },
+          }
+        : {}),
+    })
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error?.message || 'Failed to append message', code: 'APPEND_FAILED' },

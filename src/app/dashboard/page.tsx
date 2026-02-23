@@ -36,7 +36,7 @@ import type { ViewMode } from '@/components/dashboard'
 
 // Import types
 import type { TaskGroups, DashboardTask } from '@/types/task.types'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 
 // ============================================
 // API Response Types
@@ -55,6 +55,7 @@ interface StoredMsg {
   timestamp: string
   widget?: ChatWidget
   messageType?: 'check-in'
+  answered?: boolean
 }
 
 interface DiscussionApiResponse {
@@ -542,13 +543,23 @@ export default function DashboardPage() {
 
   /** Append message to discussion (persist and show in chat) */
   const appendMessageToDiscussion = useCallback(
-    async (role: 'assistant' | 'user', content: string, widget?: ChatWidget) => {
+    async (
+      role: 'assistant' | 'user',
+      content: string,
+      widget?: ChatWidget,
+      widgetAnswer?: WidgetAnswerMeta
+    ) => {
       if (!projectId) return
       try {
         const res = await fetch(`/api/discussions/${projectId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role, content, widget }),
+          body: JSON.stringify({
+            role,
+            content,
+            ...(widget != null ? { widget } : {}),
+            ...(widgetAnswer != null ? { widgetAnswer } : {}),
+          }),
         })
         if (!res.ok) console.error('[Dashboard] Failed to append message')
       } catch (e) {

@@ -50,6 +50,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-23 – Persist feedback widget answered state across reloads
+
+- **Agent / context**: Codex (GPT-5) – User-reported bug: completion/skip feedback widgets reappeared in project chat after page reload even after users had already answered.
+- **Summary**:
+  - Added `answered?: boolean` to stored discussion message typing and propagated it through discussion fetch transformation so the frontend receives persisted widget-answer state.
+  - Extended `POST /api/discussions/[projectId]/messages` with optional `widgetAnswer` metadata (`{ widgetType, taskId }`) and updated discussion append logic to mark the matching widget message as `answered: true` in the same DB write as the appended feedback message.
+  - Updated completion/skip widget submit flows to send `widgetAnswer` metadata when appending the automatic user feedback message.
+  - Added render guard in `ProjectChatView` to skip interactive rendering for answered completion/skip widgets while preserving message text.
+  - Removed render-time ref mutation/use in `ProjectChatView` (`projectIdRef`) to satisfy current lint rule errors (`react-hooks/refs`).
+- **Files touched**: `src/types/api.types.ts`, `src/types/chat.types.ts`, `src/lib/discussions/discussion-service.ts`, `src/app/api/discussions/[projectId]/messages/route.ts`, `src/app/api/discussions/[projectId]/route.ts`, `src/app/dashboard/page.tsx`, `src/components/dashboard/ChatSidebar.tsx`, `src/components/dashboard/ProjectChatView.tsx`, `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`, `src/components/dashboard/chat/SkipFeedbackWidget.tsx`, `ARCHITECTURE.md`, `docs/dashboard/README.md`, `docs/chat-router/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Ensure feedback widgets are stateful in persisted discussion history so answered widgets do not come back after refresh.
+- **Risks / notes**: `widgetAnswer` is currently emitted on the automatic user feedback append call; if a client omits it, old behavior remains (widget can reappear). Targeted eslint run on modified files passes with pre-existing warnings only.
+- **Related docs**: `ARCHITECTURE.md` (discussion routes, project chat/widget rendering), `docs/dashboard/README.md`, `docs/chat-router/README.md`.
+
 ### 2026-02-23 – Fix react-markdown v10 runtime assertion (`className` prop removed)
 
 - **Agent / context**: Codex (GPT-5) – User reported runtime crash in `MarkdownMessage` after markdown rollout: `Unexpected className prop` from `react-markdown`.

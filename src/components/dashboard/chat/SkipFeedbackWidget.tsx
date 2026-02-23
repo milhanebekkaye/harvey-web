@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 
 const SKIP_REASONS = [
   { value: 'too_tired' as const, label: 'Too tired' },
@@ -14,7 +14,12 @@ const SKIP_REASONS = [
 interface SkipFeedbackWidgetProps {
   taskId: string
   projectId: string
-  onAppendMessage: (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => void
+  onAppendMessage: (
+    role: 'user' | 'assistant',
+    content: string,
+    widget?: ChatWidget,
+    widgetAnswer?: WidgetAnswerMeta
+  ) => void
   onTasksChanged?: () => void
 }
 
@@ -40,7 +45,10 @@ export function SkipFeedbackWidget({
       not_priority: "It's not a priority right now.",
       other: notes?.trim() ? `Other: ${notes.trim()}` : 'Other reason.',
     }
-    onAppendMessage('user', labels[reason] || 'Skipping.')
+    onAppendMessage('user', labels[reason] || 'Skipping.', undefined, {
+      widgetType: 'skip_feedback',
+      taskId,
+    })
     setSubmitted(true)
     setLoading(true)
     try {

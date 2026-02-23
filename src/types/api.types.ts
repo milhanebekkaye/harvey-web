@@ -77,10 +77,19 @@ export interface ChatErrorResponse {
  * Widget types for embedded chat UI (Feature 3)
  */
 export type ChatWidgetType = 'completion_feedback' | 'skip_feedback' | 'reschedule_prompt'
+export type FeedbackWidgetType = Extract<
+  ChatWidgetType,
+  'completion_feedback' | 'skip_feedback'
+>
 
 export interface ChatWidget {
   type: ChatWidgetType
   data?: Record<string, unknown>
+}
+
+export interface WidgetAnswerMeta {
+  widgetType: FeedbackWidgetType
+  taskId: string
 }
 
 /**
@@ -117,6 +126,11 @@ export interface StoredMessage {
    * Optional message type for styling or behaviour (e.g. daily check-in).
    */
   messageType?: 'check-in'
+
+  /**
+   * True when a feedback widget attached to this message has already been answered.
+   */
+  answered?: boolean
 }
 
 // ============================================

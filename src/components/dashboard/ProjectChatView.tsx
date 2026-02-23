@@ -12,7 +12,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
 import type { UIMessage } from 'ai'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 import { CompletionFeedbackWidget } from './chat/CompletionFeedbackWidget'
 import { SkipFeedbackWidget } from './chat/SkipFeedbackWidget'
 import { ReschedulePromptWidget } from './chat/ReschedulePromptWidget'
@@ -24,6 +24,7 @@ interface StoredMsg {
   timestamp: string
   widget?: ChatWidget
   messageType?: 'check-in'
+  answered?: boolean
 }
 
 interface DisplayMessage {
@@ -33,6 +34,7 @@ interface DisplayMessage {
   createdAt: string
   widget?: ChatWidget
   messageType?: 'check-in'
+  answered?: boolean
 }
 
 export interface ProjectChatViewProps {
@@ -41,7 +43,12 @@ export interface ProjectChatViewProps {
   projectId: string | null
   isLoading?: boolean
   onTasksChanged?: () => void
-  onAppendMessage?: (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => void
+  onAppendMessage?: (
+    role: 'user' | 'assistant',
+    content: string,
+    widget?: ChatWidget,
+    widgetAnswer?: WidgetAnswerMeta
+  ) => void
   appendedByParent?: Array<Omit<DisplayMessage, 'createdAt'> & { createdAt?: string }>
   streamingCheckIn?: string | null
   checkInError?: string | null
@@ -93,8 +100,6 @@ export function ProjectChatView({
 }: ProjectChatViewProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const projectIdRef = useRef(projectId)
-  projectIdRef.current = projectId
 
   const [appendedFeedbackMessages, setAppendedFeedbackMessages] = useState<
     DisplayMessage[]
@@ -102,14 +107,19 @@ export function ProjectChatView({
   const [inputValue, setInputValue] = useState('')
 
   const handleAppendMessage = useCallback(
-    (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => {
+    (
+      role: 'user' | 'assistant',
+      content: string,
+      widget?: ChatWidget,
+      widgetAnswer?: WidgetAnswerMeta
+    ) => {
       const id = `fb-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
       const createdAt = new Date().toISOString()
       setAppendedFeedbackMessages((prev) => [
         ...prev,
         { id, role, content, createdAt, widget },
       ])
-      parentOnAppendMessage?.(role, content, widget)
+      parentOnAppendMessage?.(role, content, widget, widgetAnswer)
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     },
     [parentOnAppendMessage]
@@ -125,7 +135,7 @@ export function ProjectChatView({
     transport: new DefaultChatTransport({
       api: '/api/chat/project',
       body: () => ({
-        projectId: projectIdRef.current ?? undefined,
+        projectId: projectId ?? undefined,
       }),
     }),
     onFinish: ({ messages: finishedMessages }) => {
@@ -173,6 +183,7 @@ export function ProjectChatView({
       widget: i < initialMessages.length ? initialMessages[i].widget : undefined,
       messageType:
         i < initialMessages.length ? initialMessages[i].messageType : undefined,
+      answered: i < initialMessages.length ? initialMessages[i].answered : undefined,
     })),
     ...appendedByParent.map((m) => ({
       ...m,
@@ -260,6 +271,10 @@ export function ProjectChatView({
             const uiMsg = messages.find((m) => (m.id || '') === message.id)
             const showToolCall =
               uiMsg && message.role === 'assistant' && hasToolCall(uiMsg)
+            const shouldHideWidget =
+              message.answered === true &&
+              (message.widget?.type === 'completion_feedback' ||
+                message.widget?.type === 'skip_feedback')
             return (
               <div
                 key={message.id}
@@ -304,7 +319,7 @@ export function ProjectChatView({
                     )}
                   </>
                 ) : null}
-                {message.widget && projectId ? (
+                {message.widget && projectId && !shouldHideWidget ? (
                   <div className="ml-1">
                     {message.widget.type === 'completion_feedback' &&
                       message.widget.data &&

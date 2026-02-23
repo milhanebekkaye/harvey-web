@@ -69,6 +69,11 @@ export interface ChatMessage {
    * Optional message type (e.g. 'check-in' for daily check-in) for styling or behaviour
    */
   messageType?: 'check-in'
+
+  /**
+   * True when a feedback widget on this message was already answered.
+   */
+  answered?: boolean
 }
 
 /**

@@ -10,7 +10,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import type { ChatWidget } from '@/types/api.types'
+import type { ChatWidget, WidgetAnswerMeta } from '@/types/api.types'
 import { ProjectChatView } from './ProjectChatView'
 import { TaskChatView } from './TaskChatView'
 import { ConversationNavPanel, type OpenTaskChat } from './ConversationNavPanel'
@@ -22,6 +22,7 @@ interface StoredMsg {
   timestamp: string
   widget?: ChatWidget
   messageType?: 'check-in'
+  answered?: boolean
 }
 
 interface DisplayMessage {
@@ -31,6 +32,7 @@ interface DisplayMessage {
   createdAt: string
   widget?: ChatWidget
   messageType?: 'check-in'
+  answered?: boolean
 }
 
 export interface ChatSidebarProps {
@@ -40,7 +42,12 @@ export interface ChatSidebarProps {
   isLoading?: boolean
   onSignOut?: () => void
   onTasksChanged?: () => void
-  onAppendMessage?: (role: 'user' | 'assistant', content: string, widget?: ChatWidget) => void
+  onAppendMessage?: (
+    role: 'user' | 'assistant',
+    content: string,
+    widget?: ChatWidget,
+    widgetAnswer?: WidgetAnswerMeta
+  ) => void
   appendedByParent?: Array<Omit<DisplayMessage, 'createdAt'> & { createdAt?: string }>
   streamingCheckIn?: string | null
   checkInError?: string | null
