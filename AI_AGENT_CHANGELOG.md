@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-23 – Timeline Harvey tips now cached in DB (generate once per task)
+
+- **Agent / context**: Codex (GPT-5) – User requested timeline tips to be generated only on first view, then reused from database instead of regenerating every load.
+- **Summary**:
+  - Added `Task.harveyTip` in Prisma schema and migration `20260223103000_add_task_harvey_tip_cache` so each task can persist a single generated timeline tip.
+  - Updated `POST /api/tasks/tip` to use cache-first behavior: if `harveyTip` exists, return it immediately; otherwise generate tip via Haiku, store it in `Task.harveyTip`, and return it.
+  - Preserved timeline-triggered generation flow (tip is still generated from timeline API usage, not during task creation/schedule generation).
+  - Kept the fail-safe response contract: API always returns HTTP 200 with fallback tip text when needed.
+- **Files touched**: `src/prisma/schema.prisma`, `src/prisma/migrations/20260223103000_add_task_harvey_tip_cache/migration.sql`, `src/app/api/tasks/tip/route.ts`, `src/node_modules/.prisma/client/schema.prisma`, `docs/timeline-view.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Avoid unnecessary repeated model calls, reduce cost/latency, and keep a stable actionable tip for each task once first generated.
+- **Risks / notes**: Existing tasks will have `harveyTip = null` until first timeline tip request. Apply migrations to database before relying on persistence in all environments.
+- **Related docs**: `ARCHITECTURE.md` (`/api/tasks/tip`, Prisma migrations), `docs/timeline-view.md`.
+
 ### 2026-02-21 – Timeline View Step 4: Harvey tip API integration (Haiku)
 
 - **Agent / context**: Codex (GPT-5) – User request to complete Timeline View Step 4 by wiring `HarveysTip` to a real backend call and keeping prior Timeline behavior unchanged.

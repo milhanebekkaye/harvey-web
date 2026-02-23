@@ -107,6 +107,7 @@ model Task {
   type               String   @default("project") // project, personal
   estimatedDuration  Int      // minutes
   successCriteria    Json?  // Array of {id, text, done}. Observable, testable outcome for task completion
+  harveyTip          String? // timeline-generated tip cached on first request
   
   // Scheduling
   scheduledDate     DateTime?

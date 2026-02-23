@@ -76,6 +76,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ tip: FALLBACK_TIP }, { status: 200 })
     }
 
+    const cachedTip = task.harveyTip?.trim()
+    if (cachedTip) {
+      return NextResponse.json({ tip: cachedTip }, { status: 200 })
+    }
+
     let dependenciesText = 'None'
 
     if (task.depends_on.length > 0) {
@@ -114,15 +119,37 @@ Project goals: ${task.project?.goals?.trim() || 'None'}
 
 What should the user do right now?`
 
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    })
+    let tip = FALLBACK_TIP
 
-    const textBlock = response.content.find((block) => block.type === 'text')
-    const tip = (textBlock?.type === 'text' ? textBlock.text.trim() : '') || FALLBACK_TIP
+    try {
+      const response = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
+      })
+
+      const textBlock = response.content.find((block) => block.type === 'text')
+      tip = (textBlock?.type === 'text' ? textBlock.text.trim() : '') || FALLBACK_TIP
+    } catch (generationError: unknown) {
+      console.error(
+        '[TaskTipAPI] Tip generation failed, persisting fallback tip:',
+        generationError instanceof Error ? generationError.message : generationError
+      )
+    }
+
+    try {
+      await prisma.task.update({
+        where: { id: task.id },
+        data: { harveyTip: tip },
+      })
+    } catch (persistError: unknown) {
+      console.error(
+        '[TaskTipAPI] Failed to persist generated tip:',
+        persistError instanceof Error ? persistError.message : persistError
+      )
+    }
+
     return NextResponse.json({ tip }, { status: 200 })
   } catch (error: unknown) {
     console.error('[TaskTipAPI] Failed to generate tip:', error instanceof Error ? error.message : error)

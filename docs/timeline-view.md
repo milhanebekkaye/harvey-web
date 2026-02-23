@@ -31,7 +31,8 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
   - Body: `{ taskId: string }`
   - Auth: Supabase user required.
   - Ownership: verifies task’s project belongs to authenticated user.
-  - Context includes task details, success criteria completion state, dependency statuses, and project goals.
+  - Cache-first behavior: returns `Task.harveyTip` when already stored.
+  - If missing, context includes task details, success criteria completion state, dependency statuses, and project goals, then generates and stores the tip.
   - Claude model: `claude-haiku-4-5-20251001`, `max_tokens: 100`.
   - Response contract: always HTTP 200 with `{ tip: string }`.
   - Fallback tip used on any error:
@@ -41,5 +42,5 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
 - Timeline loads from real DB-backed data.
 - Active task success criteria updates are persisted.
 - Harvey tip is fetched on active card mount and can be refreshed.
+- Harvey tip generation happens only once per task (first timeline request), then is served from DB cache.
 - While tip is loading, a spinner appears in the tip content area and Refresh is disabled.
-

@@ -157,8 +157,9 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 - **`tasks/tip/route.ts`**
   - Endpoint under `POST /api/tasks/tip`.
   - Timeline View Step 4 route for Harvey tip generation. Body: `{ taskId }`.
-  - Authenticates with Supabase, validates that the task belongs to a project owned by the current user, loads task + project context (`title`, `goals`), and fetches dependency statuses when `depends_on` is present.
-  - Calls Claude Haiku (`claude-haiku-4-5-20251001`, max tokens 100) with a strict “single concrete next action” prompt.
+  - Authenticates with Supabase, validates that the task belongs to a project owned by the current user, then checks cached `Task.harveyTip` first.
+  - If no cached tip exists: loads task + project context (`title`, `goals`), fetches dependency statuses (`depends_on`), calls Claude Haiku (`claude-haiku-4-5-20251001`, max tokens 100), and persists the result to `Task.harveyTip`.
+  - Tip generation is timeline-triggered (on active card load/refresh), not task-generation-triggered.
   - Never returns 500; always responds `200` with `{ tip }`, using fallback tip text on any error.
 
 - **`timeline/route.ts`**
@@ -367,6 +368,8 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
     - **`migration.sql`**: Adds Discussion–Task relation (task Task?, Task.discussions). Per-task chat Step 2.
   - **`20260217153250_add_energy_peak_and_task_scheduling_metadata/`**
     - **`migration.sql`**: Adds User.energy_peak (TEXT), Task.energy_required (TEXT), Task.preferred_slot (TEXT). Session 4 smart scheduler.
+  - **`20260223103000_add_task_harvey_tip_cache/`**
+    - **`migration.sql`**: Adds `Task.harveyTip` (TEXT, nullable) to cache timeline-generated Harvey tips after first generation.
   - **`20260217160000_add_project_milestones_and_schedule_duration_days/`**
     - **`migration.sql`**: Adds Project fields `milestones` (JSONB), `schedule_duration_days` (Integer). Persisted after schedule generation; milestones shown on Project Details page.
   - **`20260217185648_add_project_schedule_start_date/`**
