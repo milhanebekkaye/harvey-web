@@ -74,34 +74,29 @@ Field-Specific Guidance:
 - phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
 - schedule_start_date: (project) When they want to start working on this schedule. Parse natural language into ISO date YYYY-MM-DD: "today" → today's date; "tomorrow" → next day; "next Monday" / "Monday" → next occurrence of that weekday; "February 20", "Feb 20 2026" → parsed date. Use the conversation context for "today". Null if not mentioned.
 
-After extracting all fields, assess your confidence level (completion_confidence, 0-100):
+completion_confidence: A number between 0 and 75 ONLY. Never return 80 or above.
 
-Question to ask yourself:
-- Do I clearly understand the user's goals for this project?
-- Do I know their time constraints and availability well?
-- Do I understand their skill level and what they can realistically accomplish?
-- Do I have enough context to prioritize tasks intelligently?
-- Is there a clear deadline or timeline?
-- Do I know what motivates them and what success looks like?
-- Are there obvious gaps that would lead me to generate a generic schedule?
+This score represents how complete the extracted data is (0 = nothing extracted, 75 = everything you could possibly need has been provided).
 
-Confidence Scale:
-- 0-40%: Major gaps, many unknowns, missing critical context
-- 40-60%: Basic information gathered, but answers were shallow or incomplete
-- 60-80%: Good context established, a few details would help but not critical
-- 80-95%: Excellent understanding, confident I can build a quality schedule
-- 95-100%: Exceptional detail provided (rare - don't give this unless truly comprehensive)
+The 80+ range is reserved for a separate system signal. Your maximum is 75.
 
-Be CONSERVATIVE. Only reach 80%+ when you genuinely have enough context for a high-quality schedule.
+IMPORTANT: completion_confidence must never increase by more than 15 points compared to the previous value. If you would naturally assign a score that is more than 15 points higher than the previous score, cap the increase at 15.
 
-Important: Your confidence should reflect DEPTH of understanding, not just whether fields are filled.
-- 10 fields filled with shallow answers = 50-60% confidence
-- 6 fields filled with rich, detailed answers = 75-85% confidence
-
-Return your assessment as a number (0-100) in the field "completion_confidence".
+The previous completion_confidence was: {{PREVIOUS_CONFIDENCE}}
+So the maximum you can assign this turn is: {{MAX_CONFIDENCE}}
 
 Conversation:
 `
+
+/** Build extraction prompt with previous-confidence cap injected. Ceiling is 75 (Haiku never returns 80+). */
+function buildExtractionPrompt(previousConfidence: number): string {
+  const prev = Math.min(75, Math.max(0, Math.round(previousConfidence)))
+  const maxAllowed = Math.min(75, prev + 15)
+  return EXTRACTION_PROMPT.replace('{{PREVIOUS_CONFIDENCE}}', String(prev)).replace(
+    '{{MAX_CONFIDENCE}}',
+    String(maxAllowed)
+  )
+}
 
 function parseIfString(value: unknown): unknown {
   if (typeof value === 'string') {
@@ -267,8 +262,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. Parse body: { projectId: string }
-    let body: { projectId?: string }
+    // 2. Parse body: { projectId: string; previousConfidence?: number }
+    let body: { projectId?: string; previousConfidence?: number }
     try {
       body = await request.json()
     } catch {
@@ -279,6 +274,10 @@ export async function POST(request: Request) {
     }
 
     const projectId = body.projectId
+    const previousConfidence =
+      typeof body.previousConfidence === 'number'
+        ? Math.min(100, Math.max(0, Math.round(body.previousConfidence)))
+        : 0
     if (!projectId || typeof projectId !== 'string') {
       return NextResponse.json(
         { error: 'Missing or invalid projectId' },
@@ -311,13 +310,14 @@ export async function POST(request: Request) {
       .map((m) => `${m.role === 'user' ? 'User' : 'Harvey'}: ${m.content}`)
       .join('\n\n')
 
-    console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length)
+    console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length, '| previousConfidence:', previousConfidence)
 
-    // 5. Call Haiku with extraction prompt
+    // 5. Call Haiku with extraction prompt (includes previous-confidence cap)
+    const extractionPromptWithCap = buildExtractionPrompt(previousConfidence)
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
       max_tokens: 2000,
-      messages: [{ role: 'user', content: EXTRACTION_PROMPT + conversationText }],
+      messages: [{ role: 'user', content: extractionPromptWithCap + conversationText }],
     })
 
     const textBlock = response.content.find((block) => block.type === 'text')
@@ -355,16 +355,19 @@ export async function POST(request: Request) {
       project: parsed.project && typeof parsed.project === 'object' ? parsed.project : {},
     }
 
-    // Parse and validate completion_confidence (0-100); default 0 if missing, clamp if out of range
-    let completionConfidence = 0
-    if (parsed.completion_confidence != null) {
-      const n = typeof parsed.completion_confidence === 'number'
+    // Parse completion_confidence: Haiku is capped at 75; apply hard clamp then +15 per-turn cap (ceiling 75)
+    const rawConfidence =
+      typeof parsed.completion_confidence === 'number'
         ? parsed.completion_confidence
-        : parseInt(String(parsed.completion_confidence), 10)
-      if (!Number.isNaN(n)) {
-        completionConfidence = Math.min(100, Math.max(0, Math.round(n)))
-      }
-    }
+        : parsed.completion_confidence != null
+          ? parseInt(String(parsed.completion_confidence), 10)
+          : 0
+    const clampedConfidence = Math.min(75, Math.max(0, Math.round(Number.isNaN(rawConfidence) ? 0 : rawConfidence)))
+    const capCeiling = Math.min(75, previousConfidence + 15)
+    const completionConfidence = Math.min(clampedConfidence, capCeiling)
+    console.log(
+      `[Harvey Confidence] extract response → raw: ${rawConfidence}, clamped: ${clampedConfidence}, previous: ${previousConfidence}, cap_ceiling: ${capCeiling}`
+    )
 
     // Defensive parsing: handle stringified arrays/objects
     if (extracted.user.availabilityWindows != null) {

@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ===== STEP 2: Parse Request Body =====
-    let body: { messages?: UIMessage[]; projectId?: string; context?: string }
+    let body: { messages?: UIMessage[]; projectId?: string; context?: string; currentConfidence?: number }
     try {
       body = await request.json()
     } catch {
@@ -100,7 +100,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { messages: uiMessages = [], projectId, context = 'onboarding' } = body
+    const {
+      messages: uiMessages = [],
+      projectId,
+      context = 'onboarding',
+      currentConfidence = 0,
+    } = body
 
     const lastUserContent = getLastUserMessage(uiMessages)
     if (!lastUserContent || lastUserContent.trim().length === 0) {
@@ -219,7 +224,12 @@ export async function POST(request: NextRequest) {
         missingFieldsGuidance = buildMissingFieldsGuidance(blocking, enriching)
       }
     }
-    const systemPrompt = ONBOARDING_SYSTEM_PROMPT(todayFormatted, knownInfo, missingFieldsGuidance)
+    const systemPrompt = ONBOARDING_SYSTEM_PROMPT(
+      todayFormatted,
+      knownInfo,
+      missingFieldsGuidance,
+      typeof currentConfidence === 'number' ? Math.min(100, Math.max(0, Math.round(currentConfidence))) : 0
+    )
 
     // ===== STEP 5: Stream response =====
     // smoothStream: word-by-word with 5ms delay for natural ChatGPT-like typing feel

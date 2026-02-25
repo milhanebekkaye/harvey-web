@@ -361,6 +361,11 @@ export function ProjectShadowPanel({
               style={{ width: `${Math.min(100, Math.max(0, harveyConfidence))}%` }}
             />
           </div>
+          {harveyConfidence >= 75 && harveyConfidence < 80 && (
+            <p className="mt-1.5 text-xs text-amber-600">
+              Keep going, we&apos;re almost there!
+            </p>
+          )}
         </div>
         {isLoading && (
           <div className="mt-2 flex items-center gap-2 text-sm text-[#8B5CF6]">

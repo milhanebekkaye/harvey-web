@@ -200,18 +200,38 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     project: Record<string, unknown>
   } | null>(initialExtracted ?? null)
   const [harveyConfidence, setHarveyConfidence] = useState(0)
+  const [maxHarveyConfidence, setMaxHarveyConfidence] = useState(0)
   const [missingBlockingFields, setMissingBlockingFields] = useState<string[]>([])
   const [extractionLoading, setExtractionLoading] = useState(false)
+  const harveyConfidenceRef = useRef(0)
+  const maxHarveyConfidenceRef = useRef(0)
+  useEffect(() => {
+    harveyConfidenceRef.current = harveyConfidence
+  }, [harveyConfidence])
+  useEffect(() => {
+    maxHarveyConfidenceRef.current = maxHarveyConfidence
+  }, [maxHarveyConfidence])
 
-  const triggerExtraction = useCallback(async (currentProjectId: string) => {
+  const RECAP_PHRASES = [
+    'check the panel',
+    'i think i have everything',
+    "hit 'build my schedule'",
+    'ready to build',
+  ]
+
+  const triggerExtraction = useCallback(async (currentProjectId: string, messageCount?: number) => {
     console.log('[OnboardingExtraction] Starting extraction for project:', currentProjectId)
     setExtractionLoading(true)
     try {
+      const previousConfidence = harveyConfidenceRef.current
       const response = await fetch('/api/onboarding/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ projectId: currentProjectId }),
+        body: JSON.stringify({
+          projectId: currentProjectId,
+          previousConfidence,
+        }),
       })
       if (!response.ok) {
         const errText = await response.text()
@@ -221,8 +241,13 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       const extracted = result.extracted ?? { user: result.user, project: result.project }
       const saved = result.saved ?? null
       const confidence = typeof result.completion_confidence === 'number'
-        ? Math.min(100, Math.max(0, Math.round(result.completion_confidence)))
+        ? Math.min(75, Math.max(0, Math.round(result.completion_confidence)))
         : 0
+      const displayed = Math.max(maxHarveyConfidenceRef.current, confidence)
+      const floorApplied = confidence < maxHarveyConfidenceRef.current
+      console.log(
+        `[Harvey Confidence] message #${messageCount ?? '?'} → new: ${confidence}, displayed: ${displayed}, floor_applied: ${floorApplied}`
+      )
       const blocking: string[] = Array.isArray(result.missingBlockingFields)
         ? result.missingBlockingFields
         : []
@@ -243,7 +268,14 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       console.log('[OnboardingExtraction] Field completeness:', fieldCompletenessPct + '%', '| Harvey confidence:', confidence + '%', '| Button:', buttonState)
       console.log('[OnboardingExtraction] Saved to DB:', saved ? { user: !!saved.user, project: !!saved.project } : null)
       console.log('[OnboardingExtraction] ──────────────────────────')
-      setHarveyConfidence(confidence)
+      setHarveyConfidence((prev) => (prev >= 80 ? prev : confidence))
+      setMaxHarveyConfidence((prev) => {
+        const newMax = Math.max(prev, confidence)
+        if (confidence < prev) {
+          console.log(`[Harvey Confidence] Decrease suppressed: ${confidence} (showing ${prev})`)
+        }
+        return newMax
+      })
       if (nextFields) {
         setShadowFields(nextFields)
       }
@@ -254,9 +286,14 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     }
   }, [])
 
+  // Only sync projectId from props when we have a non-null initialProjectId (restore case).
+  // Never overwrite projectIdRef with null once the stream has set it (onData), or every
+  // subsequent message would omit projectId and the server would create a new project.
   useEffect(() => {
-    projectIdRef.current = initialProjectId
-    setProjectId(initialProjectId)
+    if (initialProjectId != null) {
+      projectIdRef.current = initialProjectId
+      setProjectId(initialProjectId)
+    }
     if (initialProjectId) {
       if (initialExtracted) {
         setShadowFields(initialExtracted)
@@ -275,6 +312,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       body: () => ({
         projectId: projectIdRef.current ?? undefined,
         context: 'onboarding',
+        currentConfidence: harveyConfidenceRef.current,
       }),
     }),
     onData: (dataPart) => {
@@ -291,20 +329,28 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       const lastAssistant = [...finishedMessages]
         .reverse()
         .find((m) => m.role === 'assistant')
+      let text = ''
       if (lastAssistant) {
-        const text = getTextFromUIMessage(lastAssistant)
+        text = getTextFromUIMessage(lastAssistant)
         console.log('[OnboardingChat] Stream finished, Harvey responded:', text.substring(0, 100) + (text.length > 100 ? '...' : ''))
         if (text.includes(COMPLETION_MARKER)) {
           console.log('[OnboardingChat] ✓ Completion marker detected - Harvey is ready!')
           setIsComplete(true)
           setHasCompletionMarker(true)
         }
+        const messageText = text.toLowerCase()
+        const harveyIsReady = RECAP_PHRASES.some((phrase) => messageText.includes(phrase))
+        if (harveyIsReady && harveyConfidenceRef.current < 80) {
+          console.log(`[Harvey Confidence] Harvey gave recap at ${harveyConfidenceRef.current}% → forcing to 80`)
+          setHarveyConfidence(80)
+          setMaxHarveyConfidence((prev) => Math.max(prev, 80))
+        }
       }
       const currentProjectId = projectIdRef.current ?? projectId
       console.log('[OnboardingChat] onFinish: projectIdRef.current =', projectIdRef.current, ', projectId state =', projectId, ', will trigger extraction =', !!currentProjectId)
       if (currentProjectId) {
         console.log('[OnboardingChat] Triggering extraction...')
-        triggerExtraction(currentProjectId).catch((err) => {
+        triggerExtraction(currentProjectId, finishedMessages?.length).catch((err) => {
           console.error('[OnboardingChat] Background extraction error:', err)
         })
       } else {
@@ -424,12 +470,12 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
           <div className="mt-4">
             <div className="mb-1 flex justify-between text-sm text-gray-600">
               <span>Harvey&apos;s confidence:</span>
-              <span>{harveyConfidence}%</span>
+              <span>{maxHarveyConfidence}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
               <div
                 className="h-full rounded-full bg-[#8B5CF6] transition-all"
-                style={{ width: `${harveyConfidence}%` }}
+                style={{ width: `${maxHarveyConfidence}%` }}
               />
             </div>
           </div>
@@ -515,7 +561,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
             <ProjectShadowPanel
               fields={shadowFields}
               isLoading={extractionLoading}
-              harveyConfidence={harveyConfidence}
+              harveyConfidence={maxHarveyConfidence}
               projectId={projectId}
               onFieldUpdate={(scope, field, value) => {
                 setShadowFields((prev) => {

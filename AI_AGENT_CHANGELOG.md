@@ -50,6 +50,38 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-25 – Onboarding: fix new project created on every message (do not overwrite projectIdRef with null)
+
+- **Agent / context**: Cursor – Bugfix: onboarding was creating a new project and discussion after every message because the effect that syncs `projectIdRef` with `initialProjectId` was overwriting the ref with `null` whenever it ran with `initialProjectId === null`, wiping the projectId set by `onData` from the first response.
+- **Summary**: In the `useEffect` that depends on `[initialProjectId, initialExtracted, triggerExtraction]`, we now only assign `projectIdRef.current = initialProjectId` and `setProjectId(initialProjectId)` when `initialProjectId != null` (restore case). When starting a new session (`initialProjectId` is null), we no longer write to the ref in that effect, so once `onData` sets `projectIdRef.current` from the stream, it is never overwritten with null and subsequent messages send the correct `projectId`.
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Regression introduced by the onboarding progress / decouple-80% work: the sync effect could re-run and clear the ref, causing each new message to omit `projectId` and the server to create a new project every time.
+- **Risks / notes**: None. The “Keep going, we’re almost there!” message at 75% in ProjectShadowPanel is unchanged.
+
+### 2026-02-25 – Decouple 80% threshold from Haiku: hard cap at 75, 80+ only via Harvey recap
+
+- **Agent / context**: Cursor – Architectural separation so Haiku (extract) never sets confidence ≥ 80; only Harvey’s recap in chat can trigger 80+ and “Harvey is ready!”.
+- **Summary**:
+  - **Extract API**: `completion_confidence` is now 0–75 only in the prompt (“Never return 80 or above. The 80+ range is reserved for a separate system signal.”). After parsing, response is hard-clamped: `clampedConfidence = Math.min(75, Math.max(0, Math.round(raw)))`, then per-turn cap applied with ceiling 75. `buildExtractionPrompt` uses ceiling 75 (not 100). Terminal log added: `[Harvey Confidence] extract response → raw, clamped, previous, cap_ceiling`.
+  - **Onboarding page**: **Recap detection**: In `onFinish`, last assistant message is checked for phrases (“check the panel”, “i think i have everything”, “hit 'build my schedule'”, “ready to build”). If any match and `harveyConfidenceRef.current < 80`, we `setHarveyConfidence(80)` and `setMaxHarveyConfidence(prev => Math.max(prev, 80))` and log “Harvey gave recap → forcing to 80”. **Preserve 80**: `setHarveyConfidence(prev => (prev >= 80 ? prev : confidence))` so extraction never overwrites a recap-driven 80. **Logging**: `maxHarveyConfidenceRef` added; in `triggerExtraction`, log `message #N → new, displayed, floor_applied`. `triggerExtraction` now accepts optional `messageCount` for the log.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Haiku was reaching 80 on field-completeness before Harvey decided to recap, so the button showed “Harvey is ready!” while Harvey kept asking questions. Now 80+ is only reachable when Harvey explicitly gives the recap.
+- **Risks / notes**: Recap phrase list may need tuning if Harvey’s wording changes. Button logic unchanged; `isReady` still at `harveyConfidence >= 80 || hasCompletionMarker`.
+- **Related docs**: `ARCHITECTURE.md` (onboarding/extract, onboarding page), `docs/onboarding/README.md`.
+
+### 2026-02-25 – Onboarding progress: align Harvey recap with confidence, floor bar, cap increment
+
+- **Agent / context**: Cursor – Four targeted fixes so Harvey (chat) and extraction (Haiku) are coherent: recap only when confidence ≥ 80, progress bar never decreases, confidence never jumps >15 per message.
+- **Summary**:
+  - **Fix 1 – Chat API**: Frontend sends `currentConfidence: harveyConfidence` in POST body. Chat route parses `currentConfidence` (default 0) and passes it to `ONBOARDING_SYSTEM_PROMPT`. Prompt now includes a "CURRENT COMPLETION SCORE" block before COMPLETION: if score < 80 Harvey must not say "I think I have everything"; if ≥ 80 he may give the recap. Ensures Harvey only offers recap when extraction confidence is already ≥ 80.
+  - **Fix 2 – Floor on displayed confidence**: New state `maxHarveyConfidence` (max so far). In `triggerExtraction`, after `setHarveyConfidence(confidence)`, we run `setMaxHarveyConfidence(prev => Math.max(prev, confidence))` and log when a decrease is suppressed. **ProjectShadowPanel** and the confirmation modal receive `maxHarveyConfidence` for the progress bar display; all button logic (`canBuild`, `isReady`) still uses raw `harveyConfidence`. A ref `harveyConfidenceRef` keeps the latest confidence for the chat/extract request bodies.
+  - **Fix 3 – Cap per-message confidence**: Extract API accepts `previousConfidence` in POST body (default 0). Extraction prompt gains an instruction: completion_confidence must not increase by more than 15 points; prompt injects "The previous completion_confidence was: X" and "So the maximum you can assign this turn is: min(100, X+15)". Response is defensively clamped so returned confidence never exceeds previousConfidence + 15. Frontend sends `previousConfidence: harveyConfidenceRef.current` in the extract request.
+  - **Fix 4**: Button logic unchanged (disabled / Stage 1 modal / Stage 2 direct); with Fix 1, recap and marker now align with confidence ≥ 80.
+- **Files touched**: `src/lib/ai/prompts.ts`, `src/app/api/chat/route.ts`, `src/app/onboarding/page.tsx`, `src/app/api/onboarding/extract/route.ts`, `ARCHITECTURE.md`, `docs/onboarding/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Harvey could give the recap at 68% while the bar showed 68%, and the bar could drop between messages or jump 25+ points in one turn. Now the recap is gated by the same score the user sees, the bar only goes up visually, and each message can add at most 15 points.
+- **Risks / notes**: Restore flow does not send `previousConfidence` (defaults to 0), so first extraction after restore is uncapped; acceptable. Console logs `[Harvey Confidence] Decrease suppressed: X (showing Y)` when the model returns a lower confidence.
+- **Related docs**: `ARCHITECTURE.md` (onboarding/page, chat/route, onboarding/extract), `docs/onboarding/README.md`.
+
 ### 2026-02-25 – Timeline grouping: rolling 7-day window (fix Sunday → “Next Week” bug)
 
 - **Agent / context**: Cursor – Fix task grouping so that on Sunday, tasks for Monday–Friday of the coming week appear under named day sections (MONDAY, TUESDAY, etc.) instead of a single “Next Week” group.

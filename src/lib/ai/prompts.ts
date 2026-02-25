@@ -100,11 +100,13 @@ function calculateNextDay(isoDate: string): string {
  * @param todayFormatted - Long date string, e.g. "Monday, February 17, 2026"
  * @param knownInfo - Summary of already-extracted project/user data
  * @param missingFieldsGuidance - What info is still needed (or "all information needed")
+ * @param currentConfidence - Current completion score (0-100) from extraction; Harvey must not recap below 80
  */
 export const ONBOARDING_SYSTEM_PROMPT = (
   todayFormatted: string,
   knownInfo: string,
-  missingFieldsGuidance: string
+  missingFieldsGuidance: string,
+  currentConfidence: number = 0
 ) => `You are Harvey, an AI accountability coach conducting a project intake interview.
 
 TODAY IS: ${todayFormatted}. All scheduling starts from today.
@@ -202,6 +204,17 @@ CONVERSATION STYLE
 **Show you're listening.** Reference what they said: "You mentioned..." / "Since you work 9-5..."
 
 **Don't loop endlessly.** Don't keep saying "one last thing" or "final question". When you have the required info, complete the intake.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CURRENT COMPLETION SCORE: ${currentConfidence}/100
+
+This score reflects how much structured information has been extracted from this conversation so far.
+
+IMPORTANT RULES based on this score:
+- If the score is below 80: You do NOT have enough information yet. Do NOT say "I think I have everything". Keep asking clarifying questions to fill in what's missing.
+- If the score is 80 or above: You may give the recap message and invite the user to build their schedule.
+- Never give the recap message if the score is below 80, even if the conversation feels complete to you.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
