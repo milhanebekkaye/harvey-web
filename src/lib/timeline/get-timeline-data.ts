@@ -43,7 +43,7 @@ export async function getTimelineData(
     },
   })
 
-  const activeTaskRaw = await prisma.task.findFirst({
+  const activeTaskCandidate = await prisma.task.findFirst({
     where: {
       projectId,
       userId,
@@ -58,10 +58,69 @@ export async function getTimelineData(
       description: true,
       scheduledDate: true,
       scheduledStartTime: true,
+      scheduledEndTime: true,
+      is_flexible: true,
       successCriteria: true,
       depends_on: true,
     },
   })
+
+  let selectedActiveRaw: typeof activeTaskCandidate = activeTaskCandidate
+  let activeSelectionReason: 'direct' | 'unmet-dependency' = 'direct'
+
+  if (activeTaskCandidate && activeTaskCandidate.depends_on.length > 0) {
+    const candidateDepTasks = await prisma.task.findMany({
+      where: {
+        id: { in: activeTaskCandidate.depends_on },
+        projectId,
+        userId,
+      },
+      select: { id: true, title: true, status: true },
+    })
+    const unmetDepIds = candidateDepTasks
+      .filter((t) => t.status !== 'completed')
+      .map((t) => t.id)
+    if (unmetDepIds.length > 0) {
+      const unmetTasksFull = await prisma.task.findMany({
+        where: {
+          id: { in: unmetDepIds },
+          projectId,
+          userId,
+          status: { in: ['pending', 'skipped'] },
+        },
+        select: {
+          id: true,
+          title: true,
+          label: true,
+          description: true,
+          scheduledDate: true,
+          scheduledStartTime: true,
+          scheduledEndTime: true,
+          is_flexible: true,
+          successCriteria: true,
+          depends_on: true,
+        },
+      })
+      unmetTasksFull.sort((a, b) => {
+        const aDate = a.scheduledDate?.getTime() ?? 0
+        const bDate = b.scheduledDate?.getTime() ?? 0
+        if (aDate !== bDate) return aDate - bDate
+        const aStart = a.scheduledStartTime?.getTime() ?? -1
+        const bStart = b.scheduledStartTime?.getTime() ?? -1
+        return aStart - bStart
+      })
+      selectedActiveRaw = unmetTasksFull[0] ?? activeTaskCandidate
+      activeSelectionReason = 'unmet-dependency'
+    }
+  }
+
+  if (selectedActiveRaw) {
+    console.log('[TIMELINE] Active task selected:', {
+      id: selectedActiveRaw.id,
+      title: selectedActiveRaw.title,
+      reason: activeSelectionReason,
+    })
+  }
 
   let dependencies: TimelineDependencyTask[] = []
   let dependentTasks: TimelineDependencyTask[] = []
@@ -70,24 +129,27 @@ export async function getTimelineData(
     title: string
     scheduledDate: Date | null
     scheduledStartTime: Date | null
+    scheduledEndTime: Date | null
+    is_flexible: boolean
+    depends_on: string[]
   }> = []
 
-  const activeTask: TimelineActiveTask | null = activeTaskRaw
+  const activeTask: TimelineActiveTask | null = selectedActiveRaw
     ? {
-        id: activeTaskRaw.id,
-        title: activeTaskRaw.title,
-        label: normalizeTaskLabel(activeTaskRaw.label),
-        description: activeTaskRaw.description ?? '',
-        scheduledDate: activeTaskRaw.scheduledDate ?? new Date(),
-        successCriteria: parseSuccessCriteria(activeTaskRaw.successCriteria),
-        depends_on: activeTaskRaw.depends_on,
+        id: selectedActiveRaw.id,
+        title: selectedActiveRaw.title,
+        label: normalizeTaskLabel(selectedActiveRaw.label),
+        description: selectedActiveRaw.description ?? '',
+        scheduledDate: selectedActiveRaw.scheduledDate ?? new Date(),
+        successCriteria: parseSuccessCriteria(selectedActiveRaw.successCriteria),
+        depends_on: selectedActiveRaw.depends_on,
       }
     : null
 
-  if (activeTaskRaw && activeTaskRaw.depends_on.length > 0) {
+  if (selectedActiveRaw && selectedActiveRaw.depends_on.length > 0) {
     const dependencyTasksRaw = await prisma.task.findMany({
       where: {
-        id: { in: activeTaskRaw.depends_on },
+        id: { in: selectedActiveRaw.depends_on },
         projectId,
         userId,
       },
@@ -109,17 +171,17 @@ export async function getTimelineData(
       ])
     )
 
-    dependencies = activeTaskRaw.depends_on
+    dependencies = selectedActiveRaw.depends_on
       .map((dependencyId) => orderedDependencies.get(dependencyId))
       .filter((task): task is TimelineDependencyTask => task != null)
   }
 
-  if (activeTaskRaw) {
+  if (selectedActiveRaw) {
     const dependentTasksRaw = await prisma.task.findMany({
       where: {
         projectId,
         userId,
-        depends_on: { has: activeTaskRaw.id },
+        depends_on: { has: selectedActiveRaw.id },
       },
       orderBy: {
         scheduledDate: 'asc',
@@ -136,7 +198,6 @@ export async function getTimelineData(
       title: task.title,
       status: toDependencyStatus(task.status),
     }))
-
   }
 
   const pendingCandidates = await prisma.task.findMany({
@@ -145,7 +206,7 @@ export async function getTimelineData(
       userId,
       status: 'pending',
       scheduledDate: { not: null },
-      ...(activeTaskRaw ? { id: { not: activeTaskRaw.id } } : {}),
+      ...(selectedActiveRaw ? { id: { not: selectedActiveRaw.id } } : {}),
     },
     orderBy: [{ scheduledDate: 'asc' }, { scheduledStartTime: 'asc' }],
     select: {
@@ -153,6 +214,9 @@ export async function getTimelineData(
       title: true,
       scheduledDate: true,
       scheduledStartTime: true,
+      scheduledEndTime: true,
+      is_flexible: true,
+      depends_on: true,
     },
   })
 
@@ -189,7 +253,74 @@ export async function getTimelineData(
       return aStart - bStart
     })
 
-  upcomingTasksRaw = remainingFromNow.slice(0, 2)
+  const idToDependsOn = new Map(remainingFromNow.map((t) => [t.id, t.depends_on ?? []]))
+  let reordered = [...remainingFromNow]
+  let moved: boolean
+  do {
+    moved = false
+    for (let i = 0; i < reordered.length; i++) {
+      const task = reordered[i]
+      const depIds = idToDependsOn.get(task.id) ?? []
+      for (const depId of depIds) {
+        const j = reordered.findIndex((t) => t.id === depId)
+        if (j !== -1 && j > i) {
+          const [dep] = reordered.splice(j, 1)
+          reordered.splice(i, 0, dep)
+          moved = true
+          break
+        }
+      }
+      if (moved) break
+    }
+  } while (moved)
+
+  console.log('[TIMELINE] Tasks after sort:', reordered.map((t) => ({
+    id: t.id,
+    title: t.title,
+    scheduled_start_time: t.scheduledStartTime?.toISOString() ?? null,
+  })))
+
+  upcomingTasksRaw = reordered.slice(0, 2)
+
+  const tasksFetched: Array<{
+    id: string
+    title: string
+    scheduled_start_time: string | null
+    scheduled_end_time: string | null
+    time_preference: string | null
+    depends_on: string[]
+  }> = []
+  if (lastCompleted?.completedAt) {
+    tasksFetched.push({
+      id: lastCompleted.id,
+      title: lastCompleted.title,
+      scheduled_start_time: null,
+      scheduled_end_time: null,
+      time_preference: null,
+      depends_on: [],
+    })
+  }
+  if (selectedActiveRaw) {
+    tasksFetched.push({
+      id: selectedActiveRaw.id,
+      title: selectedActiveRaw.title,
+      scheduled_start_time: selectedActiveRaw.scheduledStartTime?.toISOString() ?? null,
+      scheduled_end_time: selectedActiveRaw.scheduledEndTime?.toISOString() ?? null,
+      time_preference: selectedActiveRaw.is_flexible ? 'flexible' : 'fixed',
+      depends_on: selectedActiveRaw.depends_on,
+    })
+  }
+  for (const t of upcomingTasksRaw) {
+    tasksFetched.push({
+      id: t.id,
+      title: t.title,
+      scheduled_start_time: t.scheduledStartTime?.toISOString() ?? null,
+      scheduled_end_time: t.scheduledEndTime?.toISOString() ?? null,
+      time_preference: t.is_flexible ? 'flexible' : 'fixed',
+      depends_on: t.depends_on ?? [],
+    })
+  }
+  console.log('[TIMELINE] Tasks fetched:', JSON.stringify(tasksFetched))
 
   return {
     lastCompletedTask: lastCompleted?.completedAt

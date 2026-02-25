@@ -176,6 +176,36 @@ export function TimelineView({
             </p>
           </div>
         ) : (
+          <>
+            {(() => {
+              const parts: Array<{ index: number; id: string; title: string; scheduled_start_time: string | Date | null }> = []
+              if (timelineData.lastCompletedTask) {
+                parts.push({
+                  index: parts.length,
+                  id: timelineData.lastCompletedTask.id,
+                  title: timelineData.lastCompletedTask.title,
+                  scheduled_start_time: timelineData.lastCompletedTask.completedAt,
+                })
+              }
+              if (timelineData.activeTask) {
+                parts.push({
+                  index: parts.length,
+                  id: timelineData.activeTask.id,
+                  title: timelineData.activeTask.title,
+                  scheduled_start_time: timelineData.activeTask.scheduledDate,
+                })
+              }
+              timelineData.upcomingTasks.forEach((task) => {
+                parts.push({
+                  index: parts.length,
+                  id: task.id,
+                  title: task.title,
+                  scheduled_start_time: task.scheduledDate,
+                })
+              })
+              console.log('[TIMELINE] Render order:', JSON.stringify(parts))
+              return null
+            })()}
           <TimelineRail>
             {timelineData.lastCompletedTask && (
               <CompletedTaskCard
@@ -202,6 +232,7 @@ export function TimelineView({
               />
             ))}
           </TimelineRail>
+          </>
         )}
       </div>
 

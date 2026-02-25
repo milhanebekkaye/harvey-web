@@ -50,6 +50,28 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-25 – Timeline View: fix active task and upcoming order (dependencies + flexible-first)
+
+- **Agent / context**: Cursor – Step 2 fix for Timeline View task ordering bug. Only `src/lib/timeline/get-timeline-data.ts` modified.
+- **Summary**:
+  - **Active task selection**: After fetching the candidate (first pending by date/startTime ASC, nulls last), the code now checks if any of its `depends_on` are not completed. If unmet dependencies exist, it fetches those tasks and picks the earliest one (same-day: flexible/null start before fixed start time) and uses that as the active task instead. Log: `[TIMELINE] Active task selected: { id, title, reason: 'direct' | 'unmet-dependency' }`.
+  - **Upcoming sort**: After the time-based sort, a dependency-aware pass ensures that if task X depends on task Y and Y appears after X in the list, Y is moved before X. Pending candidates now include `depends_on` in the select for this pass.
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `AI_AGENT_CHANGELOG.md`, `docs/timeline-view.md`, `ARCHITECTURE.md`.
+- **Motivation**: Fixed-window tasks (e.g. 6pm) were shown as “active” even when they depended on an incomplete flexible-window task (null `scheduledStartTime`), because PostgreSQL sorts nulls last. Now the active task is either the candidate or the earliest unmet dependency; upcoming list respects dependency order.
+- **Risks / notes**: Existing logs kept. No API or frontend contract changes.
+- **Related docs**: `docs/timeline-view.md`, `ARCHITECTURE.md` (`src/lib/timeline/`).
+
+### 2026-02-25 – Timeline View audit logging (no logic changes)
+
+- **Agent / context**: Cursor – Step 1 audit + logging for Timeline View task ordering. No scheduling logic or bug fixes.
+- **Summary**:
+  - Added `[TIMELINE]` console logs at three points: (1) after tasks are fetched in `getTimelineData` (id, title, scheduled_start_time, scheduled_end_time, time_preference, depends_on); (2) after the upcoming-tasks sort in `get-timeline-data.ts` (id, title, scheduled_start_time); (3) in the timeline component render, final order passed to the UI (index, id, title, scheduled_start_time).
+  - Extended timeline data selects to include `scheduledEndTime` and `is_flexible` for active and pending candidates so the fetch log can report time_preference (flexible vs fixed).
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `src/components/timeline/TimelineView.tsx`, `docs/timeline-view.md`, `ARCHITECTURE.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Diagnose incorrect task order in Timeline View (e.g. fixed-window tasks appearing before flexible-window tasks or before dependencies). Logs provide a breadcrumb of fetch → sort → render order.
+- **Risks / notes**: Logs are server-side (get-timeline-data) and client-side (TimelineView). No behavior or API response shape changed for consumers.
+- **Related docs**: `ARCHITECTURE.md` (API routes – timeline, `src/lib/timeline/`), `docs/timeline-view.md`.
+
 ### 2026-02-23 – Persist feedback widget answered state across reloads
 
 - **Agent / context**: Codex (GPT-5) – User-reported bug: completion/skip feedback widgets reappeared in project chat after page reload even after users had already answered.

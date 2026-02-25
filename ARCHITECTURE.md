@@ -330,7 +330,7 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 
 ### `src/lib/timeline/`
 
-- **`get-timeline-data.ts`**: Timeline data assembly. Exposes `getTimelineData(projectId, userId)` and performs timeline-specific queries for last completed task, oldest pending/skipped active task, dependency metadata, and next two upcoming pending tasks from current time (user timezone aware).
+- **`get-timeline-data.ts`**: Timeline data assembly. Exposes `getTimelineData(projectId, userId)` and performs timeline-specific queries for last completed task, active task, dependency metadata, and next two upcoming pending tasks from current time (user timezone aware). **Active task**: candidate is first pending by date/startTime (nulls last); if it has unmet dependencies, the earliest unmet dependency (flexible before fixed on same day) is chosen instead. **Upcoming**: time-based sort then dependency-aware reorder (dependencies before dependents). Audit logs: `[TIMELINE] Tasks fetched`, `[TIMELINE] Tasks after sort`, `[TIMELINE] Active task selected` (see `docs/timeline-view.md`).
 
 ### `src/lib/chat/`
 
