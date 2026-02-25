@@ -7,7 +7,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/app/dashboard/page.tsx`
   - Dashboard page: fetches tasks and discussions, handles actions, and renders views.
 - `src/components/dashboard/ChatSidebar.tsx`
-  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip widgets are not rendered when their stored message has `answered: true`.
+  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip and reschedule-prompt widgets are not rendered when their stored message has `answered: true`.
 - `src/components/dashboard/TimelineView.tsx`
   - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
 - `src/components/dashboard/TaskTile.tsx`
@@ -33,7 +33,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/app/api/discussions/[projectId]/route.ts`
   - Fetch discussion history for the sidebar (including stored `answered` metadata on widget messages).
 - `src/app/api/discussions/[projectId]/messages/route.ts`
-  - Append a sidebar message. Supports optional `widgetAnswer: { widgetType, taskId }` so feedback-answer appends can mark the original widget message as `answered: true` in the same DB write.
+  - Append a sidebar message. Supports optional `widgetAnswer: { widgetType, taskId }` so feedback-answer appends can mark the original widget message as `answered: true` in the same DB write. `widgetType` may be `completion_feedback`, `skip_feedback`, or `reschedule_prompt` (reschedule prompt is the “Yes, reschedule” / “No, leave it skipped” widget shown after skip).
 - `src/app/api/schedule/reset-schedule/route.ts`
   - Deletes tasks for a project (used by rebuild flow).
 - `src/lib/tasks/task-service.ts`
@@ -66,7 +66,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Calls `/api/discussions/[projectId]` and loads conversation history.
 - `handleCompleteTask(taskId)` / `handleSkipTask(taskId)`
   - **Optimistic UI**: Update task status in local state and append the Harvey feedback message (with widget) to `appendedByDashboard` immediately. PATCH runs in the background; on failure the task is reverted and the user is alerted. On skip success, cascade-skipped task IDs from the response are applied to local state. Optional background `fetchTasks()` to sync.
-  - Follow-up feedback answer messages from widget clicks append with `widgetAnswer` metadata so the matching widget message is persisted as answered and does not re-render after reload.
+  - Follow-up feedback answer messages from widget clicks (completion, skip, or reschedule prompt) append with `widgetAnswer` metadata so the matching widget message is persisted as answered and does not re-render after reload.
 - `handleChecklistToggle(taskId, itemId, done)`
   - Optimistically updates checklist and persists via `/api/tasks/[taskId]/checklist`.
 - `handleSignOut()`

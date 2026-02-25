@@ -35,7 +35,7 @@ function getDependencyIcon(status: TimelineDependencyTask['status']): string {
   }
 
   if (status === 'skipped') {
-    return 'cancel'
+    return 'warning'
   }
 
   if (status === 'in_progress') {
@@ -182,11 +182,20 @@ export function ActiveTaskCard({
                   ) : (
                     <ul className="space-y-1.5">
                       {dependencies.map((dependency) => (
-                        <li key={dependency.id} className="flex items-center gap-2 text-sm text-slate-700">
-                          <span className="material-symbols-outlined text-[15px] text-slate-400">
-                            {getDependencyIcon(dependency.status)}
-                          </span>
-                          <span>{dependency.title}</span>
+                        <li key={dependency.id} className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2 text-sm text-slate-700">
+                            <span
+                              className={`material-symbols-outlined text-[15px] ${dependency.status === 'skipped' ? 'text-red-500' : 'text-slate-400'}`}
+                            >
+                              {getDependencyIcon(dependency.status)}
+                            </span>
+                            <span>{dependency.title}</span>
+                          </div>
+                          {dependency.status === 'skipped' && (
+                            <p className="text-xs text-red-500 pl-6">
+                              ⚠️ &quot;{dependency.title}&quot; was skipped — make sure you&apos;ve completed this before starting.
+                            </p>
+                          )}
                         </li>
                       ))}
                     </ul>

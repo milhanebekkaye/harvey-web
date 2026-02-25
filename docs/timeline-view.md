@@ -35,6 +35,7 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
     - `lastCompletedTask`
     - `activeTask`
     - `upcomingTasks`
+    - `skippedTasks` (all tasks with `status: 'skipped'` for the project; used for the Skipped section at the bottom of the timeline)
     - `dependencies`
     - `dependentTasks`
 - `POST /api/tasks/tip`
@@ -47,6 +48,25 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
   - Response contract: always HTTP 200 with `{ tip: string }`.
   - Fallback tip used on any error:
     - `Break this task into the first small step and start there.`
+
+## Skipped section (bottom of timeline)
+
+- **Data**: All tasks for the current project with `status: 'skipped'` are returned in the timeline payload as `skippedTasks` and are **not** included in active or upcoming.
+- **Placement**: A collapsible section is rendered at the very bottom of the timeline rail, below all completed / active / upcoming task cards.
+- **Collapsed (default)**: Shows a single line: "Skipped (N)" where N is the count of skipped tasks. Click to expand.
+- **Expanded**: Renders one read-only card per skipped task:
+  - Grey left border and grey "SKIPPED" status badge.
+  - Task title, time estimate (from scheduled date/start/end), and label pill.
+  - No Complete or Skip buttons.
+- **Active/upcoming**: Skipped tasks never appear as the active task or in the upcoming list; the active-task candidate query uses `status: 'pending'` only, and unmet-dependency substitution considers only pending (not skipped) dependencies.
+
+## Dependency warning in task detail
+
+- **Where**: In the active task card, under "Dependencies" → "This Task Depends On".
+- **When**: For each dependency whose status is `skipped`:
+  - The dependency row uses a **red warning icon** instead of the usual check/unchecked icon.
+  - A **red warning message** is shown directly below that row: `"[Task title]" was skipped — make sure you've completed this before starting.` (styled `text-red-500`, small font).
+- **When not**: Pending or completed dependencies show no warning; only skipped dependencies show the icon and message.
 
 ## UX Behavior
 - Timeline loads from real DB-backed data.

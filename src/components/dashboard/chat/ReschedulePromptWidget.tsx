@@ -1,12 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import type { WidgetAnswerMeta } from '@/types/api.types'
 
 interface ReschedulePromptWidgetProps {
   taskId: string
   suggestedDate: string
   suggestedTime: string
-  onAppendMessage: (role: 'user' | 'assistant', content: string) => void
+  onAppendMessage: (
+    role: 'user' | 'assistant',
+    content: string,
+    widget?: undefined,
+    widgetAnswer?: WidgetAnswerMeta
+  ) => void
   onTasksChanged?: () => void
 }
 
@@ -23,6 +29,10 @@ export function ReschedulePromptWidget({
   const handleYes = async () => {
     if (submitted || loading) return
     setLoading(true)
+    onAppendMessage('user', "Yes, reschedule", undefined, {
+      widgetType: 'reschedule_prompt',
+      taskId,
+    })
     try {
       const res = await fetch(`/api/tasks/${taskId}/reschedule`, {
         method: 'POST',
@@ -31,7 +41,6 @@ export function ReschedulePromptWidget({
       })
       const data = await res.json()
       if (data.success) {
-        onAppendMessage('user', "Yes, reschedule")
         const dayLabel = new Date(suggestedDate + 'T12:00:00.000Z').toLocaleDateString('en-US', {
           weekday: 'long',
         })
@@ -47,12 +56,11 @@ export function ReschedulePromptWidget({
           'assistant',
           `Done! I've moved it to ${dayLabel} at ${timeStr}.`
         )
-        setSubmitted(true)
         onTasksChanged?.()
       } else {
         onAppendMessage('assistant', data.error || "Couldn't reschedule. I'll leave it skipped.")
-        setSubmitted(true)
       }
+      setSubmitted(true)
     } catch (e) {
       console.error('[ReschedulePromptWidget]', e)
       onAppendMessage('assistant', "Something went wrong. I'll leave it skipped.")
@@ -64,7 +72,10 @@ export function ReschedulePromptWidget({
 
   const handleNo = () => {
     if (submitted || loading) return
-    onAppendMessage('user', "No, leave it skipped")
+    onAppendMessage('user', "No, leave it skipped", undefined, {
+      widgetType: 'reschedule_prompt',
+      taskId,
+    })
     onAppendMessage('assistant', "Okay, I'll leave it skipped.")
     setSubmitted(true)
   }

@@ -77,7 +77,9 @@ export async function POST(
     if (body.widgetAnswer) {
       const { taskId, widgetType } = body.widgetAnswer
       const validType =
-        widgetType === 'completion_feedback' || widgetType === 'skip_feedback'
+        widgetType === 'completion_feedback' ||
+        widgetType === 'skip_feedback' ||
+        widgetType === 'reschedule_prompt'
       if (!validType || typeof taskId !== 'string' || taskId.trim() === '') {
         return NextResponse.json(
           { success: false, error: 'Invalid widgetAnswer payload', code: 'INVALID_WIDGET_ANSWER' },

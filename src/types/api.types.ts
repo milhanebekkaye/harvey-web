@@ -87,8 +87,9 @@ export interface ChatWidget {
   data?: Record<string, unknown>
 }
 
+/** Used when appending a message to mark a prior widget message as answered (completion/skip feedback or reschedule prompt). */
 export interface WidgetAnswerMeta {
-  widgetType: FeedbackWidgetType
+  widgetType: ChatWidgetType
   taskId: string
 }
 

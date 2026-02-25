@@ -24,6 +24,15 @@ export interface TimelineUpcomingTask {
   scheduledDate: string | Date
 }
 
+export interface TimelineSkippedTask {
+  id: string
+  title: string
+  label: TaskLabel
+  scheduledDate: string | Date | null
+  scheduledStartTime: string | Date | null
+  scheduledEndTime: string | Date | null
+}
+
 export interface TimelineDependencyTask {
   id: string
   title: string
@@ -34,6 +43,7 @@ export interface TimelineData {
   lastCompletedTask: TimelineCompletedTask | null
   activeTask: TimelineActiveTask | null
   upcomingTasks: TimelineUpcomingTask[]
+  skippedTasks: TimelineSkippedTask[]
   dependencies: TimelineDependencyTask[]
   dependentTasks: TimelineDependencyTask[]
 }

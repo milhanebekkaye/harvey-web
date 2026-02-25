@@ -12,7 +12,7 @@
 
 import { prisma } from '../db/prisma'
 import type {
-  FeedbackWidgetType,
+  ChatWidgetType,
   StoredMessage,
 } from '../../types/api.types'
 import type { Prisma } from '@prisma/client'
@@ -402,7 +402,7 @@ export async function appendMessages(
   messages: StoredMessage[],
   options?: {
     markWidgetAnswered?: {
-      widgetType: FeedbackWidgetType
+      widgetType: ChatWidgetType
       taskId: string
     }
   }

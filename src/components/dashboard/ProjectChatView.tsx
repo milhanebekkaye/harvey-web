@@ -274,7 +274,8 @@ export function ProjectChatView({
             const shouldHideWidget =
               message.answered === true &&
               (message.widget?.type === 'completion_feedback' ||
-                message.widget?.type === 'skip_feedback')
+                message.widget?.type === 'skip_feedback' ||
+                message.widget?.type === 'reschedule_prompt')
             return (
               <div
                 key={message.id}
@@ -354,8 +355,8 @@ export function ProjectChatView({
                           suggestedTime={String(
                             message.widget.data.suggestedTime
                           )}
-                          onAppendMessage={(role, content) =>
-                            handleAppendMessage(role, content)
+                          onAppendMessage={(role, content, widget, widgetAnswer) =>
+                            handleAppendMessage(role, content, widget, widgetAnswer)
                           }
                           onTasksChanged={onTasksChanged}
                         />

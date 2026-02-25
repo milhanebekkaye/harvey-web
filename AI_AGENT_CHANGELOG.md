@@ -50,6 +50,29 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-25 – Persist reschedule-prompt widget answered state across reloads
+
+- **Agent / context**: Cursor – Same fix as completion/skip feedback widgets (2026-02-23): reschedule-prompt widget (after skip, “Yes, reschedule” / “No, leave it skipped”) reappeared after reload once the user had answered.
+- **Summary**:
+  - Extended `widgetAnswer` support to `reschedule_prompt`: `WidgetAnswerMeta.widgetType` and API/discussion-service now accept `reschedule_prompt` in addition to `completion_feedback` and `skip_feedback`. When appending the user’s answer (“Yes, reschedule” or “No, leave it skipped”), the client sends `widgetAnswer: { widgetType: 'reschedule_prompt', taskId }` so the API marks the matching assistant message (the one with the reschedule widget) as `answered: true` in the same write.
+  - `ReschedulePromptWidget` now passes `widgetAnswer` on the first user append (both “Yes” and “No”); for “Yes”, the user message is appended with `widgetAnswer` before the reschedule API call so the widget is marked answered even if reschedule fails.
+  - `ProjectChatView` hides the reschedule-prompt widget when `message.answered === true` (same guard as completion/skip), so the interactive buttons do not re-render after reload.
+- **Files touched**: `src/types/api.types.ts`, `src/lib/discussions/discussion-service.ts`, `src/app/api/discussions/[projectId]/messages/route.ts`, `src/components/dashboard/chat/ReschedulePromptWidget.tsx`, `src/components/dashboard/ProjectChatView.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/dashboard/README.md`, `docs/chat-router/README.md`.
+- **Motivation**: Align reschedule-prompt behavior with completion/skip feedback: answered state is persisted so the widget does not reappear after refresh.
+- **Risks / notes**: None. Same pattern as 2026-02-23; no other behavior changed.
+- **Related docs**: 2026-02-23 – Persist feedback widget answered state across reloads; `docs/dashboard/README.md`, `docs/chat-router/README.md`.
+
+### 2026-02-25 – Timeline View: Skipped section + dependency warning (UI only)
+
+- **Agent / context**: Cursor – Two focused UI changes to the Timeline View. No scheduling or skip-action logic changed.
+- **Summary**:
+  - **Skipped section**: Timeline now fetches all tasks with `status: 'skipped'` for the current project and shows a collapsible section at the bottom of the rail, below pending/upcoming tasks. Section is collapsed by default, shows count when collapsed (e.g. "Skipped (3)"), and when expanded shows read-only cards with grey left border and grey "SKIPPED" badge (title, time estimate, label pill; no Complete/Skip buttons). Skipped tasks are excluded from active and upcoming: active candidate is `status: 'pending'` only; unmet-dependency substitution uses only pending deps.
+  - **Dependency warning**: In the task detail "This Task Depends On" section (ActiveTaskCard), when a dependency has `status: 'skipped'`, the icon is now a red warning and a red inline message appears below that item: "⚠️ [Task title] was skipped — make sure you've completed this before starting." Pending or completed dependencies show no warning.
+- **Files touched**: `src/types/timeline.types.ts`, `src/lib/timeline/get-timeline-data.ts`, `src/components/timeline/TimelineView.tsx`, `src/components/timeline/SkippedTaskCard.tsx` (new), `src/components/timeline/ActiveTaskCard.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/timeline-view.md`.
+- **Motivation**: Surface skipped tasks in a dedicated section and warn users when the active task depends on a skipped task so they can confirm completion before starting.
+- **Risks / notes**: Skipped tasks no longer appear as active or upcoming; if a task's only unmet dependency is skipped, that task can now be shown as active (with the new warning). No change to skip button, active selection beyond excluding skipped, or dependency ordering.
+- **Related docs**: `docs/timeline-view.md`, `ARCHITECTURE.md` (`src/lib/timeline/`, `src/components/timeline/`).
+
 ### 2026-02-25 – Timeline View: fix active task and upcoming order (dependencies + flexible-first)
 
 - **Agent / context**: Cursor – Step 2 fix for Timeline View task ordering bug. Only `src/lib/timeline/get-timeline-data.ts` modified.

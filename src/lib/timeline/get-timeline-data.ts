@@ -5,6 +5,7 @@ import type {
   TimelineActiveTask,
   TimelineData,
   TimelineDependencyTask,
+  TimelineSkippedTask,
 } from '@/types/timeline.types'
 
 function toDependencyStatus(
@@ -47,7 +48,7 @@ export async function getTimelineData(
     where: {
       projectId,
       userId,
-      status: { in: ['pending', 'skipped'] },
+      status: 'pending',
       scheduledDate: { not: null },
     },
     orderBy: [{ scheduledDate: 'asc' }, { scheduledStartTime: 'asc' }],
@@ -77,16 +78,16 @@ export async function getTimelineData(
       },
       select: { id: true, title: true, status: true },
     })
-    const unmetDepIds = candidateDepTasks
-      .filter((t) => t.status !== 'completed')
+    const unmetPendingDepIds = candidateDepTasks
+      .filter((t) => t.status === 'pending')
       .map((t) => t.id)
-    if (unmetDepIds.length > 0) {
+    if (unmetPendingDepIds.length > 0) {
       const unmetTasksFull = await prisma.task.findMany({
         where: {
-          id: { in: unmetDepIds },
+          id: { in: unmetPendingDepIds },
           projectId,
           userId,
-          status: { in: ['pending', 'skipped'] },
+          status: 'pending',
         },
         select: {
           id: true,
@@ -199,6 +200,32 @@ export async function getTimelineData(
       status: toDependencyStatus(task.status),
     }))
   }
+
+  const skippedTasksRaw = await prisma.task.findMany({
+    where: {
+      projectId,
+      userId,
+      status: 'skipped',
+    },
+    orderBy: [{ scheduledDate: 'asc' }, { scheduledStartTime: 'asc' }],
+    select: {
+      id: true,
+      title: true,
+      label: true,
+      scheduledDate: true,
+      scheduledStartTime: true,
+      scheduledEndTime: true,
+    },
+  })
+
+  const skippedTasks: TimelineSkippedTask[] = skippedTasksRaw.map((t) => ({
+    id: t.id,
+    title: t.title,
+    label: normalizeTaskLabel(t.label),
+    scheduledDate: t.scheduledDate,
+    scheduledStartTime: t.scheduledStartTime,
+    scheduledEndTime: t.scheduledEndTime,
+  }))
 
   const pendingCandidates = await prisma.task.findMany({
     where: {
@@ -336,6 +363,7 @@ export async function getTimelineData(
       title: task.title,
       scheduledDate: task.scheduledDate ?? new Date(),
     })),
+    skippedTasks,
     dependencies,
     dependentTasks,
   }

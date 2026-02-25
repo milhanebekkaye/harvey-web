@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActiveTaskCard } from '@/components/timeline/ActiveTaskCard'
 import { CompletedTaskCard } from '@/components/timeline/CompletedTaskCard'
+import { SkippedTaskCard } from '@/components/timeline/SkippedTaskCard'
 import { TimelineRail } from '@/components/timeline/TimelineRail'
 import { UpcomingTaskCard } from '@/components/timeline/UpcomingTaskCard'
 import type { ChecklistItem } from '@/types/task.types'
@@ -29,6 +30,7 @@ export function TimelineView({
   const [timelineData, setTimelineData] = useState<TimelineData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [skippedSectionCollapsed, setSkippedSectionCollapsed] = useState(true)
   const toastTimerRef = useRef<number | null>(null)
 
   const showToast = useCallback((message: string) => {
@@ -65,6 +67,7 @@ export function TimelineView({
         lastCompletedTask: json.lastCompletedTask,
         activeTask: json.activeTask,
         upcomingTasks: json.upcomingTasks,
+        skippedTasks: json.skippedTasks ?? [],
         dependencies: json.dependencies,
         dependentTasks: json.dependentTasks,
       })
@@ -73,6 +76,7 @@ export function TimelineView({
         lastCompletedTask: null,
         activeTask: null,
         upcomingTasks: [],
+        skippedTasks: [],
         dependencies: [],
         dependentTasks: [],
       })
@@ -231,6 +235,33 @@ export function TimelineView({
                 scheduledDate={task.scheduledDate}
               />
             ))}
+
+            {timelineData.skippedTasks && timelineData.skippedTasks.length > 0 && (
+              <div className="mt-6">
+                <button
+                  type="button"
+                  onClick={() => setSkippedSectionCollapsed((c) => !c)}
+                  className="flex items-center gap-2 w-full text-left py-2 px-0 rounded-lg hover:bg-slate-100/80 transition-colors"
+                  aria-expanded={!skippedSectionCollapsed}
+                >
+                  <span
+                    className={`material-symbols-outlined text-slate-500 transition-transform ${skippedSectionCollapsed ? '' : 'rotate-90'}`}
+                  >
+                    expand_more
+                  </span>
+                  <span className="text-sm font-semibold text-slate-600">
+                    Skipped ({timelineData.skippedTasks.length})
+                  </span>
+                </button>
+                {!skippedSectionCollapsed && (
+                  <div className="mt-2">
+                    {timelineData.skippedTasks.map((task) => (
+                      <SkippedTaskCard key={task.id} task={task} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </TimelineRail>
           </>
         )}
