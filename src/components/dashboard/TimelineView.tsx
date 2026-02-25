@@ -19,10 +19,24 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { DashboardTask, TaskGroups } from '@/types/task.types'
 import { TaskTile } from './TaskTile'
 import { TaskDetails } from './TaskDetails'
+
+function flattenTasks(tasks: TaskGroups | null): DashboardTask[] {
+  if (!tasks) return []
+  return [
+    ...tasks.past,
+    ...tasks.overdue,
+    ...tasks.today,
+    ...tasks.tomorrow,
+    ...tasks.weekDays.flatMap((d) => d.tasks),
+    ...tasks.nextWeek,
+    ...tasks.later,
+    ...tasks.unscheduled,
+  ]
+}
 
 /**
  * Props for TimelineView component
@@ -112,6 +126,7 @@ export function TimelineView({
   onAskHarvey,
 }: TimelineViewProps) {
   const [showPast, setShowPast] = useState(false)
+  const allTasks = useMemo(() => flattenTasks(tasks), [tasks])
 
   /**
    * Render a section of tasks
@@ -202,6 +217,7 @@ export function TimelineView({
                       onAskHarvey={onAskHarvey}
                       isLoading={isActionLoading}
                       showHeader={false}
+                      allTasks={allTasks}
                     />
                   </div>
                 )}

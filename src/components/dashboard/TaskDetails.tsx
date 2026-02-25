@@ -65,6 +65,12 @@ interface TaskDetailsProps {
    * Set to false when used inside TaskTile which already shows these
    */
   showHeader?: boolean
+
+  /**
+   * All tasks (e.g. from List View state) to resolve dependency status for the skipped-dependency warning.
+   * Optional; when not provided, the warning is not shown.
+   */
+  allTasks?: DashboardTask[]
 }
 
 /**
@@ -91,6 +97,7 @@ export function TaskDetails({
   isLoading = false,
   className = '',
   showHeader = false,
+  allTasks = [],
 }: TaskDetailsProps) {
   /**
    * Handle checklist item toggle
@@ -103,6 +110,14 @@ export function TaskDetails({
 
   // Check if task is already completed or skipped
   const isActionable = task.status !== 'completed' && task.status !== 'skipped'
+
+  // Skipped dependencies: task IDs this task depends on that have status 'skipped' (from allTasks lookup)
+  const skippedDependencies =
+    task.dependsOn && allTasks.length > 0
+      ? task.dependsOn
+          .map((id) => allTasks.find((t) => t.id === id))
+          .filter((t): t is DashboardTask => t != null && t.status === 'skipped')
+      : []
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -165,6 +180,26 @@ export function TaskDetails({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Skipped dependency warning (List View only; no full Dependencies section) */}
+      {skippedDependencies.length > 0 && (
+        <div className="space-y-1.5">
+          {skippedDependencies.map((dep) => (
+            <p
+              key={dep.id}
+              className="text-sm text-red-500 flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-base shrink-0">
+                warning
+              </span>
+              <span>
+                Heads up — this task depends on &quot;{dep.title}&quot; which was
+                skipped. Make sure you&apos;ve completed it before starting.
+              </span>
+            </p>
+          ))}
         </div>
       )}
 

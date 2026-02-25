@@ -885,24 +885,7 @@ export async function updateTask(
       data: updateData,
     })
 
-    // Cascade skip: when a task is skipped, skip all tasks that depend on it
-    let downstreamSkippedIds: string[] = []
-    if (data.status === 'skipped') {
-      const dependentIds = await getDownstreamDependentTaskIds(taskId, userId)
-      if (dependentIds.length > 0) {
-        await prisma.task.updateMany({
-          where: { id: { in: dependentIds }, userId },
-          data: {
-            status: 'skipped',
-            skippedAt: new Date(),
-            completedAt: null,
-            updatedAt: new Date(),
-          },
-        })
-        downstreamSkippedIds = dependentIds
-        console.log('[TaskService] Cascaded skip to downstream tasks:', dependentIds)
-      }
-    }
+    const downstreamSkippedIds: string[] = []
 
     console.log('[TaskService] Task updated successfully')
 

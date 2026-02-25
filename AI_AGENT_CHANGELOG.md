@@ -50,6 +50,17 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-25 – Skip: remove cascade, add dependency warning in List View
+
+- **Agent / context**: Cursor – Two precise changes: (1) remove cascade skip when a task is skipped; (2) add skipped-dependency warning to List View task detail.
+- **Summary**:
+  - **No cascade skip**: In `updateTask` (task-service.ts), the block that fetched downstream dependents and called `prisma.task.updateMany` to skip them was removed. Replaced with `const downstreamSkippedIds: string[] = []` so the API response shape is unchanged (still returns `downstreamSkippedIds`, always empty). `getDownstreamDependentTaskIds` was kept for potential reuse elsewhere.
+  - **List View dependency warning**: TaskDetails (used for expanded task detail in List View) now accepts an optional `allTasks` prop. When `task.dependsOn` is present and any of those IDs resolve to a task with `status: 'skipped'` in `allTasks`, a red warning line is shown per skipped dependency: “Heads up — this task depends on \"[title]\" which was skipped. Make sure you've completed it before starting.” No new API call; data comes from existing dashboard task state. Dashboard TimelineView flattens `tasks` (TaskGroups) and passes `allTasks` to TaskDetails.
+- **Files touched**: `src/lib/tasks/task-service.ts`, `src/components/dashboard/TaskDetails.tsx`, `src/components/dashboard/TimelineView.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/skip-behavior.md` (new).
+- **Motivation**: Skip applies to a single task only; dependent tasks are not auto-skipped. Users are warned in both List View (TaskDetails) and Timeline View (ActiveTaskCard) when the current task depends on a skipped task.
+- **Risks / notes**: Downstream tasks are no longer auto-skipped; product decision. Timeline View (ActiveTaskCard) dependency warning was already present and unchanged.
+- **Related docs**: `docs/skip-behavior.md`, `docs/timeline-view.md` (Timeline View dependency warning).
+
 ### 2026-02-25 – Persist reschedule-prompt widget answered state across reloads
 
 - **Agent / context**: Cursor – Same fix as completion/skip feedback widgets (2026-02-23): reschedule-prompt widget (after skip, “Yes, reschedule” / “No, leave it skipped”) reappeared after reload once the user had answered.
