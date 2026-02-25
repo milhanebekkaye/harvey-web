@@ -384,18 +384,13 @@ export interface TaskGroups {
   tomorrow: DashboardTask[]
 
   /**
-   * Individual days for the rest of this week (after tomorrow, up to Sunday)
-   * Each entry represents one day with its tasks
+   * Individual days for the next 2–6 days (day after tomorrow through today+6).
+   * Each entry represents one day with its tasks (e.g. MONDAY, TUESDAY).
    */
   weekDays: DaySection[]
 
   /**
-   * Tasks scheduled for next week (Mon-Sun of the following week)
-   */
-  nextWeek: DashboardTask[]
-
-  /**
-   * Tasks scheduled more than 2 weeks out
+   * Tasks scheduled more than 7 days from today (beyond the rolling week window)
    */
   later: DashboardTask[]
 

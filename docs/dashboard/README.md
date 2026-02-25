@@ -9,7 +9,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/ChatSidebar.tsx`
   - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip and reschedule-prompt widgets are not rendered when their stored message has `answered: true`.
 - `src/components/dashboard/TimelineView.tsx`
-  - Renders tasks grouped by date sections (Past → Overdue → Today → Tomorrow → week days → Next Week → Later → Unscheduled). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
+  - Renders tasks grouped by date sections (Overdue, Today, Tomorrow, week days [rolling 7-day], Later, Unscheduled, Past at end). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
 - `src/components/dashboard/TaskTile.tsx`
   - Compact task card, clickable to expand.
 - `src/components/dashboard/TaskDetails.tsx`
@@ -96,7 +96,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `transformToDashboardTask(dbTask)`
   - Converts DB task to UI display format.
 - `groupTasksByDate(tasks, userTimezone)`
-  - Groups tasks into past, overdue, today, tomorrow, weekDays, nextWeek, later, unscheduled. Uses user timezone for “today” so Past (completed from previous days), Overdue, and Today are correct.
+  - Groups tasks into past, overdue, today, tomorrow, weekDays (rolling 7-day window), later, unscheduled. Uses user timezone for “today” so Past (completed from previous days), Overdue, and Today are correct.
 - `getGroupedTasks(userId)`
   - Orchestrates active project lookup + task fetch + transform + grouping.
 - `getTodayProgress(userId)`

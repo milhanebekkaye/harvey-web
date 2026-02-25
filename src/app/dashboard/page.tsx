@@ -196,7 +196,6 @@ export default function DashboardPage() {
         today: data.tasks.today.length,
         tomorrow: data.tasks.tomorrow.length,
         weekDays: data.tasks.weekDays.length,
-        nextWeek: data.tasks.nextWeek.length,
         later: data.tasks.later.length,
         unscheduled: data.tasks.unscheduled.length,
       })
@@ -310,7 +309,6 @@ export default function DashboardPage() {
         tasks.overdue.length +
         tasks.today.length +
         tasks.tomorrow.length +
-        tasks.nextWeek.length +
         tasks.later.length +
         tasks.unscheduled.length +
         tasks.weekDays.reduce((s, d) => s + d.tasks.length, 0)
@@ -708,7 +706,6 @@ function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask |
     ...tasks.today,
     ...tasks.tomorrow,
     ...tasks.weekDays.flatMap((d) => d.tasks),
-    ...tasks.nextWeek,
     ...tasks.later,
     ...tasks.unscheduled,
   ]
@@ -732,7 +729,6 @@ function updateTaskInGroups(
     today: prev.today.map(update),
     tomorrow: prev.tomorrow.map(update),
     weekDays: prev.weekDays.map((d) => ({ ...d, tasks: d.tasks.map(update) })),
-    nextWeek: prev.nextWeek.map(update),
     later: prev.later.map(update),
     unscheduled: prev.unscheduled.map(update),
   }
@@ -755,7 +751,6 @@ function setTasksStatusInGroups(
     today: prev.today.map(update),
     tomorrow: prev.tomorrow.map(update),
     weekDays: prev.weekDays.map((d) => ({ ...d, tasks: d.tasks.map(update) })),
-    nextWeek: prev.nextWeek.map(update),
     later: prev.later.map(update),
     unscheduled: prev.unscheduled.map(update),
   }
@@ -802,7 +797,6 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         ...daySection,
         tasks: daySection.tasks.map(updateTask),
       })),
-      nextWeek: prevTasks.nextWeek.map(updateTask),
       later: prevTasks.later.map(updateTask),
       unscheduled: prevTasks.unscheduled.map(updateTask),
     }

@@ -2,12 +2,13 @@
  * Timeline View Component
  *
  * Displays tasks grouped by date categories (top to bottom):
- * - PAST: Completed tasks from previous days (collapsible, hidden by default)
  * - OVERDUE: Tasks past their scheduled date (pending/skipped)
  * - TODAY: Tasks scheduled for today
  * - TOMORROW: Tasks scheduled for tomorrow
- * - Individual days (WEDNESDAY, etc.) for the rest of the week
- * - NEXT WEEK / LATER / UNSCHEDULED
+ * - Individual days (MONDAY, TUESDAY, etc.) for the next 2–6 days (rolling 7-day window)
+ * - LATER: More than 7 days out
+ * - UNSCHEDULED
+ * - PAST: Completed tasks from previous days (collapsible, at end)
  *
  * Features:
  * - "Show past tasks (N)" toggle at top with smooth expand/collapse
@@ -32,7 +33,6 @@ function flattenTasks(tasks: TaskGroups | null): DashboardTask[] {
     ...tasks.today,
     ...tasks.tomorrow,
     ...tasks.weekDays.flatMap((d) => d.tasks),
-    ...tasks.nextWeek,
     ...tasks.later,
     ...tasks.unscheduled,
   ]
@@ -266,7 +266,6 @@ export function TimelineView({
     tasks.today.length > 0 ||
     tasks.tomorrow.length > 0 ||
     tasks.weekDays.some((day) => day.tasks.length > 0) ||
-    tasks.nextWeek.length > 0 ||
     tasks.later.length > 0 ||
     tasks.unscheduled.length > 0
 
@@ -308,7 +307,16 @@ export function TimelineView({
         </button>
       )}
 
-      {/* Past section – collapsible with smooth transition */}
+      {renderTaskSection('Overdue', tasks.overdue, false, true)}
+      {renderTaskSection('Today', tasks.today)}
+      {renderTaskSection('Tomorrow', tasks.tomorrow)}
+      {tasks.weekDays.map((daySection) =>
+        renderTaskSection(daySection.label, daySection.tasks)
+      )}
+      {renderTaskSection('Later', tasks.later)}
+      {tasks.unscheduled.length > 0 && renderTaskSection('Unscheduled', tasks.unscheduled)}
+
+      {/* Past section – collapsible, at end */}
       {pastCount > 0 && (
         <div
           className="overflow-hidden transition-[max-height] duration-300 ease-out"
@@ -318,16 +326,6 @@ export function TimelineView({
           {renderTaskSection('Past', tasks.past, false, false, true)}
         </div>
       )}
-
-      {renderTaskSection('Overdue', tasks.overdue, false, true)}
-      {renderTaskSection('Today', tasks.today)}
-      {renderTaskSection('Tomorrow', tasks.tomorrow)}
-      {tasks.weekDays.map((daySection) =>
-        renderTaskSection(daySection.label, daySection.tasks)
-      )}
-      {renderTaskSection('Next Week', tasks.nextWeek)}
-      {renderTaskSection('Later', tasks.later)}
-      {tasks.unscheduled.length > 0 && renderTaskSection('Unscheduled', tasks.unscheduled)}
     </div>
   )
 }

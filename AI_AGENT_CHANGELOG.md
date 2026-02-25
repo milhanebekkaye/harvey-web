@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-25 – Timeline grouping: rolling 7-day window (fix Sunday → “Next Week” bug)
+
+- **Agent / context**: Cursor – Fix task grouping so that on Sunday, tasks for Monday–Friday of the coming week appear under named day sections (MONDAY, TUESDAY, etc.) instead of a single “Next Week” group.
+- **Summary**:
+  - **groupTasksByDate** (task-service.ts) now uses a **rolling 7-day window** (today through today+6) for named day sections instead of calendar week boundaries (Sunday end). weekDaysMap is built from `cursorStr = addDaysToDateStr(tomorrowStr, 1)` to `end = addDaysToDateStr(todayStr, 6)`; tasks in that range go into per-day sections; tasks after today+6 go to **later**. Removed **nextWeek** entirely.
+  - **TaskGroups** type: removed `nextWeek`; **later** now means “more than 7 days from today”. weekDays comment updated to “next 2–6 days (day after tomorrow through today+6)”.
+  - **TimelineView**: Removed “Next Week” section. Render order: Overdue, Today, Tomorrow, week days, Later, Unscheduled, Past (collapsible at end). Past toggle remains at top; Past section content moved to end.
+  - Dashboard page, API route, and docs updated to drop nextWeek (findTaskById, updateTaskInGroups, setTasksStatusInGroups, checklist optimistic update, logs, ARCHITECTURE.md, docs/dashboard/README.md).
+- **Files touched**: `src/lib/tasks/task-service.ts`, `src/types/task.types.ts`, `src/app/api/tasks/route.ts`, `src/app/dashboard/page.tsx`, `src/components/dashboard/TimelineView.tsx`, `src/components/dashboard/index.ts`, `ARCHITECTURE.md`, `docs/dashboard/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: On Sunday, `daysUntilSunday === 0` so `weekEndStr === todayStr`; the weekDaysMap loop (tomorrow+1 to weekEndStr) ran zero times, so all future tasks fell into nextWeek with no day labels.
+- **Risks / notes**: Tasks that were previously in “Next Week” (calendar week N+1) and within 7 days of today are now in named day sections; tasks beyond today+6 are in “Later” (previously “Later” was >2 weeks out; now “Later” is >7 days). API response shape loses `tasks.nextWeek`; clients that expect it will see undefined (dashboard and TimelineView updated).
+- **Related docs**: `ARCHITECTURE.md` (task-service, TimelineView), `docs/dashboard/README.md` (grouping, TimelineView).
+
 ### 2026-02-25 – Skip: remove cascade, add dependency warning in List View
 
 - **Agent / context**: Cursor – Two precise changes: (1) remove cascade skip when a task is skipped; (2) add skipped-dependency warning to List View task detail.

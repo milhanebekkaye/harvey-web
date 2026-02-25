@@ -229,32 +229,29 @@ function addDaysToDateStr(dateStr: string, days: number): string {
 /**
  * Group tasks by date category with individual days.
  * Uses the user's timezone for "today" so that past/today/overdue are correct.
+ * Uses a rolling 7-day window (today through today+6) for named day sections,
+ * so that e.g. on Sunday, Monday–Friday of the coming week get day labels.
  *
  * Categories:
  * - past: scheduledDate < today (user TZ) AND status === 'completed'
  * - overdue: scheduledDate < today (user TZ) AND status !== 'completed'
  * - today: scheduledDate === today (user TZ) only
  * - tomorrow: scheduledDate === tomorrow (user TZ)
- * - weekDays: rest of this week (after tomorrow)
- * - nextWeek: next week
- * - later: more than 2 weeks out
+ * - weekDays: day after tomorrow through today+6 (individual named days)
+ * - later: scheduledDate > today+6
  * - unscheduled: no scheduled date
  */
 function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGroups {
   const now = new Date()
   const todayStr = getDateStringInTimezone(now, userTimezone)
   const tomorrowStr = getDateStringInTimezone(new Date(now.getTime() + 24 * 60 * 60 * 1000), userTimezone)
-  // End of current week (Sunday) in user TZ: same calendar week as today
-  const [y, m, d] = todayStr.split('-').map(Number)
-  const dayOfWeek = new Date(y, m - 1, d).getDay() // 0 = Sunday
-  const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek
-  const weekEndStr = addDaysToDateStr(todayStr, daysUntilSunday)
-  const nextWeekEndStr = addDaysToDateStr(weekEndStr, 7)
+  // Rolling 7-day window: day after tomorrow through today+6
+  const weekWindowEndStr = addDaysToDateStr(todayStr, 6)
 
-  // Build weekDays structure for days after tomorrow until end of week
+  // Build weekDays map for days (day after tomorrow) through (today + 6)
   const weekDaysMap: Map<string, DaySection> = new Map()
   let cursorStr = addDaysToDateStr(tomorrowStr, 1)
-  while (cursorStr <= weekEndStr) {
+  while (cursorStr <= weekWindowEndStr) {
     const [cy, cm, cd] = cursorStr.split('-').map(Number)
     const cursorDate = new Date(cy, cm - 1, cd)
     const dayName = getDayName(cursorDate)
@@ -273,7 +270,6 @@ function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGro
     today: [],
     tomorrow: [],
     weekDays: [],
-    nextWeek: [],
     later: [],
     unscheduled: [],
   }
@@ -296,17 +292,13 @@ function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGro
       groups.today.push(task)
     } else if (taskDateStr === tomorrowStr) {
       groups.tomorrow.push(task)
-    } else if (taskDateStr > tomorrowStr && taskDateStr <= weekEndStr) {
+    } else if (taskDateStr > tomorrowStr && taskDateStr <= weekWindowEndStr) {
       const daySection = weekDaysMap.get(taskDateStr)
       if (daySection) {
         daySection.tasks.push(task)
       }
-    } else if (taskDateStr > weekEndStr && taskDateStr <= nextWeekEndStr) {
-      groups.nextWeek.push(task)
-    } else if (taskDateStr > nextWeekEndStr) {
+    } else if (taskDateStr > weekWindowEndStr) {
       groups.later.push(task)
-    } else {
-      groups.nextWeek.push(task)
     }
   }
 
@@ -337,7 +329,6 @@ function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGro
   groups.weekDays.sort((a, b) => a.date.localeCompare(b.date))
   groups.weekDays.forEach((section) => section.tasks.sort(sortByTime))
 
-  groups.nextWeek.sort(sortByDateThenTime)
   groups.later.sort(sortByDateThenTime)
 
   return groups
@@ -521,7 +512,6 @@ export async function getGroupedTasks(
       today: groupedTasks.today.length,
       tomorrow: groupedTasks.tomorrow.length,
       weekDays: groupedTasks.weekDays.map((d) => `${d.label}: ${d.tasks.length}`),
-      nextWeek: groupedTasks.nextWeek.length,
       later: groupedTasks.later.length,
       unscheduled: groupedTasks.unscheduled.length,
     })

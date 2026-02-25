@@ -4,7 +4,7 @@
  * GET /api/tasks
  *
  * Fetches all tasks for the authenticated user's active project.
- * Tasks are grouped by date: OVERDUE, TODAY, TOMORROW, individual days, NEXT_WEEK, LATER, UNSCHEDULED.
+ * Tasks are grouped by date: OVERDUE, TODAY, TOMORROW, individual days (rolling 7-day window), LATER, UNSCHEDULED.
  *
  * Query Parameters:
  * - projectId (optional): Specific project to fetch tasks for
@@ -93,7 +93,6 @@ export async function GET(request: NextRequest) {
       today: tasks.today.length,
       tomorrow: tasks.tomorrow.length,
       weekDays: tasks.weekDays.length,
-      nextWeek: tasks.nextWeek.length,
       later: tasks.later.length,
       unscheduled: tasks.unscheduled.length,
       projectTitle: project.title,

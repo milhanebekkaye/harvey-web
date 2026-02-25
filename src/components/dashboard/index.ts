@@ -90,7 +90,7 @@ export { TaskChatView } from './TaskChatView'
 
 /**
  * TimelineView - Timeline display of tasks grouped by date
- * Past (collapsible), Overdue, Today, Tomorrow, week days, Next Week, Later, Unscheduled
+ * Overdue, Today, Tomorrow, week days (rolling 7-day), Later, Unscheduled, Past (collapsible)
  */
 export { TimelineView } from './TimelineView'
 
