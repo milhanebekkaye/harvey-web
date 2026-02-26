@@ -8,6 +8,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DAYS_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -36,14 +37,9 @@ function getDayName(short: string): string {
   return map[short] ?? short
 }
 
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return iso
-    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(d)
-  } catch {
-    return iso
-  }
+/** Format a date string for display; uses formatDateForDisplay with optional timezone. */
+function formatDate(iso: string, timezone?: string): string {
+  return formatDateForDisplay(iso, timezone)
 }
 
 /** Returns true if the given day string (e.g. "Monday" or "Mon") matches the short label (e.g. "Mon"). */
@@ -168,6 +164,16 @@ export interface ProjectShadowPanelProps {
   harveyConfidence: number
   projectId?: string | null
   onFieldUpdate?: (scope: 'user' | 'project', field: string, value: unknown) => void
+  /** Optional user timezone for date display (e.g. "Europe/Paris"). */
+  userTimezone?: string
+}
+
+function toDateOnlyString(value: unknown): string | null {
+  if (value == null) return null
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  const str = typeof value === 'string' ? value.trim() : String(value)
+  if (!str) return null
+  return str.slice(0, 10)
 }
 
 export function ProjectShadowPanel({
@@ -176,13 +182,26 @@ export function ProjectShadowPanel({
   harveyConfidence,
   projectId = null,
   onFieldUpdate,
+  userTimezone,
 }: ProjectShadowPanelProps) {
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<unknown>(null)
   const [saving, setSaving] = useState(false)
 
   const user = fields?.user ?? {}
-  const project = fields?.project ?? {}
+  const rawProject = fields?.project ?? {}
+  const normalizedTargetDeadline = toDateOnlyString(rawProject.target_deadline)
+  const normalizedScheduleStartDate = toDateOnlyString(
+    (rawProject as { schedule_start_date?: unknown }).schedule_start_date
+  )
+  const project = {
+    ...rawProject,
+    target_deadline: normalizedTargetDeadline,
+    schedule_start_date: normalizedScheduleStartDate,
+  } as typeof rawProject & {
+    target_deadline: string | null
+    schedule_start_date?: string | null
+  }
 
   const startEditing = useCallback((fieldKey: string, currentValue: unknown) => {
     console.log('[ShadowPanel] Start editing:', fieldKey, currentValue)
@@ -453,17 +472,17 @@ export function ProjectShadowPanel({
             )}
           />
         )}
-        {(project as { schedule_start_date?: Date | string | null }).schedule_start_date != null &&
-          (project as { schedule_start_date?: Date | string | null }).schedule_start_date !== '' && (
+        {project.schedule_start_date != null && project.schedule_start_date !== '' && (
           <EditableField
             scope="project"
             fieldKey="schedule_start_date"
             label="Start date"
-            value={(project as { schedule_start_date?: Date | string | null }).schedule_start_date}
+            value={project.schedule_start_date}
             renderDisplay={(v) => (
               <p className="text-gray-900">
                 {formatDate(
-                  typeof v === 'string' ? v : v instanceof Date ? v.toISOString().slice(0, 10) : String(v)
+                  typeof v === 'string' ? v : v instanceof Date ? v.toISOString().slice(0, 10) : String(v),
+                  userTimezone
                 )}
               </p>
             )}
@@ -493,7 +512,7 @@ export function ProjectShadowPanel({
             fieldKey="target_deadline"
             label="Target deadline"
             value={project.target_deadline}
-            renderDisplay={(v) => <p className="text-gray-900">{formatDate(String(v))}</p>}
+            renderDisplay={(v) => <p className="text-gray-900">{formatDate(String(v), userTimezone)}</p>}
             renderEdit={(v, onChange) => (
               <input
                 type="date"
@@ -504,7 +523,10 @@ export function ProjectShadowPanel({
                       ? v.toISOString().slice(0, 10)
                       : ''
                 }
-                onChange={(e) => onChange(e.target.value ? new Date(e.target.value).toISOString() : '')}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  onChange(raw ? new Date(raw + 'T12:00:00Z') : null)
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B5CF6] focus:border-[#8B5CF6]"
                 autoFocus
               />
@@ -552,7 +574,7 @@ export function ProjectShadowPanel({
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {phase.deadline != null && phase.deadline !== '' && (
-                          <span className="text-xs text-gray-500">{formatDate(phase.deadline)}</span>
+                          <span className="text-xs text-gray-500">{formatDate(phase.deadline, userTimezone)}</span>
                         )}
                         {phase.status && phase.status !== 'future' && (
                           <span

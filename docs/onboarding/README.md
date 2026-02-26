@@ -1,7 +1,7 @@
 # Onboarding (Chat Intake, Discussion Storage)
 
 ## What this feature is about
-Onboarding is a chat-style intake where Harvey gathers project details and scheduling constraints. Harvey is guided (via the onboarding system prompt) to naturally surface motivation, technical background and tools, phases vs single deadline, what success looks like and by when, and how long the user can focus in one sitting — these topics emerge in conversation rather than as a checklist. Messages are stored in a `Discussion` record and later used to generate tasks and schedules; at schedule generation, a single extraction call populates both scheduling constraints and Project/User enrichment from the conversation.
+Onboarding is a chat-style intake where Harvey gathers project details and scheduling constraints. When Harvey needs a **deadline** or **schedule start date**, he asks the question alone then triggers a **date picker widget** in the chat; the user selects a date and it is sent as "My deadline is YYYY-MM-DD" (or "My start date is YYYY-MM-DD"). Extraction and storage use **noon UTC** for date-only values to avoid off-by-one display in timezones ahead of UTC. Harvey is guided (via the onboarding system prompt) to naturally surface motivation, technical background and tools, phases vs single deadline, what success looks like and by when, and how long the user can focus in one sitting — these topics emerge in conversation rather than as a checklist. Messages are stored in a `Discussion` record and later used to generate tasks and schedules; at schedule generation, a single extraction call populates both scheduling constraints and Project/User enrichment from the conversation.
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/page.tsx`
@@ -26,6 +26,12 @@ Onboarding is a chat-style intake where Harvey gathers project details and sched
   - Reusable header section component.
 - `src/components/onboarding/index.ts`
   - Barrel exports for onboarding components.
+- `src/components/onboarding/DatePickerWidget.tsx`
+  - In-chat date picker (deadline / start_date). Renders when `getShowDatePickerInvocation(messages)` finds a `show_date_picker` tool invocation in the last 5 assistant messages (supports multiple AI SDK part types), or when a **text fallback** detects that Harvey is *asking* for a date: the last assistant message must contain a `?` and a question-pattern (e.g. "when/what ... deadline", "when ... start") so confirmations like "March 15 is your deadline" do not trigger the widget. Fallback is skipped if the extracted project in the shadow panel already has `target_deadline` or `schedule_start_date`, so the widget never re-appears after a date has been collected. User selects date and confirms; answer is sent as a user message and extraction persists it. Widget state is keyed by message id (`answeredWidgetIds`).
+- `src/components/onboarding/OnboardingErrorBoundary.tsx`
+  - Error boundary wrapping the Shadow Panel so a panel error does not crash the whole page.
+- `src/lib/utils/date-utils.ts`
+  - `toNoonUTC(dateStr)`: parse YYYY-MM-DD as noon UTC. `formatDateForDisplay(date, timezone?)`: format for UI with optional timezone.
 - `src/app/api/chat/route.ts`
   - Main onboarding chat API that calls Claude and persists messages.
 - `src/app/api/discussions/[projectId]/route.ts`

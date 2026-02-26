@@ -16,6 +16,8 @@ import { anthropic, CLAUDE_CONFIG } from '@/lib/ai/claude-client'
 import { updateUser } from '@/lib/users/user-service'
 import { updateProject } from '@/lib/projects/project-service'
 import { computeMissingFields } from '@/lib/onboarding/missing-fields'
+import { getDateStringInTimezone } from '@/lib/timezone'
+import { toNoonUTC } from '@/lib/utils/date-utils'
 
 const EXTRACTION_PROMPT = `You are extracting structured data from a conversation between a user and Harvey (an AI project coach).
 
@@ -73,6 +75,7 @@ Field-Specific Guidance:
 - energy_peak: (user) When they are most productive. Extract from phrases like "I'm a night owl", "I hit my stride in the evenings", "I'm sharpest in the morning". Values: "morning" (05:00–11:59), "afternoon" (12:00–17:59), or "evening" (18:00–23:59). Omit or null if not mentioned.
 - phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
 - schedule_start_date: (project) When they want to start working on this schedule. Parse natural language into ISO date YYYY-MM-DD: "today" → today's date; "tomorrow" → next day; "next Monday" / "Monday" → next occurrence of that weekday; "February 20", "Feb 20 2026" → parsed date. Use the conversation context for "today". Null if not mentioned.
+- target_deadline: The user's deadline is a specific calendar day, NOT a month+year combination. "March 27" means the 27th day of March (e.g. 2026-03-27), never the year 2027. "March 2027" is not a valid deadline — if the user says this, treat it as the first day of that month (2027-03-01). Always output a full YYYY-MM-DD date, never just a year or a month. If the date is ambiguous, prefer the nearest future occurrence.
 
 completion_confidence: A number between 0 and 75 ONLY. Never return 80 or above.
 
@@ -85,17 +88,25 @@ IMPORTANT: completion_confidence must never increase by more than 15 points comp
 The previous completion_confidence was: {{PREVIOUS_CONFIDENCE}}
 So the maximum you can assign this turn is: {{MAX_CONFIDENCE}}
 
+{{TODAY_LINE}}
+
 Conversation:
 `
 
-/** Build extraction prompt with previous-confidence cap injected. Ceiling is 75 (Haiku never returns 80+). */
-function buildExtractionPrompt(previousConfidence: number): string {
+/** Build extraction prompt with previous-confidence cap and optional today (user TZ) injected. */
+function buildExtractionPrompt(previousConfidence: number, todayInUserTZ?: string): string {
   const prev = Math.min(75, Math.max(0, Math.round(previousConfidence)))
   const maxAllowed = Math.min(75, prev + 15)
-  return EXTRACTION_PROMPT.replace('{{PREVIOUS_CONFIDENCE}}', String(prev)).replace(
+  let out = EXTRACTION_PROMPT.replace('{{PREVIOUS_CONFIDENCE}}', String(prev)).replace(
     '{{MAX_CONFIDENCE}}',
     String(maxAllowed)
   )
+  const todayLine =
+    todayInUserTZ != null
+      ? `Today's date (user timezone): ${todayInUserTZ}\nUse this to resolve any relative dates.\n\n`
+      : ''
+  out = out.replace('{{TODAY_LINE}}', todayLine)
+  return out
 }
 
 function parseIfString(value: unknown): unknown {
@@ -118,11 +129,16 @@ function parseTimeToMinutes(timeStr: string): number | null {
   return h * 60 + m
 }
 
-/** Parse ISO date string to Date; return null if invalid (avoids Prisma "Invalid Date" error). */
+/** Parse ISO date string to Date; return null if invalid. Uses noon UTC for YYYY-MM-DD to avoid off-by-one. */
 function parseValidDate(value: unknown): Date | null {
   if (value == null) return null
   const str = typeof value === 'string' ? value.trim() : String(value)
   if (!str) return null
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(str)) {
+    const dateOnly = str.slice(0, 10)
+    const d = toNoonUTC(dateOnly)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
   const d = new Date(str)
   return Number.isNaN(d.getTime()) ? null : d
 }
@@ -285,9 +301,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // 3. Verify project ownership
+    // 3. Verify project ownership and load user for timezone
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: user.id },
+      include: { user: true },
     })
     if (!project) {
       return NextResponse.json(
@@ -295,6 +312,8 @@ export async function POST(request: Request) {
         { status: 403 }
       )
     }
+    const userTimezone = (project.user as { timezone?: string })?.timezone ?? 'Europe/Paris'
+    const todayInUserTZ = getDateStringInTimezone(new Date(), userTimezone)
 
     // 4. Load onboarding discussion and build conversation text
     const discussion = await getOnboardingDiscussion(projectId, user.id)
@@ -312,8 +331,8 @@ export async function POST(request: Request) {
 
     console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length, '| previousConfidence:', previousConfidence)
 
-    // 5. Call Haiku with extraction prompt (includes previous-confidence cap)
-    const extractionPromptWithCap = buildExtractionPrompt(previousConfidence)
+    // 5. Call Haiku with extraction prompt (includes previous-confidence cap and today in user TZ)
+    const extractionPromptWithCap = buildExtractionPrompt(previousConfidence, todayInUserTZ)
     const response = await anthropic.messages.create({
       model: CLAUDE_CONFIG.model,
       max_tokens: 2000,

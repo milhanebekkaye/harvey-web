@@ -4,6 +4,7 @@ import type { ChecklistItem, TaskLabel } from '@/types/task.types'
 import type { TimelineActiveTask, TimelineDependencyTask } from '@/types/timeline.types'
 import { HarveysTip } from '@/components/timeline/HarveysTip'
 import { SuccessCriteriaList } from '@/components/timeline/SuccessCriteriaList'
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 interface ActiveTaskCardProps {
   task: TimelineActiveTask
@@ -13,20 +14,18 @@ interface ActiveTaskCardProps {
   onSkip: (taskId: string) => void | Promise<void>
   onAskHarvey: (taskId: string, title: string, label: string) => void | Promise<void>
   onCriteriaChange: (criteria: ChecklistItem[]) => void | Promise<void>
+  timezone?: string
 }
 
 const FALLBACK_TIP = 'Break this task into the first small step and start there.'
 
-function formatDueDate(scheduledDate: string | Date): string {
+function formatDueDate(scheduledDate: string | Date, timezone?: string): string {
   const parsed = new Date(scheduledDate)
   if (Number.isNaN(parsed.getTime())) {
     return ''
   }
-
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
+  const full = formatDateForDisplay(parsed, timezone)
+  return full.replace(/,?\s*\d{4}$/, '').trim()
 }
 
 function getDependencyIcon(status: TimelineDependencyTask['status']): string {
@@ -67,8 +66,9 @@ export function ActiveTaskCard({
   onSkip,
   onAskHarvey,
   onCriteriaChange,
+  timezone,
 }: ActiveTaskCardProps) {
-  const dueDate = formatDueDate(task.scheduledDate)
+  const dueDate = formatDueDate(task.scheduledDate, timezone)
   const label = normalizeLabel(task.label)
   const icon = getCategoryIcon(label)
   const [tip, setTip] = useState('')

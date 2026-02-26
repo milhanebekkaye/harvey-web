@@ -28,7 +28,10 @@ import {
   OnboardingCTA,
   ChatInput,
   ProjectShadowPanel,
+  DatePickerWidget,
+  OnboardingErrorBoundary,
 } from '@/components/onboarding'
+import type { DatePickerField } from '@/components/onboarding'
 
 // Import types and helper functions for messages
 import type { ChatMessage } from '@/types/chat.types'
@@ -62,6 +65,59 @@ function getTextFromUIMessage(msg: UIMessage): string {
     .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
     .map((p) => p.text)
     .join('')
+}
+
+/** Check if a user message content looks like a date-picker answer (so we treat widget as answered on restore). */
+function isDatePickerAnswer(content: string): boolean {
+  const t = content.trim().toLowerCase()
+  return t.startsWith('my deadline is ') || t.startsWith('my start date is ')
+}
+
+/** Extract show_date_picker invocation from recent assistant messages. Searches last 5 assistant messages and checks multiple AI SDK part formats. */
+function getShowDatePickerInvocation(
+  messages: UIMessage[]
+): { messageId: string; field: DatePickerField; label: string; min_date: string } | null {
+  const recentAssistant = messages
+    .filter((m) => m.role === 'assistant')
+    .slice(-5)
+    .reverse()
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10)
+
+  for (const msg of recentAssistant) {
+    const parts = (msg as { parts?: unknown[] }).parts ?? []
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[getShowDatePickerInvocation] checking msg', msg.id, 'parts types:', parts.map((p: { type?: string }) => p.type))
+    }
+    for (const part of parts) {
+      const p = part as {
+        type?: string
+        toolName?: string
+        toolInvocation?: { toolName?: string; args?: Record<string, unknown> }
+        args?: Record<string, unknown>
+        input?: Record<string, unknown>
+      }
+      const isShowDatePicker =
+        p.type === 'tool-invocation' ||
+        p.type === 'tool_use' ||
+        p.type === 'tool-show_date_picker' ||
+        (typeof p.type === 'string' && p.type.startsWith('tool') && p.toolName === 'show_date_picker') ||
+        p.toolInvocation?.toolName === 'show_date_picker'
+      if (!isShowDatePicker) continue
+      const args = p.args ?? p.input ?? p.toolInvocation?.args ?? {}
+      const field = args.field === 'deadline' || args.field === 'start_date' ? (args.field as DatePickerField) : 'deadline'
+      const label = typeof args.label === 'string' ? args.label : (field === 'deadline' ? 'Select your project deadline' : 'Select your schedule start date')
+      const min_date = typeof args.min_date === 'string' ? args.min_date : field === 'deadline' ? tomorrowStr : todayStr
+      return {
+        messageId: msg.id ?? '',
+        field,
+        label,
+        min_date,
+      }
+    }
+  }
+  return null
 }
 
 /** Convert UIMessage to ChatMessage for display */
@@ -203,6 +259,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
   const [maxHarveyConfidence, setMaxHarveyConfidence] = useState(0)
   const [missingBlockingFields, setMissingBlockingFields] = useState<string[]>([])
   const [extractionLoading, setExtractionLoading] = useState(false)
+  const [answeredWidgetIds, setAnsweredWidgetIds] = useState<Set<string>>(new Set())
   const harveyConfidenceRef = useRef(0)
   const maxHarveyConfidenceRef = useRef(0)
   useEffect(() => {
@@ -394,6 +451,17 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     setShowConfirmModal(false)
   }
 
+  /** Date picker: mark widget answered immediately, then append user message (onboarding only). */
+  const handleDateSelected = useCallback(
+    (messageId: string, field: DatePickerField, dateStr: string) => {
+      setAnsweredWidgetIds((prev) => new Set(prev).add(messageId))
+      const label = field === 'deadline' ? 'deadline' : 'start date'
+      const content = `My ${label} is ${dateStr}`
+      sendMessage({ text: content })
+    },
+    [sendMessage]
+  )
+
   const fieldCompleteness = calculateFieldCompleteness(shadowFields)
   const canBuild =
     fieldCompleteness >= 40 && (missingBlockingFields?.length ?? 0) === 0
@@ -405,6 +473,57 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
   // ===== DERIVED STATE =====
 
   const displayMessages: ChatMessage[] = messages.map(uiMessageToChatMessage)
+
+  const lastMessage = messages[messages.length - 1]
+  const lastAssistantMessage = [...messages].reverse().find((m) => m.role === 'assistant')
+  const datePickerInvocation = getShowDatePickerInvocation(messages)
+
+  if (process.env.NODE_ENV === 'development') {
+    messages.forEach((msg) => {
+      if (msg.role === 'assistant') {
+        console.log('[onboarding/page] assistant message id:', msg.id)
+        console.log('[onboarding/page] message parts:', JSON.stringify((msg as { parts?: unknown }).parts ?? [], null, 2))
+        console.log('[onboarding/page] message content type:', typeof (msg as { content?: unknown }).content)
+      }
+    })
+    console.log('[onboarding/page] datePickerInvocation:', datePickerInvocation)
+    console.log('[onboarding/page] lastAssistantMessage id:', lastAssistantMessage?.id)
+  }
+
+  const lastAssistantText = lastAssistantMessage ? getTextFromUIMessage(lastAssistantMessage) : ''
+  const hasUserSentMessage = messages.some((m) => m.role === 'user')
+  // Only match when Harvey is asking a question about dates (question mark + date-related term). Skip fallback on initial load (no user message yet).
+  const isAskingAboutDeadline =
+    hasUserSentMessage &&
+    lastAssistantText.includes('?') &&
+    /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish/i.test(lastAssistantText)
+  const isAskingAboutStartDate =
+    hasUserSentMessage &&
+    lastAssistantText.includes('?') &&
+    /when.*start|what.*start|start.*when|when.*begin|when.*kick/i.test(lastAssistantText)
+  const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const projectData = shadowFields?.project as { target_deadline?: unknown; schedule_start_date?: unknown } | undefined
+  const deadlineAlreadySet = !!(projectData?.target_deadline != null && projectData?.target_deadline !== '')
+  const startDateAlreadySet = !!(projectData?.schedule_start_date != null && projectData?.schedule_start_date !== '')
+  let forcedDatePickerField: DatePickerField | null = null
+  if (!datePickerInvocation) {
+    if (!deadlineAlreadySet && isAskingAboutDeadline) forcedDatePickerField = 'deadline'
+    else if (!startDateAlreadySet && isAskingAboutStartDate) forcedDatePickerField = 'start_date'
+  }
+
+  const effectiveDatePickerConfig =
+    datePickerInvocation ??
+    (forcedDatePickerField && lastMessage?.id
+      ? {
+          messageId: lastMessage.id,
+          field: forcedDatePickerField,
+          label: forcedDatePickerField === 'deadline' ? 'Select your project deadline' : 'Select your schedule start date',
+          min_date: forcedDatePickerField === 'deadline' ? tomorrowStr : todayStr,
+        }
+      : null)
+  const datePickerAnswered = effectiveDatePickerConfig ? answeredWidgetIds.has(effectiveDatePickerConfig.messageId) : false
+  const showDatePickerWidget = effectiveDatePickerConfig != null && !datePickerAnswered
 
   /** Build Schedule button: disabled / Stage 1 (confirm) / Stage 2 (direct). */
   const BuildScheduleButton = () => {
@@ -524,6 +643,18 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
                 userInitial={USER_INFO.initial}
               />
 
+              {showDatePickerWidget && effectiveDatePickerConfig && (
+                <DatePickerWidget
+                  field={effectiveDatePickerConfig.field}
+                  label={effectiveDatePickerConfig.label}
+                  minDate={effectiveDatePickerConfig.min_date}
+                  onSelect={(dateStr) =>
+                    handleDateSelected(effectiveDatePickerConfig.messageId, effectiveDatePickerConfig.field, dateStr)
+                  }
+                  answered={datePickerAnswered}
+                />
+              )}
+
               {isTyping && (
                 <div className="flex items-center gap-2 text-[#8B5CF6]/60 text-sm">
                   <span className="material-symbols-outlined text-lg animate-pulse">
@@ -549,7 +680,8 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
             <ChatInput
               onSend={handleSendMessage}
               isLoading={isTyping}
-              placeholder="Type your answer..."
+              disabled={showDatePickerWidget}
+              placeholder={showDatePickerWidget ? 'Pick a date above to continue' : 'Type your answer...'}
               autoFocus
             />
           )}
@@ -558,21 +690,27 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
         {/* Shadow panel – 60% */}
         <div className="flex w-[60%] min-w-0 flex-col">
           <div className="flex-1 min-h-0 overflow-hidden">
-            <ProjectShadowPanel
-              fields={shadowFields}
-              isLoading={extractionLoading}
-              harveyConfidence={maxHarveyConfidence}
-              projectId={projectId}
-              onFieldUpdate={(scope, field, value) => {
-                setShadowFields((prev) => {
-                  if (!prev) return prev
-                  if (scope === 'user') {
-                    return { ...prev, user: { ...prev.user, [field]: value } }
-                  }
-                  return { ...prev, project: { ...prev.project, [field]: value } }
-                })
-              }}
-            />
+            <OnboardingErrorBoundary
+              fallback={
+                <div className="p-4 text-sm text-gray-500">Panel error — please refresh</div>
+              }
+            >
+              <ProjectShadowPanel
+                fields={shadowFields}
+                isLoading={extractionLoading}
+                harveyConfidence={maxHarveyConfidence}
+                projectId={projectId}
+                onFieldUpdate={(scope, field, value) => {
+                  setShadowFields((prev) => {
+                    if (!prev) return prev
+                    if (scope === 'user') {
+                      return { ...prev, user: { ...prev.user, [field]: value } }
+                    }
+                    return { ...prev, project: { ...prev.project, [field]: value } }
+                  })
+                }}
+              />
+            </OnboardingErrorBoundary>
           </div>
           <div className="shrink-0 border-t border-gray-200/80 bg-[#FAF9F6] p-4">
             <BuildScheduleButton />

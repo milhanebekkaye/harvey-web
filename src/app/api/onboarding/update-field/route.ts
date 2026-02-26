@@ -12,6 +12,7 @@ import { updateUser } from '@/lib/users/user-service'
 import { updateProject } from '@/lib/projects/project-service'
 import type { UpdateUserData } from '@/types/user.types'
 import type { UpdateProjectData } from '@/lib/projects/project-service'
+import { toNoonUTC } from '@/lib/utils/date-utils'
 
 export async function PATCH(request: Request) {
   try {
@@ -58,7 +59,13 @@ export async function PATCH(request: Request) {
     } else {
       let projectValue: unknown = value
       if ((field === 'target_deadline' || field === 'schedule_start_date') && value != null) {
-        projectValue = typeof value === 'string' ? new Date(value) : value
+        if (typeof value === 'string') {
+          projectValue = /^\d{4}-\d{2}-\d{2}(T|$)/.test(value.trim())
+            ? toNoonUTC(value.trim().slice(0, 10))
+            : new Date(value)
+        } else {
+          projectValue = value
+        }
       }
       const payload: UpdateProjectData = { [field]: projectValue as never }
       const result = await updateProject(projectId, authUser.id, payload)

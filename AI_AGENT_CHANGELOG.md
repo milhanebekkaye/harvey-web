@@ -50,6 +50,51 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-26 – Date picker: don’t show widget on initial load (require at least one user message)
+
+- **Agent / context**: Cursor – Bugfix: the date picker widget was appearing at onboarding start before the user sent any message (and the chat input was disabled).
+- **Summary**: The text fallback for showing the date picker now runs only when the user has sent at least one message (`hasUserSentMessage = messages.some(m => m.role === 'user')`). `isAskingAboutDeadline` and `isAskingAboutStartDate` both require `hasUserSentMessage`, so the widget never appears on the initial Harvey greeting.
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Prevent false show of the date widget and disabled input before any conversation.
+
+### 2026-02-26 – Date picker fallback: question-intent-only regex + skip when date already in shadow
+
+- **Agent / context**: Cursor – Fix false positives where the date picker text fallback triggered on Harvey’s confirmation messages (e.g. “March 15 is your deadline”) instead of only when Harvey is actively asking for a date.
+- **Summary**:
+  - **Question-intent-only fallback** (`src/app/onboarding/page.tsx`): `isAskingAboutDeadline` and `isAskingAboutStartDate` now require (1) a `?` in the last assistant message and (2) a question-pattern regex (e.g. `when.*deadline`, `what.*deadline`, `when.*start`, `what.*start`). Confirmation phrases like “March 15 is your deadline” no longer match.
+  - **Shadow-panel guards**: If extracted project data already has `target_deadline` or `schedule_start_date` (from `shadowFields.project`), the fallback does not show the deadline or start-date picker respectively, so the widget never re-appears after a date has been collected.
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/onboarding/README.md`.
+- **Motivation**: Avoid showing the date picker on confirmations and avoid re-showing it once the shadow panel already has the date.
+- **Risks / notes**: None.
+- **Related docs**: `docs/onboarding/README.md` (Date collection, text fallback).
+
+### 2026-02-26 – Date picker widget debugging: server/client logs, stronger prompt, robust detection, text fallback
+
+- **Agent / context**: Cursor – Debugging why the date picker never appeared during onboarding (Harvey asked for deadline in plain text but did not call `show_date_picker`). Added diagnostic logging, hardened the tool-calling prompt, made tool-invocation detection robust across AI SDK part types, and added a text-based fallback so the widget appears even when the model skips the tool.
+- **Summary**:
+  - **Server logging** (`src/app/api/chat/route.ts`): When `context === 'onboarding'`, before `streamText()`: log onboarding context, `Object.keys(tools)`, `todayISO`/`tomorrowISO`, and whether system prompt contains `DATE COLLECTION RULES` and `show_date_picker`. In `onFinish`: log `responseMessage.parts` (JSON) and whether any part has `type` including `'tool'`.
+  - **Client logging** (`src/app/onboarding/page.tsx`): In development, for each assistant message log `id`, `parts` (JSON), and `content` type; each render log `datePickerInvocation` and `lastAssistantMessage?.id`. Inside `getShowDatePickerInvocation`, log each checked message id and part types.
+  - **Stronger prompt** (`src/lib/ai/prompts.ts`): Replaced "DATE COLLECTION RULES" with **CRITICAL DATE COLLECTION RULES**: RULE 1–2 = must call `show_date_picker` in the **same** response as the deadline/start-date question; RULE 3 = ask date question alone; RULE 4 = if user already says "My deadline is YYYY-MM-DD", do not call tool; RULE 5 = never ask user to type a date; added EXAMPLE (correct) and WRONG examples.
+  - **Robust tool detection** (`src/app/onboarding/page.tsx`): `getShowDatePickerInvocation(messages)` now takes the full messages array, searches the **last 5** assistant messages (reverse order), and treats a part as the date-picker tool if `type` is `tool-invocation`, `tool_use`, `tool-show_date_picker`, or `type.startsWith('tool') && toolName === 'show_date_picker'`, or `toolInvocation?.toolName === 'show_date_picker'`. Args taken from `part.args ?? part.input ?? part.toolInvocation?.args`. Returns `{ messageId, field, label, min_date }` for consistent widget/answered state.
+  - **Text fallback**: If there is no tool invocation and the widget is not yet answered, the last assistant message text is scanned for deadline phrases (`deadline|finish by|target date|when.*done|when.*complete|due date`) or start-date phrases (`when.*start|start date|begin|kick off`). If matched, a synthetic `effectiveDatePickerConfig` is built (messageId = last message id, field = `deadline` or `start_date`, default label and min_date) so the date picker widget is shown anyway.
+- **Files touched**: `src/app/api/chat/route.ts`, `src/lib/ai/prompts.ts`, `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Diagnose where the flow broke (tool not passed vs model not calling vs frontend not parsing) and ensure users always see the date picker when Harvey asks for a date, even if the model omits the tool call.
+- **Risks / notes**: Console logs are verbose in development; consider removing or gating once root cause is confirmed. Fallback regex may false-positive on unrelated mentions of "deadline" or "start date"; refine if needed.
+- **Related docs**: `ARCHITECTURE.md` (onboarding chat tools), `docs/onboarding/README.md` (Date collection).
+
+### 2026-02-26 – Date picker widget in onboarding + UTC midnight fix + Shadow panel hardening
+
+- **Agent / context**: Cursor – Implementation of in-chat date picker for deadline/start date, UTC noon convention for date-only values, extraction disambiguation (March 27 vs 2027), and Shadow panel error boundary + date normalization.
+- **Summary**:
+  - **Date picker (onboarding only)**: Chat API defines `show_date_picker` tool (field: deadline | start_date, label, min_date). Onboarding system prompt includes DATE COLLECTION RULES: Harvey asks the date question alone then calls the tool; exception when user sends "My deadline is YYYY-MM-DD". Today/tomorrow in user TZ are injected into the prompt. Frontend: `DatePickerWidget` component (chat bubble style, native `<input type="date">`, Confirm button). Onboarding page detects `show_date_picker` in last assistant message parts, renders widget; state `answeredWidgetIds: Set<string>` (keyed by message id); on select, add message id to set **before** calling `sendMessage`, then send "My deadline is YYYY-MM-DD" (or start date). Widget greys out when answered. Scope: onboarding only; post-onboarding date changes out of scope.
+  - **UTC midnight fix**: New `src/lib/utils/date-utils.ts`: `toNoonUTC(dateStr)` (YYYY-MM-DD → Date at noon UTC), `formatDateForDisplay(date, timezone?)`. Replaced raw `new Date("YYYY-MM-DD")` with `toNoonUTC` in extract route `parseValidDate`, update-field route for target_deadline/schedule_start_date. Replaced date display with `formatDateForDisplay` in ProjectShadowPanel, EditableField, UpcomingTaskCard, SkippedTaskCard, ActiveTaskCard, CompletedTaskCard (optional `timezone` prop).
+  - **Shadow panel**: Normalize `target_deadline` and `schedule_start_date` at top of component (Date → YYYY-MM-DD string, ISO string → slice(0,10)). `target_deadline` onChange now uses `new Date(raw + 'T12:00:00Z')` (same as schedule_start_date). Wrapped panel in `OnboardingErrorBoundary` (class component, fallback "Panel error — please refresh").
+  - **Extraction**: Load project with user; inject "Today's date (user timezone): YYYY-MM-DD" into extraction prompt. Added target_deadline disambiguation: "March 27" = 27th day of March (e.g. 2026-03-27), never year 2027; "March 2027" → 2027-03-01; always full YYYY-MM-DD; prefer nearest future if ambiguous.
+- **Files touched**: `src/lib/utils/date-utils.ts` (new), `src/components/onboarding/DatePickerWidget.tsx` (new), `src/components/onboarding/OnboardingErrorBoundary.tsx` (new), `src/app/api/chat/route.ts`, `src/lib/ai/prompts.ts`, `src/app/onboarding/page.tsx`, `src/app/api/onboarding/extract/route.ts`, `src/app/api/onboarding/update-field/route.ts`, `src/components/onboarding/ProjectShadowPanel.tsx`, `src/components/onboarding/index.ts`, `src/components/dashboard/EditableField.tsx`, `src/components/timeline/UpcomingTaskCard.tsx`, `src/components/timeline/SkippedTaskCard.tsx`, `src/components/timeline/ActiveTaskCard.tsx`, `src/components/timeline/CompletedTaskCard.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Eliminate LLM date parsing errors by collecting deadline/start date via a calendar widget; fix off-by-one display in timezones ahead of UTC (date-only stored at noon UTC); fix "March 27" vs "March 2027" ambiguity; prevent Shadow panel edit crash and normalize date types.
+- **Risks / notes**: Tool invocation part type may vary by AI SDK version (e.g. `tool-show_date_picker` vs `tool-invocation` with toolName). On restore, date picker widget only appears if the last message has a tool invocation (tool calls are not yet persisted in discussion messages). Timeline/dashboard callers that have user timezone can pass `timezone` for consistent display.
+- **Related docs**: `ARCHITECTURE.md` (onboarding chat tools, date conventions), `docs/onboarding/README.md` (Date collection).
+
 ### 2026-02-25 – Onboarding: fix new project created on every message (do not overwrite projectIdRef with null)
 
 - **Agent / context**: Cursor – Bugfix: onboarding was creating a new project and discussion after every message because the effect that syncs `projectIdRef` with `initialProjectId` was overwriting the ref with `null` whenever it ran with `initialProjectId === null`, wiping the projectId set by `onData` from the first response.

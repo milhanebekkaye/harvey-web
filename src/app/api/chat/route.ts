@@ -36,8 +36,10 @@ import {
   getOnboardingDiscussion,
   appendMessages,
 } from '@/lib/discussions/discussion-service'
-import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream } from 'ai'
+import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoothStream, tool } from 'ai'
+import { z } from 'zod'
 import { anthropic } from '@ai-sdk/anthropic'
+import { getDateStringInTimezone } from '@/lib/timezone'
 import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
 import { computeMissingFields, buildMissingFieldsGuidance } from '@/lib/onboarding/missing-fields'
 import { prisma } from '@/lib/db/prisma'
@@ -191,13 +193,11 @@ export async function POST(request: NextRequest) {
     }))
 
     // ===== STEP 4b: Build onboarding system prompt with date + known info (when onboarding) =====
-    const todayFormatted = new Date().toLocaleDateString('en-US', {
-      timeZone: 'Europe/Paris',
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
+    const defaultTimezone = 'Europe/Paris'
+    const now = new Date()
+    let userTimezone = defaultTimezone
+    let todayISO: string | undefined
+    let tomorrowISO: string | undefined
     let knownInfo = 'KNOWN INFORMATION SO FAR:\n(Starting fresh - no information extracted yet)\n'
     let missingFieldsGuidance = 'You have no information yet. Start by understanding their project.'
     if (context === 'onboarding' && currentProjectId) {
@@ -206,6 +206,10 @@ export async function POST(request: NextRequest) {
         include: { user: true },
       })
       if (projectWithUser) {
+        userTimezone = (projectWithUser.user as { timezone?: string })?.timezone ?? defaultTimezone
+        todayISO = getDateStringInTimezone(now, userTimezone)
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+        tomorrowISO = getDateStringInTimezone(tomorrow, userTimezone)
         knownInfo = generateKnownInfoSummary(
           projectWithUser as unknown as Record<string, unknown>,
           projectWithUser.user as unknown as Record<string, unknown>
@@ -224,25 +228,62 @@ export async function POST(request: NextRequest) {
         missingFieldsGuidance = buildMissingFieldsGuidance(blocking, enriching)
       }
     }
+    if (context === 'onboarding' && (todayISO == null || tomorrowISO == null)) {
+      todayISO = getDateStringInTimezone(now, userTimezone)
+      tomorrowISO = getDateStringInTimezone(new Date(now.getTime() + 24 * 60 * 60 * 1000), userTimezone)
+    }
+    const todayFormatted = now.toLocaleDateString('en-US', {
+      timeZone: userTimezone,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
     const systemPrompt = ONBOARDING_SYSTEM_PROMPT(
       todayFormatted,
       knownInfo,
       missingFieldsGuidance,
-      typeof currentConfidence === 'number' ? Math.min(100, Math.max(0, Math.round(currentConfidence))) : 0
+      typeof currentConfidence === 'number' ? Math.min(100, Math.max(0, Math.round(currentConfidence))) : 0,
+      todayISO,
+      tomorrowISO
     )
 
+    // ===== STEP 4c: Onboarding-only tool for date picker =====
+    const showDatePickerTool = tool({
+      description:
+        'Show a calendar date picker widget to the user when you need them to select a specific date. Use this ONLY for deadline and start date questions. Always ask the date question first as a standalone message, then call this tool.',
+      inputSchema: z.object({
+        field: z.enum(['deadline', 'start_date']).describe('Which date field is being collected'),
+        label: z.string().describe('Short label to display above the picker, e.g. "Select your project deadline"'),
+        min_date: z
+          .string()
+          .optional()
+          .describe('Minimum selectable date in YYYY-MM-DD format (usually today or tomorrow)'),
+      }),
+      execute: async () => ({ status: 'pending_user_selection' }),
+    })
+
     // ===== STEP 5: Stream response =====
-    // smoothStream: word-by-word with 5ms delay for natural ChatGPT-like typing feel
-    const result = streamText({
+    const streamOptions: Parameters<typeof streamText>[0] = {
       model: anthropic(MODEL_ID),
       maxOutputTokens: MAX_TOKENS,
       system: systemPrompt,
       messages: modelMessages,
       experimental_transform: smoothStream({
-        delayInMs: null, // No artificial delay - words appear as soon as ready
+        delayInMs: null,
         chunking: 'word',
       }),
-    })
+    }
+    if (context === 'onboarding') {
+      streamOptions.tools = { show_date_picker: showDatePickerTool }
+      // DEBUG: verify tool and prompt are configured
+      console.log('[chat/route] onboarding context detected')
+      console.log('[chat/route] tools passed to streamText:', Object.keys(streamOptions.tools ?? {}))
+      console.log('[chat/route] todayISO:', todayISO, 'tomorrowISO:', tomorrowISO)
+      console.log('[chat/route] system prompt contains DATE COLLECTION RULES:', systemPrompt.includes('DATE COLLECTION RULES'))
+      console.log('[chat/route] system prompt contains show_date_picker:', systemPrompt.includes('show_date_picker'))
+    }
+    const result = streamText(streamOptions)
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
@@ -257,6 +298,14 @@ export async function POST(request: NextRequest) {
       originalMessages: uiMessages,
       onFinish: async ({ responseMessage }) => {
         const fullText = getMessageText(responseMessage as UIMessage)
+        if (context === 'onboarding') {
+          const parts = (responseMessage as UIMessage).parts ?? []
+          console.log('[chat/route] onFinish - response message parts:', JSON.stringify(parts, null, 2))
+          console.log(
+            '[chat/route] onFinish - had tool calls:',
+            parts.some((p: { type?: string }) => p.type?.includes?.('tool'))
+          )
+        }
         const assistantMessage: StoredMessage = {
           role: 'assistant',
           content: fullText,

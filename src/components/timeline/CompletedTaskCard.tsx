@@ -1,22 +1,22 @@
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
+
 interface CompletedTaskCardProps {
   title: string
   completedAt: string | Date
+  timezone?: string
 }
 
-function formatCompletedDate(completedAt: string | Date): string {
+function formatCompletedDate(completedAt: string | Date, timezone?: string): string {
   const parsed = new Date(completedAt)
   if (Number.isNaN(parsed.getTime())) {
     return ''
   }
-
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
+  const full = formatDateForDisplay(parsed, timezone)
+  return full.replace(/,?\s*\d{4}$/, '').trim()
 }
 
-export function CompletedTaskCard({ title, completedAt }: CompletedTaskCardProps) {
-  const completedDate = formatCompletedDate(completedAt)
+export function CompletedTaskCard({ title, completedAt, timezone }: CompletedTaskCardProps) {
+  const completedDate = formatCompletedDate(completedAt, timezone)
 
   return (
     <div className="relative group mb-6">

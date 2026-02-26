@@ -1,22 +1,23 @@
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
+
 interface UpcomingTaskCardProps {
   title: string
   scheduledDate: string | Date
+  timezone?: string
 }
 
-function formatScheduledDate(scheduledDate: string | Date): string {
+function formatScheduledDate(scheduledDate: string | Date, timezone?: string): string {
   const parsed = new Date(scheduledDate)
   if (Number.isNaN(parsed.getTime())) {
     return ''
   }
-
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  })
+  return formatDateForDisplay(parsed, timezone)
+    .replace(/,?\s*\d{4}$/, '')
+    .trim()
 }
 
-export function UpcomingTaskCard({ title, scheduledDate }: UpcomingTaskCardProps) {
-  const formattedDate = formatScheduledDate(scheduledDate)
+export function UpcomingTaskCard({ title, scheduledDate, timezone }: UpcomingTaskCardProps) {
+  const formattedDate = formatScheduledDate(scheduledDate, timezone)
 
   return (
     <div className="relative group opacity-60 hover:opacity-85 transition-opacity mb-6">

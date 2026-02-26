@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 export type EditableFieldType = 'text' | 'textarea' | 'date' | 'select' | 'tags' | 'number'
 
@@ -25,6 +26,8 @@ export interface EditableFieldProps {
   nullable?: boolean
   /** Max tags for type="tags" */
   maxTags?: number
+  /** Optional timezone for date display (e.g. "Europe/Paris") */
+  timezone?: string
 }
 
 const emptyDisplay = (placeholder: string) => (
@@ -44,6 +47,7 @@ export function EditableField({
   onChange,
   nullable = false,
   maxTags = 10,
+  timezone,
 }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(
@@ -73,11 +77,7 @@ export function EditableField({
 
   const displayValue =
     type === 'date' && value
-      ? new Date(value as string).toLocaleDateString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
+      ? formatDateForDisplay(value as string, timezone)
       : type === 'tags'
         ? Array.isArray(value) && value.length > 0
           ? value.join(', ')
@@ -103,7 +103,7 @@ export function EditableField({
       }
     } else if (type === 'date') {
       if (editValue) {
-        const d = new Date(editValue)
+        const d = new Date(editValue + 'T12:00:00.000Z')
         if (!Number.isNaN(d.getTime())) onChange(d.toISOString().slice(0, 10))
       } else if (nullable) {
         onChange(null)

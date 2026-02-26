@@ -3,16 +3,19 @@
 import { getCategoryIcon } from '@/components/dashboard/TaskCategoryBadge'
 import type { TaskLabel } from '@/types/task.types'
 import type { TimelineSkippedTask } from '@/types/timeline.types'
+import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 function formatTimeEstimate(
   scheduledDate: string | Date | null,
   scheduledStartTime: string | Date | null,
-  scheduledEndTime: string | Date | null
+  scheduledEndTime: string | Date | null,
+  timezone?: string
 ): string {
   if (!scheduledDate) return '—'
   const d = new Date(scheduledDate)
   if (Number.isNaN(d.getTime())) return '—'
-  const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const full = formatDateForDisplay(d, timezone)
+  const dateStr = full.replace(/,?\s*\d{4}$/, '').trim()
   if (!scheduledStartTime && !scheduledEndTime) return dateStr
   const start = scheduledStartTime ? new Date(scheduledStartTime) : null
   const end = scheduledEndTime ? new Date(scheduledEndTime) : null
@@ -44,15 +47,17 @@ function normalizeLabel(label: string): TaskLabel {
 
 interface SkippedTaskCardProps {
   task: TimelineSkippedTask
+  timezone?: string
 }
 
-export function SkippedTaskCard({ task }: SkippedTaskCardProps) {
+export function SkippedTaskCard({ task, timezone }: SkippedTaskCardProps) {
   const label = normalizeLabel(task.label)
   const icon = getCategoryIcon(label)
   const timeEstimate = formatTimeEstimate(
     task.scheduledDate,
     task.scheduledStartTime,
-    task.scheduledEndTime
+    task.scheduledEndTime,
+    timezone
   )
 
   return (
