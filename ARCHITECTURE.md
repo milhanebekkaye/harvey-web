@@ -150,7 +150,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 - **`schedule/generate-schedule/route.ts`**
   - Endpoint under `/api/schedule/generate-schedule`.
   - Loads Project and User from DB, then builds constraints via **buildConstraintsFromProjectAndUser** (no re-extraction); conversation text is used only as context for task generation, so the Project Shadow panel is not overwritten when the user clicks "Build my schedule".
-  - Calls **assignTasksWithClaude** from `src/lib/schedule/task-scheduler.ts` for slot assignment: Claude Haiku proposes assignments, local validation enforces hard constraints, one retry is attempted on violations, then deterministic `assignTasksToSchedule` is used as fallback. DB write logic is unchanged. Logs SchedulerOptions and task records for debugging.
+  - Calls **assignTasksWithClaude** from `src/lib/schedule/task-scheduler.ts` for slot assignment: Claude Haiku proposes assignments, local validation enforces hard constraints, one retry is attempted on violations, then deterministic `assignTasksToSchedule` is used as fallback. After slot assignment, the API runs **enforceSchedulingConstraints** from `src/lib/schedule/assignment-post-processor.ts` to enforce split-part consecutiveness and dependency ordering (by reordering slot data) before writing tasks; DB write and dependency resolution are unchanged. Logs SchedulerOptions and task records for debugging.
 
 - **`schedule/reset-schedule/route.ts`**
   - Endpoint under `/api/schedule/reset-schedule`.

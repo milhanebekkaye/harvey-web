@@ -50,6 +50,54 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-26 – Onboarding date picker fallback: stricter start-date phrasing
+
+- **Agent / context**: Cursor – Avoid showing the start-date widget for vague "when do you want to start working" questions.
+- **Summary**: In `src/app/onboarding/page.tsx`, narrowed the `isAskingAboutStartDate` regex to require explicit calendar phrasing (`start date`, `schedule start`, `begin`, `kick off`, etc.) and removed broad `when.*start` / `what.*start` so "When do you want to start working on this schedule?" no longer triggers the widget.
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Onboarding date picker fallback: broader deadline phrasing
+
+- **Agent / context**: Cursor – Text fallback for the date picker widget now matches more deadline-style questions when Harvey doesn't call `show_date_picker`.
+- **Summary**: In `src/app/onboarding/page.tsx`, expanded the `isAskingAboutDeadline` regex to include: `when.*ready`, `ready.*when`, `when.*timeline`, `lock.*timeline`, `ready to share`, `what.*ready`. Phrases like "when do you want to have the beta version ready?" or "before we lock in a timeline" now trigger the deadline date picker widget.
+- **Files touched**: `src/app/onboarding/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Flexible task label unified to “During the day”
+
+- **Agent / context**: Cursor – UI wording consistency update for flexible tasks.
+- **Summary**: Removed time-of-day variants (`During the morning`, `During the afternoon`, `During work hours`, `During the evening`) for flexible-task labels. Flexible tasks now always display as `During the day`.
+- **Files touched**: `src/components/dashboard/TaskTile.tsx`, `src/components/dashboard/TaskModal.tsx`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Flexible task persistence: store actual assigned HH:MM in window_start/window_end
+
+- **Agent / context**: Cursor – Surgical fix in schedule generation persistence for flexible tasks.
+- **Summary**: In `src/app/api/schedule/generate-schedule/route.ts`, replaced flexible `window_start/window_end` persistence from slot boundary values to actual assigned block times derived from `scheduledTask.startTime` and `scheduledTask.endTime` (formatted as `HH:MM` in user timezone via inline helper). Other task record fields are unchanged.
+- **Files touched**: `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Deterministic scheduler: guard unchecked final candidate
+
+- **Agent / context**: Cursor – Surgical fix in deterministic slot assignment to prevent scheduling a candidate that was not validated after maxTries exhaustion.
+- **Summary**: In `assignTasksToSchedule` (`src/lib/schedule/task-scheduler.ts`), added a post-while guard before placement branches. If the final `chosen` is null or fails `canPlaceTaskInSlot(...)`, the scheduler now skips that slot and logs `[TaskScheduler] SlotSkipped: no valid task passed dependency check for slot ...`.
+- **Files touched**: `src/lib/schedule/task-scheduler.ts`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Post-processor: add start log and fix log for Step 2
+
+- **Agent / context**: Cursor – Add two console logs in the assignment post-processor (no logic change).
+- **Summary**: At the start of `enforceSchedulingConstraints`: `[PostProcessor] Starting enforcement on X assignments`. When Step 2 successfully fixes a dependency violation: `[PostProcessor] Fixed: task X moved after dependency Y`.
+- **Files touched**: `src/lib/schedule/assignment-post-processor.ts`, `AI_AGENT_CHANGELOG.md`.
+
+### 2026-02-26 – Schedule assignment post-processor (part consecutiveness and dependency ordering)
+
+- **Agent / context**: Cursor – Fix critical scheduling bug where tasks could appear before their dependencies and split task parts could be interleaved with other tasks.
+- **Summary**:
+  - New **assignment post-processor** (`src/lib/schedule/assignment-post-processor.ts`): `enforceSchedulingConstraints(assignments, tasks, userTimezone)` runs after slot assignment and before DB write. Step 1 enforces part consecutiveness (swap slot data so split parts of the same task are in consecutive slots). Step 2 enforces dependency ordering in topological order; when a dependent is scheduled before a dependency, reassigns slots so all of the dependency's parts get the earliest slots and all of the dependent's parts the latest, preserving part order within each task; reverts if the dependency's new position would violate its own dependencies. Step 3 logs any remaining violations with `[PostProcessor]` prefix.
+  - **generate-schedule** route calls the post-processor immediately after `assignTasksWithClaude` and uses the corrected list for task records, coaching context, and weekend stats (weekend hours recomputed from corrected list in user timezone).
+  - Existing dependency validation and warning logs in the route are kept; they should trigger much less often after post-processing.
+- **Files touched**: `src/lib/schedule/assignment-post-processor.ts` (new), `src/app/api/schedule/generate-schedule/route.ts`, `ARCHITECTURE.md`, `docs/task-generation/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Root cause of the user-visible bug was that the route only dropped invalid dependency links when it detected a task scheduled before its dependency, instead of fixing the ordering; the post-processor fixes ordering by reordering slot data only, without changing scheduling algorithms or task generation.
+- **Risks / notes**: Post-processor is synchronous and additive; if the scheduler already returns a correct schedule, assignments are unchanged. Multi-part swap in Step 2 moves all parts of both tasks so relative part order is preserved.
+- **Related docs**: `ARCHITECTURE.md` (schedule/generate-schedule), `docs/task-generation/README.md` (flow step 11, Assignment post-processor).
+
 ### 2026-02-26 – Date picker: don’t show widget on initial load (require at least one user message)
 
 - **Agent / context**: Cursor – Bugfix: the date picker widget was appearing at onboarding start before the user sent any message (and the chat input was disabled).

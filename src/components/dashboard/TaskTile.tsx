@@ -118,18 +118,9 @@ function formatTimeRange(startTime: number, endTime: number): string {
 
 /**
  * Human-readable label for a flexible window from boundary times.
- * morning = end before 12:00; afternoon = 12:00-17:00; work hours = spans most of 9-17.
  */
 function getFlexibleWindowLabel(windowStart?: string, windowEnd?: string): string {
   if (!windowStart || !windowEnd) return 'During the day'
-  const [sH, sM] = windowStart.split(':').map(Number)
-  const [eH, eM] = windowEnd.split(':').map(Number)
-  const startHours = sH + (sM || 0) / 60
-  const endHours = eH + (eM || 0) / 60
-  if (endHours <= 12) return 'During the morning'
-  if (startHours >= 12 && endHours <= 17) return 'During the afternoon'
-  if (startHours <= 10 && endHours >= 17) return 'During work hours'
-  if (startHours >= 17) return 'During the evening'
   return 'During the day'
 }
 

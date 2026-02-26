@@ -52,6 +52,7 @@ import {
   calculateStartDate,
   type SchedulerOptions,
 } from '@/lib/schedule/task-scheduler'
+import { enforceSchedulingConstraints } from '@/lib/schedule/assignment-post-processor'
 import { normalizeTaskLabel } from '@/types/task.types'
 import {
   createDiscussion,
@@ -325,6 +326,13 @@ export async function POST(request: NextRequest) {
       console.log(`[GenerateScheduleAPI]   ⚠️ ${scheduleResult.unscheduledTaskIndices.length} tasks couldn't fit in available time`)
     }
 
+    // Post-process: enforce part consecutiveness and dependency ordering before DB write
+    const scheduledTasksToPersist = enforceSchedulingConstraints(
+      scheduleResult.scheduledTasks,
+      tasks,
+      userTimezone
+    )
+
     // ===== STEP 9: Create Task Records in Database =====
     console.log('[GenerateScheduleAPI] Step 9: Creating task records from scheduled assignments')
 
@@ -333,6 +341,13 @@ export async function POST(request: NextRequest) {
       high: 1,
       medium: 3,
       low: 5,
+    }
+    const formatDateToTimeString = (date: Date): string => {
+      return date.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: userTimezone,
+      })
     }
 
     /**
@@ -351,7 +366,7 @@ export async function POST(request: NextRequest) {
      * Task dependencies: We create tasks one-by-one to get IDs, then set
      * depends_on (array of task IDs this task depends on) in a second pass.
      */
-    const taskRecords = scheduleResult.scheduledTasks.map((scheduledTask) => {
+    const taskRecords = scheduledTasksToPersist.map((scheduledTask) => {
       const originalTask = tasks[scheduledTask.taskIndex]
       let taskTitle = originalTask.title
       if (scheduledTask.partNumber !== undefined) {
@@ -374,8 +389,8 @@ export async function POST(request: NextRequest) {
           scheduledDate: scheduledTask.date,
           scheduledStartTime: isFlexible ? null : scheduledTask.startTime,
           scheduledEndTime: isFlexible ? null : scheduledTask.endTime,
-          window_start: isFlexible ? scheduledTask.windowStart ?? null : null,
-          window_end: isFlexible ? scheduledTask.windowEnd ?? null : null,
+          window_start: isFlexible ? formatDateToTimeString(scheduledTask.startTime) : null,
+          window_end: isFlexible ? formatDateToTimeString(scheduledTask.endTime) : null,
           is_flexible: isFlexible,
           label: normalizeTaskLabel(originalTask.label),
           energy_required: originalTask.energy_required ?? null,
@@ -527,19 +542,26 @@ export async function POST(request: NextRequest) {
       flexible: 0,
       emergency: 0,
     }
-    for (const st of scheduleResult.scheduledTasks) {
+    for (const st of scheduledTasksToPersist) {
       const t = st.slotType ?? 'normal'
       if (t in slotTypeCounts) slotTypeCounts[t] += 1
     }
     const tasksSplit = new Set(
-      scheduleResult.scheduledTasks.filter((st) => st.partNumber != null && st.partNumber > 1).map((st) => st.taskIndex)
+      scheduledTasksToPersist.filter((st) => st.partNumber != null && st.partNumber > 1).map((st) => st.taskIndex)
     ).size
 
+    // Recompute weekend hours from corrected list so coaching message reflects final schedule
+    const weekendHoursUsedFromCorrected = scheduledTasksToPersist.reduce((sum, st) => {
+      const dayOfWeek = new Intl.DateTimeFormat('en-US', { timeZone: userTimezone, weekday: 'short' }).format(st.date)
+      if (dayOfWeek === 'Sat' || dayOfWeek === 'Sun') return sum + st.hoursAssigned
+      return sum
+    }, 0)
+
     const coachingContext: ScheduleCoachingContext = {
-      totalTasksScheduled: scheduleResult.scheduledTasks.length,
+      totalTasksScheduled: scheduledTasksToPersist.length,
       totalHoursScheduled: scheduleResult.totalHoursScheduled,
       slotTypeCounts,
-      weekendHoursUsed: scheduleResult.weekendHoursUsed ?? 0,
+      weekendHoursUsed: weekendHoursUsedFromCorrected,
       weekendHoursAvailable: scheduleResult.weekendHoursAvailable ?? 0,
       tasksSplit,
       startDate: startDate.toISOString().split('T')[0],

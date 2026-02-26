@@ -12,6 +12,8 @@ This feature turns an onboarding conversation into a concrete, time-slotted task
   - Constraint extraction prompt, task generation prompt, Claude calls, task parsing, and success-criteria conversion.
 - `src/lib/schedule/task-scheduler.ts`
   - Slot assignment pipeline: Claude-powered scheduling with hard validation/retry and deterministic fallback.
+- `src/lib/schedule/assignment-post-processor.ts`
+  - Post-processes scheduled assignments before DB write: enforces part consecutiveness and dependency ordering by reordering slot data only.
 - `src/lib/ai/claude-client.ts`
   - Anthropic client configuration used by the schedule generation utilities.
 - `src/types/api.types.ts`
@@ -32,10 +34,11 @@ If you expect UI entry points or additional services to trigger this flow, they 
 8. `parseTasks(claudeResponse)` converts Claude output into `ParsedTask[]` and optional milestones.
 9. **Start date**: If `project.schedule_start_date` is set, the API uses it (normalized to the calendar day); otherwise `calculateStartDate(constraints, userTimezone)` picks a schedule start date (tomorrow/next Monday from preferences or default).
 10. `assignTasksWithClaude(tasks, constraints, startDate, durationWeeks, userTimezone, userBlocked, options?)` handles slot assignment with a hybrid flow: (a) build slot map with existing `buildAvailabilityMap` (unchanged), (b) serialize tasks/slots and call Claude Haiku, (c) validate hard constraints algorithmically (task/slot IDs, overlaps, dependencies, split continuity, duration integrity), (d) retry once with explicit violations if needed, (e) fallback to deterministic `assignTasksToSchedule` on second failure. API logs **SchedulerOptions** and each task record with `energy_required`, `preferred_slot`, `is_flexible`.
-11. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma; resolves **depends_on** to task IDs. **Dependency validation** uses window bounds for flexible tasks (dependency’s latest end ≤ this task’s earliest start) so same-day flexible-before-fixed is not incorrectly dropped.
-12. API persists **milestones** and **schedule_duration_days** on the project. Milestones are displayed on the **Project Details** page when non-empty.
-13. **Post-generation coaching message** (Session 2): API builds a scheduling context and calls **generateScheduleCoachingMessage(context)** to produce a 3–4 sentence Harvey message (distribution, choices, what to focus on first). That message is saved as the project discussion's initial message; on Claude failure a fallback greeting is used.
-14. API returns `{ success, taskCount, milestones }`.
+11. **Post-process** scheduled assignments via `enforceSchedulingConstraints(assignments, tasks, userTimezone)` from `src/lib/schedule/assignment-post-processor.ts` to enforce split-part consecutiveness and dependency ordering (reordering slot data only); then map to task records and persist.
+12. API maps scheduled blocks into `Task` records and bulk inserts them via Prisma; resolves **depends_on** to task IDs. **Dependency validation** uses window bounds for flexible tasks (dependency’s latest end ≤ this task’s earliest start) so same-day flexible-before-fixed is not incorrectly dropped.
+13. API persists **milestones** and **schedule_duration_days** on the project. Milestones are displayed on the **Project Details** page when non-empty.
+14. **Post-generation coaching message** (Session 2): API builds a scheduling context and calls **generateScheduleCoachingMessage(context)** to produce a 3–4 sentence Harvey message (distribution, choices, what to focus on first). That message is saved as the project discussion's initial message; on Claude failure a fallback greeting is used.
+15. API returns `{ success, taskCount, milestones }`.
 
 **Scheduling details (current)**: **available_time** can include **flexible** blocks (`flexible_hours` or `window_type === 'flexible'`). For flexible slots, **capacity = flexible_hours** (slot end = start + flexible_hours, never the boundary end); tasks get `window_start`/`window_end`/`is_flexible`. Primary scheduling is now Claude-powered (`assignTasksWithClaude`) with strict validation and one retry. If Claude output remains invalid, deterministic `assignTasksToSchedule` runs as fallback and still applies the Session 4 heuristics (slot-type matching, 15-minute gap, 30-minute split minimum, ramp-up day 1, non-emergency before emergency, weekend inclusion, cross-day dependency checks, split continuation handling).
 
@@ -93,6 +96,10 @@ Reset flow:
   - Returns scheduled tasks and unscheduled task indices with totals.
 - `getTaskScheduleData(taskIndex, scheduledTasks)`
   - Returns the first scheduled block for a given task for DB use.
+
+### `src/lib/schedule/assignment-post-processor.ts`
+- `enforceSchedulingConstraints(assignments, tasks, userTimezone)`
+  - Runs after slot assignment and before DB write. **Step 1**: Enforces part consecutiveness — split task parts (same taskIndex, partNumber > 1) are reordered so no other task's assignment is interleaved between Part N and Part N+1 (by swapping slot data). **Step 2**: Enforces dependency ordering — processes tasks in topological order; when a task is scheduled before a dependency, reassigns slots so all of the dependency's parts get the earliest slots and all of the dependent's parts get the latest, preserving part order within each task; reverts if the dependency's new position would violate its own dependencies. **Step 3**: Logs any remaining violations with `[PostProcessor]` prefix (read-only). Pure synchronous logic; returns the same array reference (mutates slot data in place). Additive: if the schedule is already correct, assignments are unchanged.
 
 ### `src/app/api/schedule/generate-schedule/route.ts`
 - `POST(request)`

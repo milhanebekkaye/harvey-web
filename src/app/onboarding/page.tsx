@@ -88,7 +88,7 @@ function getShowDatePickerInvocation(
   for (const msg of recentAssistant) {
     const parts = (msg as { parts?: unknown[] }).parts ?? []
     if (process.env.NODE_ENV === 'development') {
-      console.log('[getShowDatePickerInvocation] checking msg', msg.id, 'parts types:', parts.map((p: { type?: string }) => p.type))
+      console.log('[getShowDatePickerInvocation] checking msg', msg.id, 'parts types:', parts.map((p: unknown) => (p as { type?: string }).type))
     }
     for (const part of parts) {
       const p = part as {
@@ -493,14 +493,16 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
   const lastAssistantText = lastAssistantMessage ? getTextFromUIMessage(lastAssistantMessage) : ''
   const hasUserSentMessage = messages.some((m) => m.role === 'user')
   // Only match when Harvey is asking a question about dates (question mark + date-related term). Skip fallback on initial load (no user message yet).
+  // Deadline: also match "when do you want ... ready", "lock in a timeline", "ready to share" (e.g. beta launch date).
   const isAskingAboutDeadline =
     hasUserSentMessage &&
     lastAssistantText.includes('?') &&
-    /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish/i.test(lastAssistantText)
+    /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish|when.*ready|ready.*when|when.*timeline|lock.*timeline|ready to share|what.*ready/i.test(lastAssistantText)
+  // Start date: require explicit calendar phrasing (start date, begin, kick off); avoid "when do you want to start working"
   const isAskingAboutStartDate =
     hasUserSentMessage &&
     lastAssistantText.includes('?') &&
-    /when.*start|what.*start|start.*when|when.*begin|when.*kick/i.test(lastAssistantText)
+    /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|kick\s*off|begin.*when/i.test(lastAssistantText)
   const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const todayStr = new Date().toISOString().slice(0, 10)
   const projectData = shadowFields?.project as { target_deadline?: unknown; schedule_start_date?: unknown } | undefined

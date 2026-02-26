@@ -2089,7 +2089,19 @@ export function assignTasksToSchedule(
               chosen = pickTaskForSlot(slot.slotType, dayNum, rest)
             }
           }
-          if (!chosen) break
+          // Guard: verify the final chosen actually passed dependency check.
+          // The while loop may have exited due to maxTries exhaustion, leaving
+          // chosen as the last unchecked candidate.
+          if (
+            !chosen ||
+            !canPlaceTaskInSlot(chosen.taskIndex, currentDate, currentSlotStartHours, scheduledTasks)
+          ) {
+            console.log(
+              `[TaskScheduler] SlotSkipped: no valid task passed dependency check for slot ` +
+                `${currentDate.toISOString().slice(0, 10)} ${currentSlotStartHours}h — skipping slot`
+            )
+            break
+          }
           const taskIdx = remainingTasks.indexOf(chosen)
           if (taskIdx < 0) break
           const task = remainingTasks[taskIdx]
