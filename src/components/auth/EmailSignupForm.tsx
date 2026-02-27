@@ -1,22 +1,19 @@
 /**
  * EmailSignupForm Component
  * 
- * Collects user's email and name to create account.
+ * Collects user's email and name, then sends a verification link.
  * 
  * Flow:
  * 1. User enters email + name
  * 2. Validates input
- * 3. Creates Supabase account (no email confirmation)
- * 4. User is immediately signed in
- * 5. Redirects to onboarding
- * 
- * No email confirmation needed for MVP.
+ * 3. Creates Supabase account with email confirmation (verification link sent)
+ * 4. Shows "Check your email" UI (same UX as login)
+ * 5. User clicks link → /auth/callback → DB user created → redirect to onboarding
  */
 
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { signUpWithEmail } from '@/lib/auth/auth-service'
 
 interface EmailSignupFormProps {
@@ -34,31 +31,28 @@ interface EmailSignupFormProps {
 }
 
 export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
-  const router = useRouter()
-  
   // Form state
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Success state - same UX as login: show "Check your email" after sending verification link
+  const [emailSent, setEmailSent] = useState(false)
+
   /**
    * Handle form submission
-   * 
-   * Creates account and immediately signs user in.
-   * No email verification needed.
+   * Sends verification email via Supabase. User must click the link before going to onboarding.
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault() // Prevent default form submission
     
     // ===== VALIDATION =====
     
-    // Validate email format
     if (!email || !email.includes('@')) {
       onError('Please enter a valid email address')
       return
     }
     
-    // Validate name (at least 2 characters)
     if (!name || name.trim().length < 2) {
       onError('Please enter your full name')
       return
@@ -67,15 +61,12 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
     setLoading(true)
 
     try {
-      // Create account with Supabase (immediate signup, no confirmation)
-      const result = await signUpWithEmail(email, name)
+      const result = await signUpWithEmail(email, name.trim(), `${window.location.origin}/auth/callback`)
 
       if (result.success) {
-        // Account created and user is signed in!
-        // Redirect to onboarding immediately
-        router.push('/onboarding')
+        // Verification email sent; show same UI as login
+        setEmailSent(true)
       } else {
-        // Show error (e.g., email already exists)
         onError(result.error?.message || 'Failed to create account')
         setLoading(false)
       }
@@ -85,6 +76,63 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
     }
   }
 
+  // ===== SUCCESS STATE =====
+  // Same verification-email UI/UX as login: "Check your email", link expires, try again, back
+  if (emailSent) {
+    return (
+      <div className="space-y-6 text-center">
+        <div className="flex justify-center">
+          <div className="size-16 bg-green-100 rounded-full flex items-center justify-center">
+            <span className="material-symbols-outlined text-4xl text-green-600">
+              mark_email_read
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">
+            Check your email
+          </h3>
+          <p className="text-slate-600">
+            We sent a verification link to{' '}
+            <span className="font-semibold text-slate-900">{email}</span>
+          </p>
+          <p className="text-slate-500 text-sm mt-2">
+            Click the link in the email to verify your address and get started. The link expires in 1 hour.
+          </p>
+        </div>
+
+        <div className="space-y-3 pt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setEmailSent(false)
+              setLoading(false)
+            }}
+            className="text-[#425ff0] font-semibold hover:underline text-sm"
+          >
+            Didn't receive the email? Try again
+          </button>
+
+          <div className="flex items-center gap-4">
+            <div className="h-px bg-slate-200 flex-1" />
+            <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">or</span>
+            <div className="h-px bg-slate-200 flex-1" />
+          </div>
+
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-full h-12 px-5 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors duration-200 text-slate-700 font-semibold text-sm"
+          >
+            ← Back to Sign In Options
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ===== SIGNUP FORM =====
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       
@@ -129,7 +177,7 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
         />
       </div>
 
-      {/* Submit Button - Creates account immediately */}
+      {/* Submit Button - Sends verification email */}
       <button
         type="submit"
         disabled={loading || !email || !name}
@@ -138,7 +186,7 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
         {loading ? (
           <>
             <span className="animate-spin">⏳</span>
-            Creating Account...
+            Sending verification link...
           </>
         ) : (
           <>

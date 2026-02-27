@@ -50,6 +50,17 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-27 – Sign-up email verification (magic-link style before onboarding)
+
+- **Agent / context**: User requested that sign-up require email verification before starting onboarding; same UI/UX as the login “check your email” flow.
+- **Summary**:
+  - **Auth service** (`src/lib/auth/auth-service.ts`): `signUpWithEmail` now sends a **verification link** instead of signing in immediately. `emailRedirectTo` is set to `${origin}/auth/callback` so Supabase sends a confirmation email. **DB user is no longer created in signUpWithEmail**; it is created in `/auth/callback` when the user clicks the link (callback already had this path for OAuth). Optional third parameter `redirectTo` added for the confirm URL.
+  - **EmailSignupForm** (`src/components/auth/EmailSignupForm.tsx`): After submit, instead of redirecting to onboarding, the form shows the same **“Check your email”** UI as login: green icon, “We sent a verification link to {email}”, “Click the link to verify your address and get started. The link expires in 1 hour.”, “Didn’t receive the email? Try again”, and “← Back to Sign In Options”. No redirect until the user clicks the link and hits the callback → then callback creates DB user and redirects to onboarding (or dashboard if they have a project).
+- **Files touched**: `src/lib/auth/auth-service.ts`, `src/components/auth/EmailSignupForm.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Verify email before onboarding; consistent UX with login (same verification-email screen).
+- **Risks / notes**: **Supabase project must have “Confirm email” enabled** (Auth → Email Auth → Confirm email) for the confirmation email to be sent. If it’s disabled, Supabase may still create the user and not send an email; in that case the user would not get a link. No change to Google OAuth or login magic-link flows.
+- **Related docs**: `docs/auth/README.md`, `ARCHITECTURE.md` (auth).
+
 ### 2026-02-27 – Auth callback: redirect by “has project” instead of completion marker
 
 - **Agent / context**: User reported that new user / returning user redirect after Google or email login did not work as intended.

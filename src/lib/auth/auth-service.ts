@@ -4,7 +4,7 @@
  * All authentication logic lives here.
  * This service handles:
  * - Google OAuth sign-in
- * - Email signup (immediate, no confirmation)
+ * - Email signup (with email verification; DB user created on confirm)
  * - Sign out
  * - Session management
  * - User state checks
@@ -83,44 +83,44 @@ export async function signInWithGoogle(
 }
 
 /**
- * Sign up with email (immediate, no confirmation)
- * 
- * TWO-STEP PROCESS:
- * 1. Create Supabase Auth user (authentication)
- * 2. Create database user record (application data)
+ * Sign up with email (with email verification)
  * 
  * Flow:
  * 1. User enters email + name
- * 2. Create Supabase Auth account
- * 3. Create database User record with same ID
- * 4. User is authenticated and has profile
- * 5. Redirect to onboarding
+ * 2. Create Supabase Auth user with email confirmation enabled (emailRedirectTo set)
+ * 3. Supabase sends a verification link to the user's email
+ * 4. User clicks link → /auth/callback → we create DB user there and redirect to onboarding
+ * 
+ * DB user is created in the auth callback when they click the link (not here), so we don't
+ * create the user record until email is verified.
  * 
  * @param email - User's email address
  * @param name - User's full name
+ * @param redirectTo - Optional redirect URL after verification (default: origin/auth/callback)
  * @returns Promise<AuthResponse> - Success or error
  */
 export async function signUpWithEmail(
   email: string,
-  name: string
+  name: string,
+  redirectTo?: string
 ): Promise<AuthResponse> {
   try {
     const supabase = createClient()
     
-    // Generate random password (user won't need it)
     const randomPassword = Math.random().toString(36).slice(-16) + Math.random().toString(36).slice(-16)
+    const confirmRedirect = redirectTo ?? `${window.location.origin}/auth/callback`
     
-    // ===== STEP 1: Create Supabase Auth user =====
-    console.log('[Auth] Creating Supabase auth user:', email)
+    // ===== Create Supabase Auth user with email confirmation =====
+    console.log('[Auth] Creating Supabase auth user (email confirmation):', email)
     
     const { data, error } = await supabase.auth.signUp({
       email,
       password: randomPassword,
       options: {
         data: {
-          full_name: name, // Store name in auth metadata
+          full_name: name,
         },
-        emailRedirectTo: undefined, // Skip email confirmation
+        emailRedirectTo: confirmRedirect, // Verification link sends user here; callback creates DB user
       },
     })
 
@@ -146,31 +146,10 @@ export async function signUpWithEmail(
       }
     }
 
-    // ===== STEP 2: Create database user record =====
-    console.log('[Auth] Creating database user record:', data.user.id)
-
-    // Import server action (runs on server, can use Prisma)
-    const { createUserAction } = await import('../users/user-actions')
-
-    const userResult = await createUserAction({
-      id: data.user.id,           // Use Supabase Auth ID
-      email: data.user.email!,    // Guaranteed to exist
-      name: name,                 // From form input
-      timezone: 'Europe/Paris',   // Default timezone
-    })
-
-    if (!userResult.success) {
-      console.error('[Auth] Failed to create database user:', userResult.error)
-      // Auth user exists but DB user failed - that's okay for now
-      // User can still sign in, we'll create DB record later if needed
-    } else {
-      console.log('[Auth] Database user created successfully')
-    }
-
+    // DB user is created in /auth/callback when they click the verification link
     return {
       success: true,
       user: data.user,
-      // session: data.session,
     }
   } catch (error: any) {
     console.error('[Auth] Unexpected error during signup:', error)
