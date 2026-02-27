@@ -86,11 +86,15 @@ Additional route groups:
 
 Auth callback:
 
-- **`auth/callback/route.ts`**: Server route handling authentication callbacks (e.g. OAuth redirects). Finishes login, sets session, and redirects to the appropriate page.
+- **`auth/callback/route.ts`**: Server route handling authentication callbacks (OAuth and magic-link redirects). Exchanges code for session, creates DB user if missing, then chooses redirect: if an explicit `next` query param is present, redirects there; otherwise if the user has **any project** (`prisma.project.count` for that user > 0), redirects to `/dashboard`; else redirects to `/onboarding`.
 
 ### API routes – `src/app/api/`
 
 These are server-side route handlers (Next.js Route Handlers). Each `route.ts` implements HTTP methods (`GET`, `POST`, etc.) for a particular resource.
+
+- **`auth/check-email/route.ts`**
+  - Endpoint under `POST /api/auth/check-email`.
+  - Body: `{ email: string }`. Returns `{ exists: true }` or `{ exists: false }` based on whether the email exists in the app’s `users` table (via `getUserByEmail`). Does not require authentication; used by the magic-link login form to avoid sending links to non-users. No user data is exposed.
 
 - **`chat/route.ts`**
   - Endpoint under `/api/chat`.
@@ -158,7 +162,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`tasks/route.ts`**
   - Endpoint under `/api/tasks`.
-  - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating).
+  - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating). Returns 401 when unauthenticated; dashboard page redirects to `/signin` on 401 and to `/onboarding` on NO_PROJECT (404).
   - Uses `src/lib/tasks/task-service.ts` for domain logic.
 
 - **`tasks/tip/route.ts`**

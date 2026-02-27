@@ -179,6 +179,13 @@ export default function DashboardPage() {
       if (!response.ok) {
         const errorData = await response.json()
 
+        // Handle unauthenticated — redirect to signin before any other handling
+        if (response.status === 401) {
+          console.log('[Dashboard] Unauthenticated, redirecting to signin')
+          router.push('/signin')
+          return
+        }
+
         // Handle "no project" case - redirect to onboarding
         if (errorData.code === 'NO_PROJECT') {
           console.log('[Dashboard] No active project, redirecting to onboarding')

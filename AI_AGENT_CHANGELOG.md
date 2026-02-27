@@ -50,6 +50,26 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-27 – Auth callback: redirect by “has project” instead of completion marker
+
+- **Agent / context**: User reported that new user / returning user redirect after Google or email login did not work as intended.
+- **Summary**: In `src/app/auth/callback/route.ts`, the post-login redirect condition was changed from “user has a completed onboarding” (onboarding discussion contains `COMPLETION_MARKER`) to “user has **any project**”. Now: if the user has at least one project (any status), redirect to `/dashboard`; otherwise redirect to `/onboarding`. New users (no project) → onboarding; returning users (have project) → dashboard.
+- **Files touched**: `src/app/auth/callback/route.ts`, `ARCHITECTURE.md`, `docs/auth/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Simpler, reliable rule: has project (or active tasks) → dashboard; no project → onboarding.
+- **Risks / notes**: None. Removed dependency on `getOnboardingDiscussion` and `COMPLETION_MARKER` in the callback; single `prisma.project.count({ where: { userId } })` check.
+
+### 2026-02-27 – Auth: callback routing, magic-link guard, dashboard 401 redirect
+
+- **Agent / context**: Cursor – Three authentication bug fixes: callback redirect by completion, magic link only for existing users, dashboard redirect on 401.
+- **Summary**:
+  - **Auth callback** (`src/app/auth/callback/route.ts`): After code exchange and DB user ensured, redirect is no longer hardcoded to `/onboarding`. If the user has at least one project whose onboarding discussion contains `COMPLETION_MARKER`, redirect to `/dashboard`; otherwise redirect to `/onboarding`. Explicit `next` query param is still supported and takes precedence.
+  - **Magic link guard**: New `POST /api/auth/check-email` checks if the email exists in the app’s `users` table (returns `{ exists: true }` or `{ exists: false }` only). `EmailLoginForm` calls it before `signInWithMagicLink`; if `exists: false`, shows “No account found with this email. Sign up first.” and does not send the link.
+  - **Dashboard 401**: In `src/app/dashboard/page.tsx`, when `/api/tasks` returns 401, the page now redirects to `/signin` (before handling NO_PROJECT). Logged-out users visiting `/dashboard` are sent to signin instead of seeing an error on the dashboard.
+- **Files touched**: `src/app/auth/callback/route.ts`, `src/app/api/auth/check-email/route.ts` (new), `src/components/auth/EmailLoginForm.tsx`, `src/app/dashboard/page.tsx`, `ARCHITECTURE.md`, `docs/auth/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Returning users with a completed schedule should land on dashboard after OAuth/magic link; magic links must not be sent to unknown emails; unauthenticated dashboard access should redirect to signin.
+- **Risks / notes**: None. Check-email is unauthenticated by design (existence-only, no user data). Callback uses same completion logic as `/api/onboarding/restore`.
+- **Related docs**: `ARCHITECTURE.md` (auth callback, API routes), `docs/auth/README.md`.
+
 ### 2026-02-27 – Timeline sort: effective start + gap rule (flexible vs fixed)
 
 - **Agent / context**: Cursor – Corrected timeline sort in `get-timeline-data.ts`; previous fix had made flexible tasks always first, which was wrong.

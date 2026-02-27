@@ -63,6 +63,20 @@ export function EmailLoginForm({ onBack, onError }: EmailLoginFormProps) {
     setLoading(true)
 
     try {
+      // Check if this email has an account before sending magic link
+      const checkRes = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const checkData = await checkRes.json().catch(() => ({ exists: false }))
+
+      if (!checkData.exists) {
+        onError('No account found with this email. Sign up first.')
+        setLoading(false)
+        return
+      }
+
       // Send magic link to user's email
       const result = await signInWithMagicLink({
         email,

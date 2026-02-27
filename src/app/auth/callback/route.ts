@@ -1,34 +1,43 @@
 /**
  * OAuth Callback Route Handler
  * 
- * Handles the redirect after OAuth authentication (Google).
+ * Handles the redirect after OAuth authentication (Google) and magic link.
  * 
- * TWO-STEP PROCESS:
+ * THREE-STEP PROCESS:
  * 1. Exchange OAuth code for Supabase session
  * 2. Create database user if doesn't exist
+ * 3. Determine redirect: if user has a project → /dashboard, else → /onboarding (or explicit next param)
  * 
  * Flow:
- * 1. User authenticates with Google
- * 2. Google redirects here with code
+ * 1. User authenticates with Google or clicks magic link
+ * 2. Redirects here with code
  * 3. We exchange code for session (Supabase Auth)
- * 4. We check if user exists in database
- * 5. If not, create database user record
- * 6. Redirect to onboarding (or dashboard if returning user)
+ * 4. We check if user exists in database; if not, create record
+ * 5. If explicit next query param → redirect there; else if user has any project → /dashboard, else → /onboarding
  */
 
 import { createClient } from '@/lib/auth/supabase-server'
 import { createUser, userExists } from '@/lib/users/user-service'
+import { prisma } from '@/lib/db/prisma'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+
+/** Returns true if the user has at least one project (any status). */
+async function userHasProject(userId: string): Promise<boolean> {
+  const count = await prisma.project.count({
+    where: { userId },
+  })
+  return count > 0
+}
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
-  const next = requestUrl.searchParams.get('next') || '/onboarding'
+  const nextParam = requestUrl.searchParams.get('next')
 
   console.log('[AuthCallback] Callback received:', { 
     hasCode: !!code, 
-    next 
+    nextParam: nextParam ?? '(none)' 
   })
 
   // No code = invalid callback
@@ -65,18 +74,15 @@ export async function GET(request: NextRequest) {
 
     // ===== STEP 2: Create database user if needed =====
     
-    // Check if user already exists in database
     const exists = await userExists(data.user.id)
     
     if (!exists) {
       console.log('[AuthCallback] User not in database, creating record')
       
-      // Extract name from OAuth metadata
       const userName = data.user.user_metadata?.full_name || 
                        data.user.user_metadata?.name || 
                        null
 
-      // Create database user
       const userResult = await createUser({
         id: data.user.id,
         email: data.user.email!,
@@ -88,19 +94,24 @@ export async function GET(request: NextRequest) {
         console.log('[AuthCallback] Database user created successfully')
       } else {
         console.error('[AuthCallback] Failed to create database user:', userResult.error)
-        // Continue anyway - user can still use the app
-        // We'll create DB record later if needed
       }
     } else {
       console.log('[AuthCallback] User already exists in database')
     }
 
-    // ===== STEP 3: Redirect to next page =====
-    
-    // Later: Check if user completed onboarding
-    // For now, always redirect to onboarding
-    console.log('[AuthCallback] Redirecting to:', next)
-    return NextResponse.redirect(new URL(next, requestUrl.origin))
+    // ===== STEP 3: Determine redirect target =====
+    // If explicit next param was provided, use it; otherwise send returning users to dashboard, new users to onboarding.
+    let redirectTarget: string
+    if (nextParam != null && nextParam.trim() !== '') {
+      redirectTarget = nextParam.startsWith('/') ? nextParam : `/${nextParam}`
+      console.log('[AuthCallback] Using explicit next param:', redirectTarget)
+    } else {
+      const hasProject = await userHasProject(data.user.id)
+      redirectTarget = hasProject ? '/dashboard' : '/onboarding'
+      console.log('[AuthCallback] Redirecting to:', redirectTarget, '(hasProject:', hasProject, ')')
+    }
+
+    return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin))
     
   } catch (error: any) {
     console.error('[AuthCallback] Unexpected error:', error)
