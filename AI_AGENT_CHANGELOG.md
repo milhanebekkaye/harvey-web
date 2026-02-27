@@ -50,6 +50,31 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-27 – Timeline sort: effective start + gap rule (flexible vs fixed)
+
+- **Agent / context**: Cursor – Corrected timeline sort in `get-timeline-data.ts`; previous fix had made flexible tasks always first, which was wrong.
+- **Summary**:
+  - **compareTasksChronologically** now sorts by **effective start time**: fixed = `scheduledStartTime`, flexible = `window_start` parsed to decimal hours (e.g. "09:00" → 9, "14:30" → 14.5). Across days: `scheduledDate` asc first.
+  - **Flexible vs fixed on same day**: gap = earliest fixed start (on that day) − flexible effective start; if gap ≥ flexible task’s duration (hours) then flexible sorts first (it fits); else fixed sorts first. Earliest fixed is computed from the full list passed as fourth argument.
+  - **Among flexible**: dependency order then `createdAt` asc. **Among fixed**: `scheduledStartTime` asc. **Legacy**: `is_flexible ?? false` → treated as fixed.
+  - **TaskForSort** extended with `estimatedDuration`, `window_start`, `window_end`; all three fetches (active candidates, unmet deps, pending upcoming) select these and pass the sorted list into the comparator for gap calculation.
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/timeline-view/README.md`.
+- **Motivation**: Flexible tasks should only appear before fixed tasks when they can complete before the earliest fixed task starts; otherwise fixed tasks first, then flexible.
+- **Risks / notes**: None. Same single shared comparator, three call sites; no changes to task-service, schema, or schedule generation.
+- **Related docs**: `ARCHITECTURE.md` (`get-timeline-data.ts`), `docs/timeline-view/README.md`.
+
+### 2026-02-27 – Timeline: flexible-before-fixed sort (active + upcoming)
+
+- **Agent / context**: Cursor – Surgical fix for timeline primary-task bug so flexible tasks (“During the day”) are shown before fixed-time tasks on the same day.
+- **Summary**:
+  - **Active candidate**: Replaced `prisma.task.findFirst` with `orderBy` by `findMany` (no DB order) then in-JS sort via new `compareTasksChronologically()` helper. First element after sort is the active candidate.
+  - **Upcoming sort**: Replaced `scheduledStartTime ?? Number.POSITIVE_INFINITY` with the same comparator so flexible tasks sort before fixed on the same day.
+  - **Shared rule**: Same day → flexible (`is_flexible === true`) before fixed; among flexible → dependency order then `createdAt` asc; among fixed → `scheduledStartTime` asc; across days → `scheduledDate` asc. Legacy tasks without `is_flexible` are treated as fixed.
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/timeline-view/README.md`.
+- **Motivation**: Fixed-time tasks were shown as primary/upcoming first because PostgreSQL sorts nulls last and the upcoming sort used infinity for null start; flexible tasks (null `scheduledStartTime`) should logically come first on the same day.
+- **Risks / notes**: None. Backward compatible; `task-service.ts` and schedule generation unchanged.
+- **Related docs**: `ARCHITECTURE.md` (`get-timeline-data.ts`), `docs/timeline-view/README.md`.
+
 ### 2026-02-26 – Onboarding date picker fallback: stricter start-date phrasing
 
 - **Agent / context**: Cursor – Avoid showing the start-date widget for vague "when do you want to start working" questions.

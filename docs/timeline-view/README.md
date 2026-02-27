@@ -3,15 +3,20 @@
 ## Overview
 Timeline View is now fully implemented as the primary dashboard view mode. It is split into reusable components, powered by real task data, and includes an AI-generated “Harvey’s Tip” for the active task.
 
-## Task ordering and audit logs (2026-02-25)
+## Task ordering and audit logs (2026-02-27, effective start + gap)
 
 - **Where tasks are fetched**: `GET /api/timeline` (see `src/app/api/timeline/route.ts`) calls `getTimelineData(projectId, userId)` in `src/lib/timeline/get-timeline-data.ts`. No other API is used for the Timeline View rail (completed / active / upcoming).
-- **Where tasks are sorted**: All ordering for the timeline rail happens in **`src/lib/timeline/get-timeline-data.ts`**. There is no separate sort step on the frontend; the component renders the payload as returned (lastCompleted → active → upcoming).
-- **Current sort logic (plain English)** (updated Step 2 fix):
-  - **Active task**: Candidate = first pending/skipped task with non-null `scheduledDate`, ordered by `scheduledDate` asc, then `scheduledStartTime` asc (DB nulls last). If the candidate has any **unmet dependencies** (depends_on task IDs that are not completed), the code fetches those unmet tasks and picks the **earliest** one (by date, then same-day: flexible/null start before fixed start time) and uses that as the active task instead (`reason: 'unmet-dependency'`). Otherwise the candidate is used (`reason: 'direct'`).
-  - **Upcoming tasks**: Pending tasks (excluding the selected active one), filtered to “from now”, sorted by date then `scheduledStartTime` (nulls as infinity). Then a **dependency-aware pass**: if task X depends on task Y and Y appears after X, Y is moved before X. First two tasks are taken.
-- **`scheduled_start_time` / `scheduled_end_time` / `depends_on`**: Used for active-task selection (including unmet-dependency substitution and earliest-unmet ordering) and for upcoming time-based sort plus dependency reorder.
-- **Console logs**: `[TIMELINE] Tasks fetched:`, `[TIMELINE] Tasks after sort:`, `[TIMELINE] Render order:` (audit); `[TIMELINE] Active task selected: { id, title, reason: 'direct' | 'unmet-dependency' }`.
+- **Where tasks are sorted**: All ordering for the timeline rail happens in **`src/lib/timeline/get-timeline-data.ts`** via **`compareTasksChronologically()`**. No DB `orderBy` for active or upcoming; the comparator receives the full list as fourth argument for gap calculation.
+- **Sort rule (plain English)**:
+  - **Across days**: `scheduledDate` asc.
+  - **Effective start**: Fixed task = `scheduledStartTime` (in user TZ, decimal hours). Flexible task = `window_start` string parsed to decimal hours (e.g. "09:00" → 9, "14:30" → 14.5).
+  - **Same day, flexible vs fixed**: gap = (earliest fixed start on that day) − (flexible effective start). If gap ≥ flexible task’s duration in hours → flexible sorts first (it fits before the fixed task). Otherwise fixed sorts first, then flexible.
+  - **Among flexible**: dependency order (if A in B’s `depends_on`, A before B), then `createdAt` asc.
+  - **Among fixed**: `scheduledStartTime` asc.
+  - **Legacy**: `is_flexible ?? false` → treated as fixed.
+- **Active task**: All pending with non-null `scheduledDate` are fetched (with `estimatedDuration`, `window_start`, `window_end`), sorted with `compareTasksChronologically(..., allTasks)`; first = active candidate. If it has **unmet dependencies**, those are fetched and sorted the same way; first = active (`reason: 'unmet-dependency'`).
+- **Upcoming**: Pending (excluding active), filtered to “from now”, sorted with same comparator and list; then dependency-aware pass; first two taken.
+- **Console logs**: `[TIMELINE] Tasks fetched:`, `[TIMELINE] Tasks after sort:`, `[TIMELINE] Render order:`; `[TIMELINE] Active task selected: { id, title, reason }`.
 
 ## Implementation Summary
 - Step 1: Added List/Timeline view toggle.

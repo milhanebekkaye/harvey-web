@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { getDateStringInTimezone } from '@/lib/timezone'
+import { getDateStringInTimezone, getHourDecimalInTimezone } from '@/lib/timezone'
 import { normalizeTaskLabel, parseSuccessCriteria } from '@/types/task.types'
 import type {
   TimelineActiveTask,
@@ -7,6 +7,100 @@ import type {
   TimelineDependencyTask,
   TimelineSkippedTask,
 } from '@/types/timeline.types'
+
+/** Task shape used for chronological comparison (active candidate + upcoming sort). */
+interface TaskForSort {
+  id: string
+  scheduledDate: Date | null
+  scheduledStartTime: Date | null
+  is_flexible: boolean
+  createdAt: Date
+  depends_on: string[]
+  estimatedDuration: number
+  window_start: string | null
+  window_end: string | null
+}
+
+/** Parse "HH:MM" to decimal hours for ordering (e.g. "09:00" → 9, "14:30" → 14.5). */
+function parseTimeStringToHours(timeStr: string | null | undefined): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0
+  const [h, m] = timeStr.split(':').map(Number)
+  if (Number.isNaN(h)) return 0
+  return h + (Number.isNaN(m) ? 0 : m) / 60
+}
+
+function getEffectiveStartHours(task: TaskForSort, userTimezone: string): number {
+  if (task.is_flexible === true && task.window_start) {
+    return parseTimeStringToHours(task.window_start)
+  }
+  if (task.scheduledStartTime) {
+    return getHourDecimalInTimezone(task.scheduledStartTime, userTimezone)
+  }
+  return Number.POSITIVE_INFINITY
+}
+
+function getEarliestFixedStartOnDay(
+  dateStr: string,
+  tasks: TaskForSort[],
+  userTimezone: string
+): number {
+  let earliest = Number.POSITIVE_INFINITY
+  for (const t of tasks) {
+    const tDateStr = t.scheduledDate ? getDateStringInTimezone(t.scheduledDate, userTimezone) : ''
+    if (tDateStr !== dateStr || t.is_flexible === true) continue
+    const start = getEffectiveStartHours(t, userTimezone)
+    if (start < earliest) earliest = start
+  }
+  return earliest
+}
+
+/**
+ * Compare two tasks chronologically for timeline order.
+ * Base rule: sort by effective start time (fixed = scheduledStartTime, flexible = window_start as decimal hours).
+ * Same day: flexible vs fixed uses gap = earliestFixedStart - flexibleStart; if gap >= flexible duration then flexible first, else fixed first.
+ * Among flexible: dependency order then createdAt. Among fixed: scheduledStartTime asc. Legacy: is_flexible ?? false → fixed.
+ */
+function compareTasksChronologically(
+  a: TaskForSort,
+  b: TaskForSort,
+  userTimezone: string,
+  allTasks?: TaskForSort[]
+): number {
+  const aDateStr = a.scheduledDate ? getDateStringInTimezone(a.scheduledDate, userTimezone) : ''
+  const bDateStr = b.scheduledDate ? getDateStringInTimezone(b.scheduledDate, userTimezone) : ''
+  const dateCompare = aDateStr.localeCompare(bDateStr)
+  if (dateCompare !== 0) return dateCompare
+
+  const aIsFlexible = a.is_flexible === true
+  const bIsFlexible = b.is_flexible === true
+
+  if (aIsFlexible && bIsFlexible) {
+    if ((b.depends_on ?? []).includes(a.id)) return -1
+    if ((a.depends_on ?? []).includes(b.id)) return 1
+    return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
+  }
+
+  if (!aIsFlexible && !bIsFlexible) {
+    const aStart = getEffectiveStartHours(a, userTimezone)
+    const bStart = getEffectiveStartHours(b, userTimezone)
+    return aStart - bStart
+  }
+
+  const flexTask = aIsFlexible ? a : b
+  const fixedTask = aIsFlexible ? b : a
+  const flexStart = getEffectiveStartHours(flexTask, userTimezone)
+  const flexDurationHours = (flexTask.estimatedDuration ?? 0) / 60
+  const earliestFixed =
+    allTasks && allTasks.length > 0
+      ? getEarliestFixedStartOnDay(aDateStr, allTasks, userTimezone)
+      : getEffectiveStartHours(fixedTask, userTimezone)
+  const gap = earliestFixed - flexStart
+
+  if (gap >= flexDurationHours) {
+    return aIsFlexible ? -1 : 1
+  }
+  return aIsFlexible ? 1 : -1
+}
 
 function toDependencyStatus(
   status: string
@@ -44,14 +138,13 @@ export async function getTimelineData(
     },
   })
 
-  const activeTaskCandidate = await prisma.task.findFirst({
+  const activeTaskCandidates = await prisma.task.findMany({
     where: {
       projectId,
       userId,
       status: 'pending',
       scheduledDate: { not: null },
     },
-    orderBy: [{ scheduledDate: 'asc' }, { scheduledStartTime: 'asc' }],
     select: {
       id: true,
       title: true,
@@ -63,8 +156,47 @@ export async function getTimelineData(
       is_flexible: true,
       successCriteria: true,
       depends_on: true,
+      createdAt: true,
+      estimatedDuration: true,
+      window_start: true,
+      window_end: true,
     },
   })
+
+/** Minimal raw shape needed to build TaskForSort (all three fetches provide this). */
+function toTaskForSort(t: {
+  id: string
+  scheduledDate: Date | null
+  scheduledStartTime: Date | null
+  is_flexible?: boolean | null
+  createdAt: Date
+  depends_on?: string[]
+  estimatedDuration?: number
+  window_start?: string | null
+  window_end?: string | null
+}): TaskForSort {
+  return {
+    id: t.id,
+    scheduledDate: t.scheduledDate,
+    scheduledStartTime: t.scheduledStartTime,
+    is_flexible: t.is_flexible ?? false,
+    createdAt: t.createdAt,
+    depends_on: t.depends_on ?? [],
+    estimatedDuration: t.estimatedDuration ?? 0,
+    window_start: t.window_start ?? null,
+    window_end: t.window_end ?? null,
+  }
+}
+
+  const sortedCandidates = [...activeTaskCandidates].sort((a, b) =>
+    compareTasksChronologically(
+      toTaskForSort(a),
+      toTaskForSort(b),
+      userTimezone,
+      activeTaskCandidates.map(toTaskForSort)
+    )
+  )
+  const activeTaskCandidate = sortedCandidates[0] ?? null
 
   let selectedActiveRaw: typeof activeTaskCandidate = activeTaskCandidate
   let activeSelectionReason: 'direct' | 'unmet-dependency' = 'direct'
@@ -100,16 +232,21 @@ export async function getTimelineData(
           is_flexible: true,
           successCriteria: true,
           depends_on: true,
+          createdAt: true,
+          estimatedDuration: true,
+          window_start: true,
+          window_end: true,
         },
       })
-      unmetTasksFull.sort((a, b) => {
-        const aDate = a.scheduledDate?.getTime() ?? 0
-        const bDate = b.scheduledDate?.getTime() ?? 0
-        if (aDate !== bDate) return aDate - bDate
-        const aStart = a.scheduledStartTime?.getTime() ?? -1
-        const bStart = b.scheduledStartTime?.getTime() ?? -1
-        return aStart - bStart
-      })
+      const unmetForSort = unmetTasksFull.map(toTaskForSort)
+      unmetTasksFull.sort((a, b) =>
+        compareTasksChronologically(
+          toTaskForSort(a),
+          toTaskForSort(b),
+          userTimezone,
+          unmetForSort
+        )
+      )
       selectedActiveRaw = unmetTasksFull[0] ?? activeTaskCandidate
       activeSelectionReason = 'unmet-dependency'
     }
@@ -235,7 +372,6 @@ export async function getTimelineData(
       scheduledDate: { not: null },
       ...(selectedActiveRaw ? { id: { not: selectedActiveRaw.id } } : {}),
     },
-    orderBy: [{ scheduledDate: 'asc' }, { scheduledStartTime: 'asc' }],
     select: {
       id: true,
       title: true,
@@ -244,6 +380,10 @@ export async function getTimelineData(
       scheduledEndTime: true,
       is_flexible: true,
       depends_on: true,
+      createdAt: true,
+      estimatedDuration: true,
+      window_start: true,
+      window_end: true,
     },
   })
 
@@ -267,18 +407,15 @@ export async function getTimelineData(
 
       return task.scheduledStartTime.getTime() > now.getTime()
     })
-    .sort((a, b) => {
-      if (!a.scheduledDate || !b.scheduledDate) return 0
-
-      const aDateStr = getDateStringInTimezone(a.scheduledDate, userTimezone)
-      const bDateStr = getDateStringInTimezone(b.scheduledDate, userTimezone)
-      const dateCompare = aDateStr.localeCompare(bDateStr)
-      if (dateCompare !== 0) return dateCompare
-
-      const aStart = a.scheduledStartTime?.getTime() ?? Number.POSITIVE_INFINITY
-      const bStart = b.scheduledStartTime?.getTime() ?? Number.POSITIVE_INFINITY
-      return aStart - bStart
-    })
+  const remainingForSort = remainingFromNow.map(toTaskForSort)
+  remainingFromNow.sort((a, b) =>
+    compareTasksChronologically(
+      toTaskForSort(a),
+      toTaskForSort(b),
+      userTimezone,
+      remainingForSort
+    )
+  )
 
   const idToDependsOn = new Map(remainingFromNow.map((t) => [t.id, t.depends_on ?? []]))
   let reordered = [...remainingFromNow]
