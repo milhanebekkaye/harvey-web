@@ -46,6 +46,7 @@ interface TasksApiResponse {
   tasks: TaskGroups
   projectId: string
   projectTitle: string
+  availableTime?: Array<{ day: string; start: string; end: string }>
 }
 
 /** Stored message format from Discussion (role, content, timestamp, optional widget, optional messageType) */
@@ -87,6 +88,10 @@ export default function DashboardPage() {
    */
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectTitle, setProjectTitle] = useState<string>('')
+  /**
+   * Availability windows from project.contextData.available_time (for drag reorder)
+   */
+  const [availableTime, setAvailableTime] = useState<Array<{ day: string; start: string; end: string }>>([])
 
   /**
    * Loading states
@@ -210,6 +215,7 @@ export default function DashboardPage() {
       setTasks(data.tasks)
       setProjectId(data.projectId)
       setProjectTitle(data.projectTitle)
+      setAvailableTime(Array.isArray(data.availableTime) ? data.availableTime : [])
 
       // Auto-expand first task only once on initial load (so expand/collapse doesn't trigger refetch)
       if (!hasAutoExpandedRef.current) {
@@ -702,6 +708,41 @@ export default function DashboardPage() {
   }
 
   /**
+   * Handle drag-and-drop reorder (list view). Calls reorder API then refreshes tasks.
+   */
+  const handleReorder = useCallback(
+    async (
+      taskId: string,
+      newDate: string,
+      isFlexible: boolean,
+      windowStart: string | null,
+      windowEnd: string | null,
+      destinationSiblingsOrder: string[],
+      sourceSiblingsOrder: string[]
+    ) => {
+      const response = await fetch('/api/tasks/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId,
+          newDate,
+          isFlexible,
+          windowStart,
+          windowEnd,
+          destinationSiblingsOrder,
+          sourceSiblingsOrder,
+        }),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Failed to reorder')
+      }
+      await fetchTasks()
+    },
+    [fetchTasks]
+  )
+
+  /**
  * Helper: Find task by ID across all groups
  */
 function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask | null {
@@ -994,6 +1035,21 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             isLoading={isLoadingTasks}
             activeConversationTaskId={activeConversation === 'project' ? null : activeConversation}
             onAskHarvey={handleAskHarvey}
+            onReorder={handleReorder}
+            availableWindows={availableTime}
+            allTasks={
+              tasks
+                ? [
+                    ...tasks.past,
+                    ...tasks.overdue,
+                    ...tasks.today,
+                    ...tasks.tomorrow,
+                    ...tasks.weekDays.flatMap((d) => d.tasks),
+                    ...tasks.later,
+                    ...tasks.unscheduled,
+                  ]
+                : undefined
+            }
           />
         )}
 

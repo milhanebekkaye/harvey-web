@@ -28,6 +28,8 @@ interface TasksApiResponse {
   tasks: TaskGroups
   projectId: string
   projectTitle: string
+  /** From project.contextData.available_time; used for drag reorder window lookup */
+  availableTime?: Array<{ day: string; start: string; end: string }>
 }
 
 export async function GET(request: NextRequest) {
@@ -86,6 +88,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { tasks, project } = result.data
+    const contextData = project.contextData as { available_time?: Array<{ day: string; start: string; end: string }> } | null
+    const availableTime = Array.isArray(contextData?.available_time) ? contextData.available_time : []
 
     // ===== STEP 4: Return Response =====
     console.log('[TasksAPI] Returning tasks:', {
@@ -103,6 +107,7 @@ export async function GET(request: NextRequest) {
       tasks,
       projectId: project.id,
       projectTitle: project.title,
+      availableTime,
     }
 
     return NextResponse.json(response, { status: 200 })

@@ -50,6 +50,41 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-28 – List view cross-day drag: insert at drop index (no swap)
+
+- **Agent / context**: Fix cross-day drag so the dragged task is inserted into the destination day at the drop position; no task from the destination day moves to the source day.
+- **Summary**:
+  - **handleDragEnd** (TimelineView.tsx): For cross-day drops, replaced logic with explicit insert: (1) Source day: build **sourceSiblingsOrder** by sorting source section by position and removing the dragged task ID (source day loses one task, order preserved for remaining). (2) Destination day: build **newDestOrder** by inserting the dragged task at **overIndex** (index of the drop target in the destination list): `[...destIds.slice(0, overIndex), draggedId, ...destIds.slice(overIndex)]`. No removal of draggedId from destination list (it was never in it). Same-day branch unchanged (arrayMove). Avoided mutating filtered arrays by sorting copies (`[...destSectionTasks].sort(...)`).
+- **Files touched**: `src/components/dashboard/TimelineView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Cross-day drag was effectively swapping or moving a destination task to source; expected behavior is insert-only: source loses one task, destination gains one at the drop index.
+- **Risks / notes**: Same-day reorder, dependency check, fixed→flexible conversion, and availability window lookup are unchanged. Manual test: drag Friday → Saturday → Friday loses that task, Saturday gains it at drop position; no Saturday task moves to Friday.
+- **Related docs**: `docs/dashboard/README.md` (List view reorder).
+
+### 2026-02-28 – List view: whole-card drag + fix handle never showing
+
+- **Agent / context**: Fix list view drag-and-drop so dragging works from anywhere on the task card and click-to-expand is preserved; fix bug where the drag handle was never shown because handleProps required a parent-passed dragHandleProps that was never provided.
+- **Summary**:
+  - **SortableTaskItem** (TimelineView.tsx): Applied `{...listeners}` and `{...attributes}` from `useSortable` to the **outer wrapper div** of the task card instead of only the grip icon. Drag is now triggered by the whole card. Added `cursor-grab active:cursor-grabbing` when the task is draggable. Removed `dragHandleProps` from the component and from being passed to TaskTile; pass `showDragHandle={canDragTask(task)}` so the grip remains visible as a visual hint.
+  - **TaskTile** (TaskTile.tsx): Added optional prop **showDragHandle**. When `variant === 'default' && (dragHandleProps || showDragHandle)`, the GripVertical icon is shown. When only `showDragHandle` is true (no dragHandleProps), the grip is **purely decorative** (span, no event handlers, aria-hidden). When `dragHandleProps` is provided, the grip remains a button with those props (for any other consumer). PointerSensor `activationConstraint: { distance: 8 }` is unchanged: move &lt; 8px → click (expand), ≥ 8px → drag.
+- **Files touched**: `src/components/dashboard/TimelineView.tsx`, `src/components/dashboard/TaskTile.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: (1) Requiring the user to grab only the small GripVertical handle made drag feel broken and too precise. (2) The handle was never visible in list view because handleProps was only set when the parent passed dragHandleProps, and the parent never did.
+- **Risks / notes**: Click-to-expand, Complete/Skip/Ask Harvey inside expanded task, and non-draggable (completed/skipped) / Past/Unscheduled behavior are unchanged. Test: drag from title area moves the task; click without moving expands the task.
+- **Related docs**: `docs/dashboard/README.md` (List view reorder).
+
+### 2026-02-28 – List view drag-and-drop task reordering (dnd-kit)
+
+- **Agent / context**: Implemented drag-and-drop reordering in the list view (TimelineView) using @dnd-kit (core, sortable, utilities).
+- **Summary**:
+  - **Packages**: Installed `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`.
+  - **API**: New `POST /api/tasks/reorder` accepts `taskId`, `newDate`, `isFlexible`, `windowStart`, `windowEnd`, `destinationSiblingsOrder`, `sourceSiblingsOrder`. Updates the dragged task (position, scheduledDate, is_flexible, window_start/end, nulls for scheduledStartTime/scheduledEndTime when flexible) and bulk-updates positions for destination and, when cross-day, source day. Auth and validation included.
+  - **GET /api/tasks**: Response now includes `availableTime` from `project.contextData.available_time` for reorder window lookup.
+  - **TaskTile**: Optional `dragHandleProps` and `isDragging`; GripVertical drag handle on the left (default variant only); `opacity-50` when dragging.
+  - **TimelineView**: Wrapped in `DndContext` when `onReorder` is provided; single `SortableContext` over Overdue/Today/Tomorrow/weekDays/Later; `SortableTaskItem` per task with `useSortable`; `handleDragEnd` computes same-day or cross-day new order, runs dependency checks (dragged task’s dependencies must be before it; tasks that depend on it must be after it), resolves availability window via `getWindowForDay(availableWindows, date)`, then calls `onReorder`. DragOverlay shows a ghost card; toast on dependency violation (“Can’t reorder: ‘[title]’ must come first”) or “Failed to reorder”, auto-dismissed after 4s. Only pending/focus/urgent/in_progress tasks are draggable; completed/skipped are not. PointerSensor `activationConstraint: { distance: 8 }` so only the handle starts drag.
+  - **Dashboard**: `handleReorder` calls `POST /api/tasks/reorder` then `fetchTasks()`; passes `onReorder`, `availableWindows` (from API `availableTime`), and `allTasks` (flattened task groups) to TimelineView.
+- **Files touched**: `package.json`, `src/app/api/tasks/route.ts`, `src/app/api/tasks/reorder/route.ts` (new), `src/components/dashboard/TaskTile.tsx`, `src/components/dashboard/TimelineView.tsx`, `src/app/dashboard/page.tsx`, `ARCHITECTURE.md`, `docs/dashboard/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Assumptions**: Same-day reorder always converts the task to flexible with window from availability for that day; cross-day always flexible with window for destination day. No auto-reschedule of other tasks; completed/skipped tasks are not draggable and not moved. Past and Unscheduled sections are not sortable (no drag handle).
+- **Related docs**: `ARCHITECTURE.md` (API tasks/reorder, List view drag-and-drop), `docs/dashboard/README.md` (List view reorder behavior).
+
 ### 2026-02-28 – DEPENDS_ON validation: use position for same-day flexible tasks
 
 - **Agent / context**: Fix bug where same-day flexible task dependencies were incorrectly dropped after the position/window-storage migration.

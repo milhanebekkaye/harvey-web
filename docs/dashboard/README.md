@@ -9,9 +9,9 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/ChatSidebar.tsx`
   - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip and reschedule-prompt widgets are not rendered when their stored message has `answered: true`.
 - `src/components/dashboard/TimelineView.tsx`
-  - Renders tasks grouped by date sections (Overdue, Today, Tomorrow, week days [rolling 7-day], Later, Unscheduled, Past at end). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click).
+  - Renders tasks grouped by date sections (Overdue, Today, Tomorrow, week days [rolling 7-day], Later, Unscheduled, Past at end). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click). **Drag-and-drop**: When the dashboard passes `onReorder`, `availableWindows`, and `allTasks`, tasks in Overdue/Today/Tomorrow/weekDays/Later show a GripVertical handle; same-day and cross-day reorder is supported. Dependency violations cancel the drop and show a toast. See “List view reorder” below.
 - `src/components/dashboard/TaskTile.tsx`
-  - Compact task card, clickable to expand.
+  - Compact task card, clickable to expand. Optional drag handle (GripVertical) on the left when `dragHandleProps` is provided (list view drag-and-drop).
 - `src/components/dashboard/TaskDetails.tsx`
   - Expanded task details (description, checklist, actions).
 - `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`
@@ -23,7 +23,9 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/ViewToggle.tsx`
   - Timeline/Calendar toggle and search input.
 - `src/app/api/tasks/route.ts`
-  - Fetch grouped tasks for the active project.
+  - Fetch grouped tasks for the active project. GET response includes `tasks`, `projectId`, `projectTitle`, and `availableTime` (from `project.contextData.available_time`) for list-view reorder window lookup.
+- `src/app/api/tasks/reorder/route.ts`
+  - POST endpoint for list-view drag-and-drop reorder. Accepts `taskId`, `newDate`, `isFlexible`, `windowStart`, `windowEnd`, `destinationSiblingsOrder`, `sourceSiblingsOrder`; updates the dragged task and bulk-updates positions for destination and (when cross-day) source day.
 - `src/app/api/tasks/[taskId]/route.ts`
   - Update a task’s status/title/description.
 - `src/app/api/tasks/[taskId]/checklist/route.ts`
@@ -48,10 +50,11 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 2. `DashboardPage` calls `GET /api/tasks`.
 3. `Tasks API` authenticates user, finds active project, groups tasks, returns task groups.
 4. `DashboardPage` sets tasks + project info and fetches discussion history via `GET /api/discussions/[projectId]`.
-5. Timeline view renders grouped tasks; user can expand tasks, complete/skip them, or toggle checklist items.
+5. Timeline view renders grouped tasks; user can expand tasks, complete/skip them, toggle checklist items, or **drag to reorder** (list view only; see “List view reorder” below).
 6. Actions call:
-   - `PATCH /api/tasks/[taskId]` for status updates.
-   - `PATCH /api/tasks/[taskId]/checklist` for checklist updates.
+  - `PATCH /api/tasks/[taskId]` for status updates.
+  - `PATCH /api/tasks/[taskId]/checklist` for checklist updates.
+  - `POST /api/tasks/reorder` for drag-and-drop reorder (list view).
 7. Chat sidebar shows onboarding messages and exposes a “Rebuild schedule” button.
 8. Rebuild calls `POST /api/schedule/reset-schedule` then redirects to `/loading?projectId=...`.
 9. **Auto-refresh after chat tools**: When Harvey executes a tool via chat (e.g. add task, modify schedule, regenerate schedule), `ChatSidebar` detects it in `onFinish` and calls `onTasksChanged`, which triggers `fetchTasks()`. Timeline (and future calendar) views update immediately without manual reload.
@@ -69,12 +72,18 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Follow-up feedback answer messages from widget clicks (completion, skip, or reschedule prompt) append with `widgetAnswer` metadata so the matching widget message is persisted as answered and does not re-render after reload.
 - `handleChecklistToggle(taskId, itemId, done)`
   - Optimistically updates checklist and persists via `/api/tasks/[taskId]/checklist`.
+- `handleReorder(taskId, newDate, isFlexible, windowStart, windowEnd, destinationSiblingsOrder, sourceSiblingsOrder)`
+  - Calls `POST /api/tasks/reorder` with the payload, then `fetchTasks()` to refresh the list. Used by TimelineView when the user drops a task in a new position or day.
 - `handleSignOut()`
   - Calls `signOut()` and redirects to `/signin`.
 
 ### `src/app/api/tasks/route.ts`
 - `GET(request)`
-  - Authenticates user, resolves active project, returns grouped tasks and project info.
+  - Authenticates user, resolves active project, returns grouped tasks, project info, and **availableTime** (from `project.contextData.available_time`) for reorder window lookup.
+
+### `src/app/api/tasks/reorder/route.ts`
+- `POST(request)`
+  - Body: `taskId`, `newDate` (YYYY-MM-DD), `isFlexible`, `windowStart`, `windowEnd`, `destinationSiblingsOrder`, `sourceSiblingsOrder`. Updates the dragged task (position, scheduledDate, is_flexible, window_start/end; when flexible, scheduledStartTime/scheduledEndTime set to null) and bulk-updates 1-based positions for destination and, if non-empty, source day. Used by list view after drag-and-drop.
 
 ### `src/app/api/tasks/[taskId]/route.ts`
 - `PATCH(request, { params })`
@@ -108,8 +117,20 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 
 ## Data models used (from Prisma schema)
 - `Task`: scheduled dates/times and status used to render timeline view.
-- `Project`: active project resolved for dashboard.
+- `Project`: active project resolved for dashboard; `contextData.available_time` used for reorder window lookup.
 - `Discussion`: messages for sidebar.
+
+## List view reorder (drag-and-drop)
+
+When the dashboard passes `onReorder`, `availableWindows`, and `allTasks` to TimelineView, the list view uses **@dnd-kit** (core, sortable, utilities) for drag-and-drop reordering.
+
+- **Valid drags**: Same-day reorder (move a task before/after another on the same day) and cross-day move (e.g. from Today to Tomorrow). Only **pending**, **focus**, **urgent**, or **in_progress** tasks are draggable; completed and skipped tasks are not. Past and Unscheduled sections do not show drag handles.
+- **Trigger**: Only the **GripVertical** handle on the left of the task card starts a drag; clicking elsewhere still expands the task (PointerSensor `activationConstraint: { distance: 8 }`).
+- **On drop – same day**: Positions are recomputed for that day (1-based). If the dragged task was fixed (`is_flexible === false`), it is converted to flexible: `scheduledStartTime`/`scheduledEndTime` set to null, `window_start`/`window_end` set from the day’s availability window (from `availableTime`). If already flexible, only position is updated.
+- **On drop – cross-day**: The task’s `scheduledDate` is set to the destination day; it is always stored as flexible with `window_start`/`window_end` for the destination day; position is set at the drop index; positions are recomputed for both source and destination days.
+- **Availability window**: For a given date, the client looks up the day name (e.g. `saturday`) in `availableTime`; if multiple blocks exist for that day, the earliest start and latest end are used; if none, fallback is `09:00`–`23:59`.
+- **Dependency hard block**: Before applying a drop, the client checks that (1) every task the dragged task depends on (`depends_on`) is before it (earlier date or same date with lower position), and (2) every task that depends on the dragged task is after it. If any check fails, the drop is cancelled, the task snaps back, and a toast is shown: *“Can’t reorder: ‘[dependency task title]’ must come first.”*
+- **Persistence**: TimelineView calls `onReorder(...)` with the computed payload; the dashboard’s `handleReorder` sends `POST /api/tasks/reorder` then `fetchTasks()` to refresh.
 
 ## Gaps / Not found in repo
 - Calendar view implementation is a placeholder.

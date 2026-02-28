@@ -14,14 +14,32 @@
  * - "Show past tasks (N)" toggle at top with smooth expand/collapse
  * - Task expansion on click (unified card expands vertically)
  * - Status updates (complete, skip)
+ * - Drag-and-drop reorder (same day and cross-day) when onReorder + availableWindows + allTasks provided
  * - Empty state handling
  * - Loading state
  */
 
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { DashboardTask, TaskGroups } from '@/types/task.types'
+import type { TimeBlock } from '@/types/api.types'
 import { TaskTile } from './TaskTile'
 import { TaskDetails } from './TaskDetails'
 
@@ -36,6 +54,41 @@ function flattenTasks(tasks: TaskGroups | null): DashboardTask[] {
     ...tasks.later,
     ...tasks.unscheduled,
   ]
+}
+
+/** YYYY-MM-DD to lowercase day name for availability lookup */
+function dateStrToDayName(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  return days[d.getUTCDay()]
+}
+
+/** Get availability window for a day from project's available_time. Fallback 09:00–23:59 */
+function getWindowForDay(
+  availableWindows: TimeBlock[],
+  dateStr: string
+): { windowStart: string; windowEnd: string } {
+  const day = dateStrToDayName(dateStr)
+  const blocks = availableWindows.filter((b) => b.day.toLowerCase() === day)
+  if (blocks.length === 0) return { windowStart: '09:00', windowEnd: '23:59' }
+  const parse = (s: string) => {
+    const [h, m] = s.split(':').map(Number)
+    return (Number.isNaN(h) ? 9 : h) + (Number.isNaN(m) ? 0 : m) / 60
+  }
+  let minStart = 24
+  let maxEnd = 0
+  for (const b of blocks) {
+    const start = parse(b.start)
+    const end = parse(b.end)
+    if (end <= start) continue
+    if (start < minStart) minStart = start
+    if (end > maxEnd) maxEnd = end
+  }
+  const fmt = (h: number) => `${Math.floor(h).toString().padStart(2, '0')}:${Math.round((h % 1) * 60).toString().padStart(2, '0')}`
+  return {
+    windowStart: minStart >= 24 ? '09:00' : fmt(minStart),
+    windowEnd: maxEnd <= 0 ? '23:59' : fmt(maxEnd),
+  }
 }
 
 /**
@@ -96,6 +149,125 @@ interface TimelineViewProps {
    * Callback when "Ask Harvey" is clicked on a task (opens/focuses task chat)
    */
   onAskHarvey?: (taskId: string, title: string, label: string) => void
+
+  /**
+   * Callback when task order changes after drag-and-drop. When provided with availableWindows and allTasks, drag handle is shown and reorder is enabled.
+   */
+  onReorder?: (
+    taskId: string,
+    newDate: string,
+    isFlexible: boolean,
+    windowStart: string | null,
+    windowEnd: string | null,
+    destinationSiblingsOrder: string[],
+    sourceSiblingsOrder: string[]
+  ) => Promise<void>
+
+  /**
+   * Availability windows from project.contextData.available_time (for flexible window on drop)
+   */
+  availableWindows?: TimeBlock[]
+
+  /**
+   * Flat list of all tasks (for dependency checking and lookup)
+   */
+  allTasks?: DashboardTask[]
+}
+
+function canDragTask(task: DashboardTask): boolean {
+  return task.status === 'pending' || task.status === 'focus' || task.status === 'urgent' || task.status === 'in_progress'
+}
+
+interface SortableTaskItemProps {
+  task: DashboardTask
+  sectionDateStr: string | null
+  isExpanded: boolean
+  onTaskClick: (taskId: string) => void
+  variant: 'default' | 'compact'
+  gridLayout: boolean
+  isOverdue: boolean
+  isPast: boolean
+  isActiveConversation: boolean
+  onComplete?: (taskId: string) => void
+  onSkip?: (taskId: string) => void
+  onEdit?: (taskId: string) => void
+  onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
+  onAskHarvey?: (taskId: string, title: string, label: string) => void
+  isActionLoading?: boolean
+  allTasks: DashboardTask[]
+}
+
+function SortableTaskItem(props: SortableTaskItemProps) {
+  const { task, ...rest } = props
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id, disabled: !canDragTask(task) })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const canDrag = canDragTask(task)
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...(canDrag ? { ...listeners, ...attributes } : {})}
+      className={`
+        rounded-xl overflow-hidden relative
+        transition-all duration-300 ease-out
+        ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
+        ${rest.isPast && !rest.isExpanded ? 'opacity-60' : ''}
+        ${rest.isExpanded
+          ? 'bg-white shadow-xl border border-[#895af6]/30 scale-[1.01]'
+          : 'hover:scale-[1.005]'
+        }
+        ${rest.isOverdue && !rest.isExpanded ? 'ring-2 ring-red-200' : ''}
+        ${rest.isActiveConversation ? 'ring-2 ring-[#8B5CF6]/30 shadow-[0_0_0_2px_rgba(139,92,246,0.3)]' : ''}
+      `}
+    >
+      {rest.isActiveConversation && (
+        <div
+          className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
+          title="Task chat open"
+        >
+          <span className="material-symbols-outlined text-sm">chat</span>
+        </div>
+      )}
+      <TaskTile
+        task={task}
+        isExpanded={rest.isExpanded}
+        onClick={rest.onTaskClick}
+        variant={rest.variant}
+        className={rest.isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
+        isActiveConversation={rest.isActiveConversation}
+        showDragHandle={canDrag}
+        isDragging={isDragging}
+      />
+      {rest.isExpanded && !rest.gridLayout && (
+        <div className="px-5 pb-5 pt-4 bg-gradient-to-b from-slate-50/50 to-white animate-in slide-in-from-top-2 duration-200">
+          <TaskDetails
+            task={task}
+            onComplete={rest.onComplete}
+            onSkip={rest.onSkip}
+            onEdit={rest.onEdit}
+            onChecklistToggle={rest.onChecklistToggle}
+            onAskHarvey={rest.onAskHarvey}
+            isLoading={rest.isActionLoading}
+            showHeader={false}
+            allTasks={rest.allTasks}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -124,9 +296,149 @@ export function TimelineView({
   isLoading = false,
   activeConversationTaskId = null,
   onAskHarvey,
+  onReorder,
+  availableWindows = [],
+  allTasks: allTasksProp,
 }: TimelineViewProps) {
   const [showPast, setShowPast] = useState(false)
-  const allTasks = useMemo(() => flattenTasks(tasks), [tasks])
+  const [toast, setToast] = useState<string | null>(null)
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const allTasks = useMemo(
+    () => allTasksProp ?? flattenTasks(tasks),
+    [allTasksProp, tasks]
+  )
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  )
+
+  const sortableIds = useMemo(
+    () =>
+      tasks
+        ? [
+            ...tasks.overdue.map((t) => t.id),
+            ...tasks.today.map((t) => t.id),
+            ...tasks.tomorrow.map((t) => t.id),
+            ...tasks.weekDays.flatMap((d) => d.tasks.map((t) => t.id)),
+            ...tasks.later.map((t) => t.id),
+          ]
+        : [],
+    [tasks]
+  )
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event
+      setActiveDragId(null)
+      if (!over || active.id === over.id || !onReorder || !tasks) return
+      const draggedId = String(active.id)
+      const overId = String(over.id)
+      const draggedTask = allTasks.find((t) => t.id === draggedId)
+      const overTask = allTasks.find((t) => t.id === overId)
+      if (!draggedTask || !overTask) return
+      if (!canDragTask(draggedTask)) return
+      const sourceDateStr = draggedTask.scheduledDate ? draggedTask.scheduledDate.split('T')[0] : null
+      const destDateStr = overTask.scheduledDate ? overTask.scheduledDate.split('T')[0] : null
+      if (!destDateStr) return
+
+      const depIds = (draggedTask.dependsOn ?? []).filter(Boolean)
+      const dependents = allTasks.filter((t) => (t.dependsOn ?? []).includes(draggedTask.id))
+      const destSectionTasks = allTasks.filter(
+        (t) => t.scheduledDate && t.scheduledDate.split('T')[0] === destDateStr
+      )
+      const sourceSectionTasks = sourceDateStr
+        ? allTasks.filter((t) => t.scheduledDate && t.scheduledDate.split('T')[0] === sourceDateStr)
+        : []
+
+      // Sorted by position (use copies to avoid mutating filtered arrays)
+      const destIdsByPosition = [...destSectionTasks]
+        .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+        .map((t) => t.id)
+      const overIndex = destIdsByPosition.indexOf(overId)
+      if (overIndex < 0) return
+
+      let newDestOrder: string[]
+      let sourceSiblingsOrder: string[] = []
+
+      if (sourceDateStr === destDateStr) {
+        // Same-day: move within the list (arrayMove)
+        const currentIndex = destIdsByPosition.indexOf(draggedId)
+        newDestOrder = arrayMove(destIdsByPosition, currentIndex, overIndex)
+      } else {
+        // Cross-day: INSERT into destination at drop index. Source loses the task; no task moves from dest to source.
+        // 1. Source day: remove dragged task, order by position → sourceSiblingsOrder
+        const sourceOrdered = [...sourceSectionTasks].sort(
+          (a, b) => (a.position ?? 999) - (b.position ?? 999)
+        )
+        sourceSiblingsOrder = sourceOrdered.map((t) => t.id).filter((id) => id !== draggedId)
+        // 2. Destination day: insert dragged task at overIndex (drop target index)
+        newDestOrder = [
+          ...destIdsByPosition.slice(0, overIndex),
+          draggedId,
+          ...destIdsByPosition.slice(overIndex),
+        ]
+        console.log('[DnD] Cross-day drag detected')
+        console.log('[DnD] dragged task:', draggedTask.title, '| source day:', sourceDateStr)
+        console.log('[DnD] destination day:', destDateStr)
+        console.log('[DnD] sourceSiblingsOrder:', sourceSiblingsOrder)
+        console.log('[DnD] destinationSiblingsOrder:', newDestOrder)
+      }
+
+      for (const depId of depIds) {
+        const depTask = allTasks.find((t) => t.id === depId)
+        if (!depTask) continue
+        const depDateStr = depTask.scheduledDate ? depTask.scheduledDate.split('T')[0] : null
+        if (depDateStr && depDateStr > destDateStr) {
+          setToast(`Can't reorder: '${depTask.title}' must come first`)
+          return
+        }
+        if (depDateStr === destDateStr) {
+          const depPos = newDestOrder.indexOf(depId)
+          const draggedPos = newDestOrder.indexOf(draggedId)
+          if (depPos >= 0 && draggedPos >= 0 && depPos > draggedPos) {
+            setToast(`Can't reorder: '${depTask.title}' must come first`)
+            return
+          }
+        }
+      }
+      for (const dep of dependents) {
+        const depDateStr = dep.scheduledDate ? dep.scheduledDate.split('T')[0] : null
+        if (depDateStr && depDateStr < destDateStr) {
+          setToast(`Can't reorder: '${dep.title}' must come first`)
+          return
+        }
+        if (depDateStr === destDateStr) {
+          const depPos = newDestOrder.indexOf(dep.id)
+          const draggedPos = newDestOrder.indexOf(draggedId)
+          if (depPos >= 0 && draggedPos >= 0 && depPos < draggedPos) {
+            setToast(`Can't reorder: '${dep.title}' must come first`)
+            return
+          }
+        }
+      }
+
+      const { windowStart, windowEnd } = getWindowForDay(availableWindows, destDateStr)
+      const isFlexible = true
+      const winStart = windowStart
+      const winEnd = windowEnd
+
+      try {
+        await onReorder(draggedId, destDateStr, isFlexible, winStart, winEnd, newDestOrder, sourceSiblingsOrder)
+      } catch {
+        setToast('Failed to reorder')
+      }
+    },
+    [onReorder, allTasks, tasks, availableWindows]
+  )
 
   /**
    * Render a section of tasks
@@ -142,11 +454,15 @@ export function TimelineView({
     sectionTasks: DashboardTask[],
     gridLayout = false,
     isOverdue = false,
-    isPast = false
+    isPast = false,
+    sectionDateStr: string | null = null
   ) => {
     if (sectionTasks.length === 0) {
       return null
     }
+
+    const sectionIds = sectionTasks.map((t) => t.id)
+    const useSortable = Boolean(onReorder)
 
     return (
       <section key={title}>
@@ -165,65 +481,92 @@ export function TimelineView({
         </div>
 
         <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
-          {sectionTasks.map((task) => {
-            const isExpanded = expandedTaskId === task.id
-            const isActiveConversation = activeConversationTaskId === task.id
+          {useSortable ? (
+            sectionTasks.map((task) => {
+                const isExpanded = expandedTaskId === task.id
+                const isActiveConversation = activeConversationTaskId === task.id
+                return (
+                  <SortableTaskItem
+                    key={task.id}
+                    task={task}
+                    sectionDateStr={sectionDateStr}
+                    isExpanded={isExpanded}
+                    onTaskClick={onTaskClick}
+                    variant={gridLayout ? 'compact' : 'default'}
+                    gridLayout={gridLayout}
+                    isOverdue={isOverdue}
+                    isPast={isPast}
+                    isActiveConversation={isActiveConversation}
+                    onComplete={onComplete}
+                    onSkip={onSkip}
+                    onEdit={onEdit}
+                    onChecklistToggle={onChecklistToggle}
+                    onAskHarvey={onAskHarvey}
+                    isActionLoading={isActionLoading}
+                    allTasks={allTasks}
+                  />
+                )
+              })
+          ) : (
+            sectionTasks.map((task) => {
+              const isExpanded = expandedTaskId === task.id
+              const isActiveConversation = activeConversationTaskId === task.id
 
-            return (
-              <div
-                key={task.id}
-                className={`
-                  rounded-xl overflow-hidden relative
-                  transition-all duration-300 ease-out
-                  ${isPast && !isExpanded ? 'opacity-60' : ''}
-                  ${isExpanded
-                    ? 'bg-white shadow-xl border border-[#895af6]/30 scale-[1.01]'
-                    : 'hover:scale-[1.005]'
-                  }
-                  ${isOverdue && !isExpanded ? 'ring-2 ring-red-200' : ''}
-                  ${isActiveConversation ? 'ring-2 ring-[#8B5CF6]/30 shadow-[0_0_0_2px_rgba(139,92,246,0.3)]' : ''}
-                `}
-              >
-                {isActiveConversation && (
-                  <div
-                    className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
-                    title="Task chat open"
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      chat
-                    </span>
-                  </div>
-                )}
-                <TaskTile
-                  task={task}
-                  isExpanded={isExpanded}
-                  onClick={onTaskClick}
-                  variant={gridLayout ? 'compact' : 'default'}
-                  className={isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
-                  isActiveConversation={isActiveConversation}
-                />
+              return (
+                <div
+                  key={task.id}
+                  className={`
+                    rounded-xl overflow-hidden relative
+                    transition-all duration-300 ease-out
+                    ${isPast && !isExpanded ? 'opacity-60' : ''}
+                    ${isExpanded
+                      ? 'bg-white shadow-xl border border-[#895af6]/30 scale-[1.01]'
+                      : 'hover:scale-[1.005]'
+                    }
+                    ${isOverdue && !isExpanded ? 'ring-2 ring-red-200' : ''}
+                    ${isActiveConversation ? 'ring-2 ring-[#8B5CF6]/30 shadow-[0_0_0_2px_rgba(139,92,246,0.3)]' : ''}
+                  `}
+                >
+                  {isActiveConversation && (
+                    <div
+                      className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
+                      title="Task chat open"
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        chat
+                      </span>
+                    </div>
+                  )}
+                  <TaskTile
+                    task={task}
+                    isExpanded={isExpanded}
+                    onClick={onTaskClick}
+                    variant={gridLayout ? 'compact' : 'default'}
+                    className={isExpanded ? 'border-0 shadow-none rounded-b-none bg-gradient-to-r from-white to-slate-50/50' : ''}
+                    isActiveConversation={isActiveConversation}
+                  />
 
-                {/* Task detail uses same task from list — no extra fetch on expand */}
-                {isExpanded && !gridLayout && (
-                  <div
-                    className="px-5 pb-5 pt-4 bg-gradient-to-b from-slate-50/50 to-white animate-in slide-in-from-top-2 duration-200"
-                  >
-                    <TaskDetails
-                      task={task}
-                      onComplete={onComplete}
-                      onSkip={onSkip}
-                      onEdit={onEdit}
-                      onChecklistToggle={onChecklistToggle}
-                      onAskHarvey={onAskHarvey}
-                      isLoading={isActionLoading}
-                      showHeader={false}
-                      allTasks={allTasks}
-                    />
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                  {isExpanded && !gridLayout && (
+                    <div
+                      className="px-5 pb-5 pt-4 bg-gradient-to-b from-slate-50/50 to-white animate-in slide-in-from-top-2 duration-200"
+                    >
+                      <TaskDetails
+                        task={task}
+                        onComplete={onComplete}
+                        onSkip={onSkip}
+                        onEdit={onEdit}
+                        onChecklistToggle={onChecklistToggle}
+                        onAskHarvey={onAskHarvey}
+                        isLoading={isActionLoading}
+                        showHeader={false}
+                        allTasks={allTasks}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
       </section>
     )
@@ -287,7 +630,7 @@ export function TimelineView({
 
   const pastCount = tasks.past.length
 
-  return (
+  const content = (
     <div className="px-8 pb-12">
       {/* Show past tasks toggle – subtle button at top */}
       {pastCount > 0 && (
@@ -307,14 +650,28 @@ export function TimelineView({
         </button>
       )}
 
-      {renderTaskSection('Overdue', tasks.overdue, false, true)}
-      {renderTaskSection('Today', tasks.today)}
-      {renderTaskSection('Tomorrow', tasks.tomorrow)}
-      {tasks.weekDays.map((daySection) =>
-        renderTaskSection(daySection.label, daySection.tasks)
+      {onReorder ? (
+        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          {renderTaskSection('Overdue', tasks.overdue, false, true, false, null)}
+          {renderTaskSection('Today', tasks.today, false, false, false, tasks.today[0]?.scheduledDate?.split('T')[0] ?? null)}
+          {renderTaskSection('Tomorrow', tasks.tomorrow, false, false, false, tasks.tomorrow[0]?.scheduledDate?.split('T')[0] ?? null)}
+          {tasks.weekDays.map((daySection) =>
+            renderTaskSection(daySection.label, daySection.tasks, false, false, false, daySection.date)
+          )}
+          {renderTaskSection('Later', tasks.later, false, false, false, null)}
+        </SortableContext>
+      ) : (
+        <>
+          {renderTaskSection('Overdue', tasks.overdue, false, true, false, null)}
+          {renderTaskSection('Today', tasks.today, false, false, false, tasks.today[0]?.scheduledDate?.split('T')[0] ?? null)}
+          {renderTaskSection('Tomorrow', tasks.tomorrow, false, false, false, tasks.tomorrow[0]?.scheduledDate?.split('T')[0] ?? null)}
+          {tasks.weekDays.map((daySection) =>
+            renderTaskSection(daySection.label, daySection.tasks, false, false, false, daySection.date)
+          )}
+          {renderTaskSection('Later', tasks.later, false, false, false, null)}
+        </>
       )}
-      {renderTaskSection('Later', tasks.later)}
-      {tasks.unscheduled.length > 0 && renderTaskSection('Unscheduled', tasks.unscheduled)}
+      {tasks.unscheduled.length > 0 && renderTaskSection('Unscheduled', tasks.unscheduled, false, false, false, null)}
 
       {/* Past section – collapsible, at end */}
       {pastCount > 0 && (
@@ -323,9 +680,43 @@ export function TimelineView({
           style={{ maxHeight: showPast ? '5000px' : '0' }}
           aria-hidden={!showPast}
         >
-          {renderTaskSection('Past', tasks.past, false, false, true)}
+          {renderTaskSection('Past', tasks.past, false, false, true, null)}
+        </div>
+      )}
+
+      {/* Toast for dependency block */}
+      {toast && (
+        <div
+          role="alert"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm shadow-lg animate-in fade-in duration-200"
+        >
+          {toast}
         </div>
       )}
     </div>
   )
+
+  const draggedTask = activeDragId ? allTasks.find((t) => t.id === activeDragId) : null
+
+  if (onReorder) {
+    return (
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={({ active }) => setActiveDragId(String(active.id))}
+        onDragEnd={handleDragEnd}
+      >
+        {content}
+        <DragOverlay>
+          {draggedTask ? (
+            <div className="rounded-xl overflow-hidden shadow-xl border border-slate-200 bg-white opacity-90 cursor-grabbing">
+              <TaskTile task={draggedTask} variant="default" isDragging={false} />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    )
+  }
+
+  return content
 }

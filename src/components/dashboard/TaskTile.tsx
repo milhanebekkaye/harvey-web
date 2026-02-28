@@ -15,6 +15,7 @@
 
 import type { DashboardTask, TaskStatus } from '@/types/task.types'
 import { STATUS_COLORS } from '@/types/task.types'
+import { GripVertical } from 'lucide-react'
 import { TaskLabelBadge } from './TaskCategoryBadge'
 
 /**
@@ -54,6 +55,23 @@ interface TaskTileProps {
    * Badge and ring are rendered by the parent wrapper; this prop is for tile-level styling if needed.
    */
   isActiveConversation?: boolean
+
+  /**
+   * Optional props for the drag handle (from dnd-kit useSortable). When provided, only the handle triggers drag.
+   * Deprecated in list view: use showDragHandle instead and apply listeners on the card wrapper.
+   */
+  dragHandleProps?: Record<string, unknown>
+
+  /**
+   * When true in default variant, show GripVertical as a visual hint that the card is draggable.
+   * Used when the whole card is the drag target (listeners on parent); grip is decorative only.
+   */
+  showDragHandle?: boolean
+
+  /**
+   * When true, the card is being dragged; applies reduced opacity.
+   */
+  isDragging?: boolean
 }
 
 /**
@@ -144,6 +162,9 @@ export function TaskTile({
   className = '',
   variant = 'default',
   isActiveConversation = false,
+  dragHandleProps,
+  showDragHandle = false,
+  isDragging = false,
 }: TaskTileProps) {
   const borderClass = getStatusBorderClass(task.status)
 
@@ -199,11 +220,33 @@ export function TaskTile({
         transition-all duration-200 ease-out
         ${variantClasses[variant]}
         ${isExpanded ? 'ring-2 ring-[#895af6]/30' : ''}
+        ${isDragging ? 'opacity-50' : ''}
         ${className}
       `}
     >
       {/* Main Content */}
       <div className="flex items-center justify-between gap-3">
+        {/* Drag handle (default variant): with dragHandleProps it's the drag trigger; with showDragHandle only it's decorative */}
+        {variant === 'default' && (dragHandleProps || showDragHandle) && (
+          dragHandleProps ? (
+            <button
+              type="button"
+              className="flex-shrink-0 p-1 -ml-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 touch-none cursor-grab active:cursor-grabbing"
+              aria-label="Drag to reorder"
+              onClick={(e) => e.stopPropagation()}
+              {...dragHandleProps}
+            >
+              <GripVertical className="w-4 h-4" />
+            </button>
+          ) : (
+            <span
+              className="flex-shrink-0 p-1 -ml-1 rounded text-slate-400 flex items-center"
+              aria-hidden
+            >
+              <GripVertical className="w-4 h-4" />
+            </span>
+          )
+        )}
         {/* Left: Title and Time Range */}
         <div className="flex-1 min-w-0">
           {/* Task Title */}

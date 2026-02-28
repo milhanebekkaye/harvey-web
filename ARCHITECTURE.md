@@ -164,7 +164,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`tasks/route.ts`**
   - Endpoint under `/api/tasks`.
-  - Handles list/create operations for tasks (e.g. `GET` for fetching tasks, `POST` for creating). Returns 401 when unauthenticated; dashboard page redirects to `/signin` on 401 and to `/onboarding` on NO_PROJECT (404).
+  - **GET**: Authenticates user, resolves active project via `getGroupedTasks`, returns `tasks`, `projectId`, `projectTitle`, and **availableTime** (from `project.contextData.available_time`) for list-view drag reorder window lookup. Returns 401 when unauthenticated; dashboard redirects to `/signin` on 401 and to `/onboarding` on NO_PROJECT (404).
   - Uses `src/lib/tasks/task-service.ts` for domain logic.
 
 - **`tasks/tip/route.ts`**
@@ -201,6 +201,10 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - Endpoint under `/api/tasks/[taskId]/checklist`.
   - Manages per-task checklist items (e.g. marking subtasks complete/incomplete).
   - Works together with the `TaskChecklistItem` UI component and `task-service`.
+
+- **`tasks/reorder/route.ts`**
+  - Endpoint under `POST /api/tasks/reorder`.
+  - **List view drag-and-drop**: Updates a task’s position and optionally date/window after reorder. Body: `taskId`, `newDate` (YYYY-MM-DD), `isFlexible`, `windowStart`, `windowEnd`, `destinationSiblingsOrder` (task IDs for destination day in new order), `sourceSiblingsOrder` (task IDs for source day after removal; empty if same day). Authenticates user, updates the dragged task (position from index in destinationSiblingsOrder, scheduledDate, is_flexible, window_start/end; when flexible, scheduledStartTime/scheduledEndTime set to null), then bulk-updates positions (1-based) for all IDs in destinationSiblingsOrder and, if non-empty, sourceSiblingsOrder. Used by TimelineView when `onReorder` is provided.
 
 - **`progress/today/route.ts`**
   - Endpoint under `/api/progress/today`.
@@ -245,10 +249,10 @@ Dashboard UI for authenticated users:
 - **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
-- **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open).
+- **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open). Optional **dragHandleProps** and **isDragging** for list-view drag-and-drop: when provided, a GripVertical handle is shown on the left (default variant only); when `isDragging` the card uses reduced opacity.
 - **`ProjectTimelineView.tsx`**: Thin dashboard wrapper around `src/components/timeline/TimelineView.tsx`; accepts `projectId` and action callbacks (`onComplete`, `onSkip`, `onAskHarvey`).
 - **Per-task chat (Step 4)**: Dashboard state `isPanelOpen`, `activeConversation` ('project' | task id), `openTaskChats` (includes optional `discussionId`). "Ask Harvey" calls `POST /api/discussions/task` and stores discussionId. **TaskChatView** loads discussion via `GET /api/discussions/task?taskId=` and sends messages through streaming `POST /api/chat/task` (user + assistant persisted by API). On dashboard load, `GET /api/discussions/task/list` repopulates `openTaskChats` for refresh persistence. See `docs/per-task-chat/README.md`.
-- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Overdue, Today, Tomorrow, week days (rolling 7-day window), Later, Unscheduled, Past (collapsible at end). Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click).
+- **`TimelineView.tsx`**: Timeline visualization of tasks and schedule over time. Sections (top to bottom): Overdue, Today, Tomorrow, week days (rolling 7-day window), Later, Unscheduled, Past (collapsible at end). Past is hidden by default with a “Show past tasks (N)” toggle; grouping uses the user’s timezone (see `task-service`). Expanded task detail uses the same task object from the list (no extra fetch on click). **Drag-and-drop reordering**: When the dashboard passes `onReorder`, `availableWindows`, and `allTasks`, the list uses **@dnd-kit** (DndContext, SortableContext, useSortable, DragOverlay). Only the GripVertical handle starts a drag (PointerSensor `activationConstraint: { distance: 8 }`). Same-day reorder updates positions and converts fixed tasks to flexible with that day’s availability window; cross-day reorder sets the task’s scheduledDate and window to the destination day and recomputes positions for both days. **Dependency hard block**: Before applying a drop, the client checks that the dragged task’s dependencies remain before it and that tasks depending on it remain after it; on violation a toast is shown and the drop is cancelled. Reorder is persisted via `POST /api/tasks/reorder`; then the dashboard refetches tasks.
 - **`ViewToggle.tsx`**: Control for toggling between dashboard views (List vs Timeline).
 
 ### `src/components/timeline/`
