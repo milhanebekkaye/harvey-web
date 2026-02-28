@@ -33,7 +33,7 @@
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
 import { isRetryableAnthropicError } from '@/lib/ai/claude-client'
