@@ -131,6 +131,7 @@ When the dashboard passes `onReorder`, `availableWindows`, and `allTasks` to Tim
 - **Availability window**: For a given date, the client looks up the day name (e.g. `saturday`) in `availableTime`; if multiple blocks exist for that day, the earliest start and latest end are used; if none, fallback is `09:00`–`23:59`.
 - **Dependency hard block**: Before applying a drop, the client checks that (1) every task the dragged task depends on (`depends_on`) is before it (earlier date or same date with lower position), and (2) every task that depends on the dragged task is after it. If any check fails, the drop is cancelled, the task snaps back, and a toast is shown: *“Can’t reorder: ‘[dependency task title]’ must come first.”*
 - **Persistence**: TimelineView calls `onReorder(...)` with the computed payload; the dashboard’s `handleReorder` sends `POST /api/tasks/reorder` then `fetchTasks()` to refresh.
+- **Animation**: Each day section has its own `SortableContext` (per-section, not one flat context). An `onDragOver` handler tracks `overInfo` (dragged task ID, over task ID, destination date) in real time. During a cross-day drag, a ghost placeholder div is injected at the drop target index in the destination section, physically pushing tasks below it down to show the insertion point. Within-day reorder animation is handled natively by dnd-kit per-section SortableContext. The dragged item original slot is `opacity: 0`; the DragOverlay card follows the cursor as the visible ghost.
 
 ## Gaps / Not found in repo
 - Calendar view implementation is a placeholder.

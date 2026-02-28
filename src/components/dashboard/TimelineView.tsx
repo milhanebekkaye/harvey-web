@@ -21,10 +21,11 @@
 
 'use client'
 
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragOverlay,
   PointerSensor,
   useSensor,
@@ -208,9 +209,10 @@ function SortableTaskItem(props: SortableTaskItemProps) {
     isDragging,
   } = useSortable({ id: task.id, disabled: !canDragTask(task) })
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: transition ?? 'transform 200ms ease',
+    ...(isDragging ? { opacity: 0 } : {}),
   }
 
   const canDrag = canDragTask(task)
@@ -303,6 +305,11 @@ export function TimelineView({
   const [showPast, setShowPast] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [overInfo, setOverInfo] = useState<{
+    draggedId: string
+    overId: string
+    destDateStr: string
+  } | null>(null)
 
   useEffect(() => {
     if (!toast) return
@@ -321,24 +328,30 @@ export function TimelineView({
     })
   )
 
-  const sortableIds = useMemo(
-    () =>
-      tasks
-        ? [
-            ...tasks.overdue.map((t) => t.id),
-            ...tasks.today.map((t) => t.id),
-            ...tasks.tomorrow.map((t) => t.id),
-            ...tasks.weekDays.flatMap((d) => d.tasks.map((t) => t.id)),
-            ...tasks.later.map((t) => t.id),
-          ]
-        : [],
-    [tasks]
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) {
+        setOverInfo(null)
+        return
+      }
+      const draggedId = String(active.id)
+      const overId = String(over.id)
+      const overTask = allTasks.find((t) => t.id === overId)
+      const draggedTask = allTasks.find((t) => t.id === draggedId)
+      if (!overTask || !draggedTask) return
+      const destDateStr = overTask.scheduledDate?.split('T')[0]
+      if (!destDateStr) return
+      setOverInfo({ draggedId, overId, destDateStr })
+    },
+    [allTasks]
   )
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event
       setActiveDragId(null)
+      setOverInfo(null)
       if (!over || active.id === over.id || !onReorder || !tasks) return
       const draggedId = String(active.id)
       const overId = String(over.id)
@@ -461,8 +474,25 @@ export function TimelineView({
       return null
     }
 
-    const sectionIds = sectionTasks.map((t) => t.id)
-    const useSortable = Boolean(onReorder)
+    const isSortable = Boolean(onReorder)
+
+    // Destination section: this is where a cross-section drag would land
+    const isDestSection =
+      isSortable &&
+      activeDragId !== null &&
+      overInfo !== null &&
+      sectionDateStr !== null &&
+      overInfo.destDateStr === sectionDateStr &&
+      !sectionTasks.some((t) => t.id === overInfo.draggedId)
+
+    // Index in this section at which to inject the drop placeholder (-1 = no placeholder)
+    const destPlaceholderIndex =
+      isDestSection && overInfo
+        ? (() => {
+            const idx = sectionTasks.findIndex((t) => t.id === overInfo.overId)
+            return idx >= 0 ? idx : sectionTasks.length
+          })()
+        : -1
 
     return (
       <section key={title}>
@@ -481,32 +511,56 @@ export function TimelineView({
         </div>
 
         <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
-          {useSortable ? (
-            sectionTasks.map((task) => {
-                const isExpanded = expandedTaskId === task.id
-                const isActiveConversation = activeConversationTaskId === task.id
-                return (
-                  <SortableTaskItem
-                    key={task.id}
-                    task={task}
-                    sectionDateStr={sectionDateStr}
-                    isExpanded={isExpanded}
-                    onTaskClick={onTaskClick}
-                    variant={gridLayout ? 'compact' : 'default'}
-                    gridLayout={gridLayout}
-                    isOverdue={isOverdue}
-                    isPast={isPast}
-                    isActiveConversation={isActiveConversation}
-                    onComplete={onComplete}
-                    onSkip={onSkip}
-                    onEdit={onEdit}
-                    onChecklistToggle={onChecklistToggle}
-                    onAskHarvey={onAskHarvey}
-                    isActionLoading={isActionLoading}
-                    allTasks={allTasks}
-                  />
-                )
-              })
+          {isSortable ? (
+            <SortableContext items={sectionTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+              {(() => {
+                const nodes: React.ReactNode[] = []
+                sectionTasks.forEach((task, idx) => {
+                  const isExpanded = expandedTaskId === task.id
+                  const isActiveConversation = activeConversationTaskId === task.id
+                  if (destPlaceholderIndex === idx) {
+                    nodes.push(
+                      <div
+                        key="__dnd-placeholder__"
+                        className="h-16 rounded-xl border-2 border-dashed border-[#895af6]/40 bg-[#895af6]/5 transition-all duration-200"
+                        aria-hidden
+                      />
+                    )
+                  }
+                  nodes.push(
+                    <SortableTaskItem
+                      key={task.id}
+                      task={task}
+                      sectionDateStr={sectionDateStr}
+                      isExpanded={isExpanded}
+                      onTaskClick={onTaskClick}
+                      variant={gridLayout ? 'compact' : 'default'}
+                      gridLayout={gridLayout}
+                      isOverdue={isOverdue}
+                      isPast={isPast}
+                      isActiveConversation={isActiveConversation}
+                      onComplete={onComplete}
+                      onSkip={onSkip}
+                      onEdit={onEdit}
+                      onChecklistToggle={onChecklistToggle}
+                      onAskHarvey={onAskHarvey}
+                      isActionLoading={isActionLoading}
+                      allTasks={allTasks}
+                    />
+                  )
+                })
+                if (destPlaceholderIndex === sectionTasks.length) {
+                  nodes.push(
+                    <div
+                      key="__dnd-placeholder__"
+                      className="h-16 rounded-xl border-2 border-dashed border-[#895af6]/40 bg-[#895af6]/5 transition-all duration-200"
+                      aria-hidden
+                    />
+                  )
+                }
+                return nodes
+              })()}
+            </SortableContext>
           ) : (
             sectionTasks.map((task) => {
               const isExpanded = expandedTaskId === task.id
@@ -650,27 +704,13 @@ export function TimelineView({
         </button>
       )}
 
-      {onReorder ? (
-        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          {renderTaskSection('Overdue', tasks.overdue, false, true, false, null)}
-          {renderTaskSection('Today', tasks.today, false, false, false, tasks.today[0]?.scheduledDate?.split('T')[0] ?? null)}
-          {renderTaskSection('Tomorrow', tasks.tomorrow, false, false, false, tasks.tomorrow[0]?.scheduledDate?.split('T')[0] ?? null)}
-          {tasks.weekDays.map((daySection) =>
-            renderTaskSection(daySection.label, daySection.tasks, false, false, false, daySection.date)
-          )}
-          {renderTaskSection('Later', tasks.later, false, false, false, null)}
-        </SortableContext>
-      ) : (
-        <>
-          {renderTaskSection('Overdue', tasks.overdue, false, true, false, null)}
-          {renderTaskSection('Today', tasks.today, false, false, false, tasks.today[0]?.scheduledDate?.split('T')[0] ?? null)}
-          {renderTaskSection('Tomorrow', tasks.tomorrow, false, false, false, tasks.tomorrow[0]?.scheduledDate?.split('T')[0] ?? null)}
-          {tasks.weekDays.map((daySection) =>
-            renderTaskSection(daySection.label, daySection.tasks, false, false, false, daySection.date)
-          )}
-          {renderTaskSection('Later', tasks.later, false, false, false, null)}
-        </>
+      {renderTaskSection('Overdue', tasks.overdue, false, true, false, null)}
+      {renderTaskSection('Today', tasks.today, false, false, false, tasks.today[0]?.scheduledDate?.split('T')[0] ?? null)}
+      {renderTaskSection('Tomorrow', tasks.tomorrow, false, false, false, tasks.tomorrow[0]?.scheduledDate?.split('T')[0] ?? null)}
+      {tasks.weekDays.map((daySection) =>
+        renderTaskSection(daySection.label, daySection.tasks, false, false, false, daySection.date)
       )}
+      {renderTaskSection('Later', tasks.later, false, false, false, null)}
       {tasks.unscheduled.length > 0 && renderTaskSection('Unscheduled', tasks.unscheduled, false, false, false, null)}
 
       {/* Past section – collapsible, at end */}
@@ -704,6 +744,7 @@ export function TimelineView({
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={({ active }) => setActiveDragId(String(active.id))}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         {content}

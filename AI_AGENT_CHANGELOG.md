@@ -50,6 +50,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-28 – List view drag animation: per-section SortableContext + drop placeholder
+
+- **Agent / context**: Improve cross-section drag animation so destination tasks visually shift down to show where the dragged item will land.
+- **Summary**:
+  - **Per-section SortableContext**: Replaced the single flat `SortableContext` wrapping all sections with individual `SortableContext` per day section inside `renderTaskSection`. This is the correct dnd-kit pattern for multi-container drag and enables correct within-section shift animation. Removed `sortableIds` (no longer needed). Removed the outer conditional `SortableContext` from content JSX.
+  - **onDragOver handler**: Added `handleDragOver` (using `DragOverEvent` from `@dnd-kit/core`) that tracks `overInfo: { draggedId, overId, destDateStr }` as the cursor moves over a task during drag. Added `onDragOver={handleDragOver}` to `DndContext`. `overInfo` is cleared at drag end (in `handleDragEnd` and when `onDragOver` fires with no valid target).
+  - **Drop placeholder**: In `renderTaskSection`, when a cross-section drag is active and `overInfo.destDateStr` matches this section's date (and the dragged task is not already in this section), a ghost placeholder div is injected at the drop target index. The placeholder (`h-16 rounded-xl border-2 border-dashed border-[#895af6]/40 bg-[#895af6]/5`) physically pushes tasks below it downward. Placeholder also appended at end if drag target is after all tasks. Source section shows the original dragged item as `opacity: 0` (handled by `isDragging` in useSortable style).
+  - **SortableTaskItem**: `style` now uses `React.CSSProperties` type; `transition` defaults to `'transform 200ms ease'` when null; `opacity: 0` added to style when `isDragging` (so the original is invisible while DragOverlay shows the ghost).
+- **Files touched**: `src/components/dashboard/TimelineView.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/dashboard/README.md`.
+- **Motivation**: No `onDragOver` and a single flat SortableContext meant cross-section drags had no real-time visual feedback; tasks in the destination section did not shift to show the insertion point.
+- **Risks / notes**: `@dnd-kit/modifiers` is not installed (not needed). `handleDragEnd` logic is unchanged. Per-section SortableContext means dnd-kit only computes within-section transforms; cross-section insert animation is driven by the placeholder div. Placeholder index is found by `sectionTasks.findIndex(t => t.id === overInfo.overId)`; if not found, placeholder appends at end.
+- **Related docs**: `docs/dashboard/README.md` (List view reorder).
+
 ### 2026-02-28 – List view cross-day drag: insert at drop index (no swap)
 
 - **Agent / context**: Fix cross-day drag so the dragged task is inserted into the destination day at the drop position; no task from the destination day moves to the source day.
