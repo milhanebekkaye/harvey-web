@@ -50,6 +50,22 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-28 – Reorder: optimistic update (instant drop, no loading delay)
+
+- **Agent / context**: Remove the 2–3 s freeze after dropping a task during drag-and-drop reorder.
+- **Summary**:
+  - **`fetchTasks` — silent mode**: Added `options?: { silent?: boolean }` parameter. When `silent: true`, the function skips `setIsLoadingTasks(true)` and `setError(null)` at the start, and skips `setIsLoadingTasks(false)` / `setError` in catch/finally. This allows a background refetch after a reorder without triggering the loading screen.
+  - **`handleReorder` — optimistic update**: Rewrote to follow the same pattern as `handleCompleteTask`/`handleSkipTask`:
+    1. Snapshots `tasks` before any update.
+    2. Calls `setTasks(prev => ...)` immediately with a new `TaskGroups` where: the dragged task has its `scheduledDate`, `isFlexible`, `windowStart`, `windowEnd`, and `position` updated; all tasks in `destinationSiblingsOrder` and `sourceSiblingsOrder` get their `position` updated; the dragged task is removed from its old section and inserted into the correct destination section (overdue / today / tomorrow / weekDays match / later) sorted by position.
+    3. Fires `fetch('/api/tasks/reorder', ...)` — same payload as before.
+    4. On success: calls `void fetchTasks({ silent: true })` to sync with server in background (no loading spinner).
+    5. On failure: `setTasks(previousTasks)` to revert, then re-throws so `TimelineView` shows the existing "Failed to reorder" toast.
+  - **No changes** to `handleCompleteTask`, `handleSkipTask`, or any other handlers.
+  - **`useCallback` dependency**: Added `tasks` to `handleReorder`'s dependency array (needed to snapshot current state for rollback).
+- **Files touched**: `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/dashboard/README.md`.
+- **Motivation**: The previous implementation blocked until `fetchTasks()` resolved (1–3 s round-trip), causing a visible delay and a full loading state after every drop. Now the drop feels instant.
+
 ### 2026-02-28 – List view drag animation: per-section SortableContext + drop placeholder
 
 - **Agent / context**: Improve cross-section drag animation so destination tasks visually shift down to show where the dragged item will land.

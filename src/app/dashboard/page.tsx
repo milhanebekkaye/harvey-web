@@ -171,12 +171,15 @@ export default function DashboardPage() {
   // ===== DATA FETCHING =====
 
   /**
-   * Fetch tasks from API
+   * Fetch tasks from API.
+   * Pass { silent: true } to skip loading/error state (used for background syncs after optimistic updates).
    */
-  const fetchTasks = useCallback(async () => {
-    console.log('[Dashboard] Fetching tasks...')
-    setIsLoadingTasks(true)
-    setError(null)
+  const fetchTasks = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      console.log('[Dashboard] Fetching tasks...')
+      setIsLoadingTasks(true)
+      setError(null)
+    }
 
     try {
       const response = await fetch('/api/tasks')
@@ -229,9 +232,9 @@ export default function DashboardPage() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load tasks'
       console.error('[Dashboard] Error fetching tasks:', errorMessage)
-      setError(errorMessage)
+      if (!options?.silent) setError(errorMessage)
     } finally {
-      setIsLoadingTasks(false)
+      if (!options?.silent) setIsLoadingTasks(false)
     }
   }, [router])
 
@@ -720,26 +723,140 @@ export default function DashboardPage() {
       destinationSiblingsOrder: string[],
       sourceSiblingsOrder: string[]
     ) => {
-      const response = await fetch('/api/tasks/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId,
-          newDate,
-          isFlexible,
-          windowStart,
-          windowEnd,
-          destinationSiblingsOrder,
-          sourceSiblingsOrder,
-        }),
+      // 1. Snapshot for rollback
+      const previousTasks = tasks
+
+      // 2. Optimistic update
+      setTasks((prev) => {
+        if (!prev) return prev
+
+        // Build a flat mutable map of all tasks for easy lookup
+        const allFlat: DashboardTask[] = [
+          ...prev.past,
+          ...prev.overdue,
+          ...prev.today,
+          ...prev.tomorrow,
+          ...prev.weekDays.flatMap((d) => d.tasks),
+          ...prev.later,
+          ...prev.unscheduled,
+        ]
+
+        // Find the dragged task
+        const draggedTask = allFlat.find((t) => t.id === taskId)
+        if (!draggedTask) return prev
+
+        // Build updated version of the dragged task
+        const updatedDragged: DashboardTask = {
+          ...draggedTask,
+          scheduledDate: new Date(newDate + 'T12:00:00.000Z').toISOString(),
+          isFlexible: isFlexible,
+          windowStart: windowStart ?? undefined,
+          windowEnd: windowEnd ?? undefined,
+          position: destinationSiblingsOrder.indexOf(taskId) + 1,
+        }
+
+        // Build a map of all tasks with position updates from both sibling arrays
+        const positionOverrides = new Map<string, number>()
+        destinationSiblingsOrder.forEach((id, i) => positionOverrides.set(id, i + 1))
+        sourceSiblingsOrder.forEach((id, i) => positionOverrides.set(id, i + 1))
+
+        // Helper: apply position override to a task
+        const applyPosition = (t: DashboardTask): DashboardTask => {
+          if (t.id === taskId) return updatedDragged
+          const newPos = positionOverrides.get(t.id)
+          return newPos !== undefined ? { ...t, position: newPos } : t
+        }
+
+        // Remove dragged task from every section, apply position overrides to remaining
+        const strip = (arr: DashboardTask[]) =>
+          arr.filter((t) => t.id !== taskId).map(applyPosition)
+
+        const sortByPosition = (arr: DashboardTask[]) =>
+          [...arr].sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+
+        // Determine destination section from newDate
+        const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD local
+        const tomorrow = new Date()
+        tomorrow.setDate(tomorrow.getDate() + 1)
+        const tomorrowStr = tomorrow.toLocaleDateString('en-CA')
+
+        // Strip dragged task from all sections first
+        const strippedGroups = {
+          ...prev,
+          past: strip(prev.past),
+          overdue: strip(prev.overdue),
+          today: strip(prev.today),
+          tomorrow: strip(prev.tomorrow),
+          weekDays: prev.weekDays.map((d) => ({
+            ...d,
+            tasks: strip(d.tasks),
+          })),
+          later: strip(prev.later),
+          unscheduled: strip(prev.unscheduled),
+        }
+
+        // Insert into destination section and re-sort
+        if (newDate < todayStr) {
+          return {
+            ...strippedGroups,
+            overdue: sortByPosition([...strippedGroups.overdue, updatedDragged]),
+          }
+        } else if (newDate === todayStr) {
+          return {
+            ...strippedGroups,
+            today: sortByPosition([...strippedGroups.today, updatedDragged]),
+          }
+        } else if (newDate === tomorrowStr) {
+          return {
+            ...strippedGroups,
+            tomorrow: sortByPosition([...strippedGroups.tomorrow, updatedDragged]),
+          }
+        } else {
+          // Try to insert into the matching weekDays section first; fall back to later
+          const weekDayIdx = strippedGroups.weekDays.findIndex((d) => d.date === newDate)
+          if (weekDayIdx >= 0) {
+            const newWeekDays = strippedGroups.weekDays.map((d, i) =>
+              i === weekDayIdx
+                ? { ...d, tasks: sortByPosition([...d.tasks, updatedDragged]) }
+                : d
+            )
+            return { ...strippedGroups, weekDays: newWeekDays }
+          }
+          return {
+            ...strippedGroups,
+            later: sortByPosition([...strippedGroups.later, updatedDragged]),
+          }
+        }
       })
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Failed to reorder')
+
+      // 3. Fire API call
+      try {
+        const response = await fetch('/api/tasks/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId,
+            newDate,
+            isFlexible,
+            windowStart,
+            windowEnd,
+            destinationSiblingsOrder,
+            sourceSiblingsOrder,
+          }),
+        })
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}))
+          throw new Error(data.error ?? 'Failed to reorder')
+        }
+        // 4. Background sync (no loading state)
+        void fetchTasks({ silent: true })
+      } catch (err) {
+        // 5. Revert on failure
+        setTasks(previousTasks)
+        throw err
       }
-      await fetchTasks()
     },
-    [fetchTasks]
+    [fetchTasks, tasks]
   )
 
   /**
