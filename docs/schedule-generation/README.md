@@ -34,6 +34,12 @@ This document focuses on Harvey's slot-assignment pipeline (task scheduling afte
    - If retry still fails (or request fails), scheduler logs violations and falls back to `assignTasksToSchedule()`.
    - This keeps schedule generation resilient and guarantees output for downstream DB writes.
 
+## Position and flexible window storage (post-generation)
+
+- **Position**: After `enforceSchedulingConstraints`, the generate-schedule route groups `scheduledTasksToPersist` by `scheduledDate` (YYYY-MM-DD). Within each day the array is already sorted by date → startTime (from the scheduler). Each task is assigned a 1-based **position** for that day and persisted on the Task record. List/timeline sort order is **scheduledDate → position → priority**. Tasks without position (legacy) sort last within the day, then by startTime.
+- **Flexible window storage**: For flexible tasks (`is_flexible` true), **window_start** and **window_end** on the Task model store the **availability window boundaries** (e.g. "09:00", "17:00") from the scheduler’s `ScheduledTaskAssignment.windowStart` / `windowEnd`, which come from the TimeBlock (e.g. `available_time` entry). They must not store the computed slot start/end times (previously the route incorrectly used `formatDateToTimeString(scheduledTask.startTime/endTime)`).
+- **Dependency validation (depends_on)**: After creating task records, the route validates that each dependency ends before the dependent task starts (so no invalid ordering is persisted). It uses **getEarliestStartMs** and **getLatestEndMs** (based on scheduledStartTime/scheduledEndTime or, for flexible tasks, window_start/window_end). **Exception**: when both the dependent and the dependency are **flexible and on the same day**, they share the same window boundaries so time comparison would always fail; in that case the route uses **position** instead: the dependency is valid if `depData.position < thisData.position`, or if either position is null (dependency is kept). All other cases still use the time-based comparison.
+
 ## Key files
 
 - `src/lib/schedule/task-scheduler.ts`

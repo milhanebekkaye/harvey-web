@@ -333,6 +333,18 @@ export async function POST(request: NextRequest) {
       userTimezone
     )
 
+    // Assign position (per-day, 1-based) for deterministic list order. Group by date; within each day order is already date → startTime.
+    const positionByIndex = new Map<number, number>()
+    const dateToIndices = new Map<string, number[]>()
+    for (let i = 0; i < scheduledTasksToPersist.length; i++) {
+      const dateStr = scheduledTasksToPersist[i].date.toISOString().split('T')[0]
+      if (!dateToIndices.has(dateStr)) dateToIndices.set(dateStr, [])
+      dateToIndices.get(dateStr)!.push(i)
+    }
+    for (const indices of dateToIndices.values()) {
+      indices.forEach((idx, order) => positionByIndex.set(idx, order + 1))
+    }
+
     // ===== STEP 9: Create Task Records in Database =====
     console.log('[GenerateScheduleAPI] Step 9: Creating task records from scheduled assignments')
 
@@ -341,13 +353,6 @@ export async function POST(request: NextRequest) {
       high: 1,
       medium: 3,
       low: 5,
-    }
-    const formatDateToTimeString = (date: Date): string => {
-      return date.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: userTimezone,
-      })
     }
 
     /**
@@ -366,7 +371,7 @@ export async function POST(request: NextRequest) {
      * Task dependencies: We create tasks one-by-one to get IDs, then set
      * depends_on (array of task IDs this task depends on) in a second pass.
      */
-    const taskRecords = scheduledTasksToPersist.map((scheduledTask) => {
+    const taskRecords = scheduledTasksToPersist.map((scheduledTask, index) => {
       const originalTask = tasks[scheduledTask.taskIndex]
       let taskTitle = originalTask.title
       if (scheduledTask.partNumber !== undefined) {
@@ -374,6 +379,7 @@ export async function POST(request: NextRequest) {
       }
       const durationMinutes = Math.round(scheduledTask.hoursAssigned * 60)
       const isFlexible = scheduledTask.isFlexible === true
+      const position = positionByIndex.get(index) ?? null
       return {
         taskIndex: scheduledTask.taskIndex,
         data: {
@@ -389,9 +395,10 @@ export async function POST(request: NextRequest) {
           scheduledDate: scheduledTask.date,
           scheduledStartTime: isFlexible ? null : scheduledTask.startTime,
           scheduledEndTime: isFlexible ? null : scheduledTask.endTime,
-          window_start: isFlexible ? formatDateToTimeString(scheduledTask.startTime) : null,
-          window_end: isFlexible ? formatDateToTimeString(scheduledTask.endTime) : null,
+          window_start: isFlexible ? (scheduledTask.windowStart ?? null) : null,
+          window_end: isFlexible ? (scheduledTask.windowEnd ?? null) : null,
           is_flexible: isFlexible,
+          position,
           label: normalizeTaskLabel(originalTask.label),
           energy_required: originalTask.energy_required ?? null,
           preferred_slot: originalTask.preferred_slot ?? null,
@@ -459,6 +466,7 @@ export async function POST(request: NextRequest) {
       const thisEarliestStartMs = getEarliestStartMs(thisData)
       const thisTaskId = createdIds[i]
       const thisTitle = thisData.title
+      const thisDateStr = thisData.scheduledDate.toISOString().split('T')[0]
 
       const validIds: string[] = []
       for (const depId of uniqueIds) {
@@ -466,8 +474,24 @@ export async function POST(request: NextRequest) {
         if (depIdx < 0) continue
         const depRecord = taskRecords[depIdx]
         const depData = depRecord.data
-        const depLatestEndMs = getLatestEndMs(depData)
-        const valid = depLatestEndMs <= thisEarliestStartMs
+        const depDateStr = depData.scheduledDate.toISOString().split('T')[0]
+        const bothFlexibleSameDay =
+          thisData.is_flexible === true &&
+          depData.is_flexible === true &&
+          thisDateStr === depDateStr
+
+        let valid: boolean
+        if (bothFlexibleSameDay) {
+          // Same-day flexible tasks share window boundaries; use position order. If either position is null, don't drop.
+          valid =
+            depData.position == null ||
+            thisData.position == null ||
+            depData.position < thisData.position
+        } else {
+          const depLatestEndMs = getLatestEndMs(depData)
+          valid = depLatestEndMs <= thisEarliestStartMs
+        }
+
         if (valid) {
           validIds.push(depId)
         } else {

@@ -50,6 +50,28 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-28 – DEPENDS_ON validation: use position for same-day flexible tasks
+
+- **Agent / context**: Fix bug where same-day flexible task dependencies were incorrectly dropped after the position/window-storage migration.
+- **What was broken**: After Step 1, flexible tasks on the same day all store the same availability window (e.g. window_start="10:00", window_end="23:59"). The DEPENDS_ON validation used getEarliestStartMs/getLatestEndMs (window boundaries), so thisEarliestStartMs was 10:00 and depLatestEndMs was 23:59 for every such pair → 23:59 <= 10:00 always false → all same-day flexible dependencies were dropped and the warning "Dropping invalid dependency" was logged.
+- **What was changed**: In `src/app/api/schedule/generate-schedule/route.ts`, inside the dependency validation loop only: if both the dependent task (thisData) and the dependency task (depData) are flexible (`is_flexible === true`) and on the same day (same scheduledDate date string), skip the time comparison and use position instead: valid = (depData.position == null || thisData.position == null) || depData.position < thisData.position. If either position is null, the dependency is kept. In all other cases (different days or at least one fixed task), the existing getEarliestStartMs/getLatestEndMs logic is unchanged.
+- **Why**: Same-day flexible tasks no longer have distinct start/end times in DB (only the shared window), so temporal comparison is meaningless; list order is already enforced by position, so position is the correct ordering signal for that case.
+- **Files touched**: `src/app/api/schedule/generate-schedule/route.ts`, `AI_AGENT_CHANGELOG.md`, `docs/schedule-generation/README.md`.
+- **Related docs**: `docs/schedule-generation/README.md` (dependency validation).
+
+### 2026-02-28 – Task position field and flexible window storage (drag-and-drop prep)
+
+- **Agent / context**: Prep for drag-and-drop reordering: add per-day `position` and fix flexible task window storage.
+- **Summary**:
+  - **Task model** (`src/prisma/schema.prisma`): Added `position Int?` — per-day sort order (1-based). Null for legacy tasks; used for list ordering.
+  - **Generate-schedule** (`src/app/api/schedule/generate-schedule/route.ts`): After `enforceSchedulingConstraints`, tasks are grouped by `scheduledDate` and assigned `position` 1, 2, 3… within each day (array already sorted by date → startTime). Task records now persist `position`. Flexible tasks: `window_start` / `window_end` now use `scheduledTask.windowStart` and `scheduledTask.windowEnd` (availability window boundaries from the scheduler) instead of `formatDateToTimeString(scheduledTask.startTime/endTime)` (which stored computed slot times). Removed unused `formatDateToTimeString` helper.
+  - **Task service** (`src/lib/tasks/task-service.ts`): `getTasksForProject` orderBy changed to `scheduledDate asc`, `position asc`, `priority asc` (removed `scheduledStartTime`). `groupTasksByDate` sort within each day: primary sort by `position` (nulls last), fallback to existing `startTime` sort for legacy tasks without position. `transformToDashboardTask` passes through `position`.
+  - **Types** (`src/types/task.types.ts`): `DashboardTask` now includes optional `position?: number | null`.
+- **Files touched**: `src/prisma/schema.prisma`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/tasks/task-service.ts`, `src/types/task.types.ts`, `ARCHITECTURE.md`, `docs/schedule-generation/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: (1) Explicit position enables deterministic list order and future drag-and-drop reorder without relying only on times. (2) Flexible tasks should display/store the user’s availability window (e.g. 09:00–17:00), not the computed slot time chosen by the scheduler.
+- **Risks / notes**: Existing tasks have `position = null`; they sort after tasks with position and within that group by `startTime`. Migration: `npx prisma migrate dev --name add_task_position`. No UI or drag-and-drop implemented yet (Step 2).
+- **Related docs**: `ARCHITECTURE.md` (Task model, task-service, generate-schedule), `docs/schedule-generation/README.md`.
+
 ### 2026-02-27 – Sign-up email verification (magic-link style before onboarding)
 
 - **Agent / context**: User requested that sign-up require email verification before starting onboarding; same UI/UX as the login “check your email” flow.

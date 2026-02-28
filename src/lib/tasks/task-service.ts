@@ -214,6 +214,7 @@ export function transformToDashboardTask(dbTask: Task, userTimezone?: string): D
     isFlexible: isFlexible || undefined,
     windowStart: dbTask.window_start ?? undefined,
     windowEnd: dbTask.window_end ?? undefined,
+    position: dbTask.position ?? undefined,
   }
 }
 
@@ -307,29 +308,37 @@ function groupTasksByDate(tasks: DashboardTask[], userTimezone: string): TaskGro
     (section) => section.tasks.length > 0
   )
 
-  // Sort by start time, treating early morning (0-6am) as "overnight continuation"
-  // that should come AFTER evening tasks (18:00-23:59)
+  // Sort by position first (nulls last), then by start time for legacy tasks without position
+  const sortByPositionThenTime = (a: DashboardTask, b: DashboardTask) => {
+    const posA = a.position ?? Number.MAX_SAFE_INTEGER
+    const posB = b.position ?? Number.MAX_SAFE_INTEGER
+    if (posA !== posB) return posA - posB
+    const adjustedA = a.startTime < 6 ? a.startTime + 24 : a.startTime
+    const adjustedB = b.startTime < 6 ? b.startTime + 24 : b.startTime
+    return adjustedA - adjustedB
+  }
+
   const sortByTime = (a: DashboardTask, b: DashboardTask) => {
     const adjustedA = a.startTime < 6 ? a.startTime + 24 : a.startTime
     const adjustedB = b.startTime < 6 ? b.startTime + 24 : b.startTime
     return adjustedA - adjustedB
   }
 
-  const sortByDateThenTime = (a: DashboardTask, b: DashboardTask) => {
+  const sortByDateThenPositionThenTime = (a: DashboardTask, b: DashboardTask) => {
     const dateCompare = (a.scheduledDate || '').localeCompare(b.scheduledDate || '')
-    return dateCompare !== 0 ? dateCompare : sortByTime(a, b)
+    return dateCompare !== 0 ? dateCompare : sortByPositionThenTime(a, b)
   }
 
-  groups.past.sort(sortByDateThenTime)
-  groups.overdue.sort(sortByDateThenTime)
-  groups.today.sort(sortByTime)
-  groups.tomorrow.sort(sortByTime)
+  groups.past.sort(sortByDateThenPositionThenTime)
+  groups.overdue.sort(sortByDateThenPositionThenTime)
+  groups.today.sort(sortByPositionThenTime)
+  groups.tomorrow.sort(sortByPositionThenTime)
 
-  // Sort weekDays sections by date, and tasks within each section by time
+  // Sort weekDays sections by date, and tasks within each section by position then time
   groups.weekDays.sort((a, b) => a.date.localeCompare(b.date))
-  groups.weekDays.forEach((section) => section.tasks.sort(sortByTime))
+  groups.weekDays.forEach((section) => section.tasks.sort(sortByPositionThenTime))
 
-  groups.later.sort(sortByDateThenTime)
+  groups.later.sort(sortByDateThenPositionThenTime)
 
   return groups
 }
@@ -436,7 +445,7 @@ export async function getTasksForProject(
       },
       orderBy: [
         { scheduledDate: 'asc' },
-        { scheduledStartTime: 'asc' },
+        { position: 'asc' },
         { priority: 'asc' },
       ],
     })

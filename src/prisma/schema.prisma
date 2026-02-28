@@ -113,6 +113,8 @@ model Task {
   scheduledDate     DateTime?
   scheduledStartTime DateTime?
   scheduledEndTime   DateTime?
+  // Per-day sort order (1-based); null = legacy, sort by scheduledStartTime
+  position          Int?
   // Flexible tasks: no fixed time, only boundary (e.g. "during work hours")
   window_start  String?   // boundary start e.g. '09:00'
   window_end    String?   // boundary end e.g. '17:30'

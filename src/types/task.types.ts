@@ -324,6 +324,11 @@ export interface DashboardTask {
    * Scheduling metadata: preferred_slot from generation (peak_energy | normal | flexible).
    */
   preferredSlot?: string
+
+  /**
+   * Per-day sort order (1-based). Null for legacy tasks; used for list ordering.
+   */
+  position?: number | null
 }
 
 // ============================================
