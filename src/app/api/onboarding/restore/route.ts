@@ -76,7 +76,9 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Project not found' }, { status: 404 })
       }
       projectId = project.id
-      discussion = await getOnboardingDiscussion(projectId, user.id)
+      if (projectId) {
+        discussion = await getOnboardingDiscussion(projectId, user.id)
+      }
     } else {
       const projects = await prisma.project.findMany({
         where: { userId: user.id, status: 'active' },

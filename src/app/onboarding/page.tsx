@@ -16,10 +16,11 @@
 
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+
 
 // Import all onboarding components from the centralized index
 import {
@@ -728,7 +729,7 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
   )
 }
 
-export default function OnboardingPage() {
+function OnboardingPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [restoringSession, setRestoringSession] = useState(true)
@@ -793,5 +794,20 @@ export default function OnboardingPage() {
       initialProjectId={initialProjectId}
       initialExtracted={initialExtracted}
     />
+  )
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center bg-[#FAF9F6]">
+        <div className="flex flex-col items-center gap-3">
+          <span className="material-symbols-outlined animate-spin text-4xl text-[#8B5CF6]">progress_activity</span>
+          <p className="text-sm text-gray-600">Loading your conversation...</p>
+        </div>
+      </div>
+    }>
+      <OnboardingPageInner />
+    </Suspense>
   )
 }
