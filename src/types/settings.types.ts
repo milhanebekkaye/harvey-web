@@ -22,6 +22,12 @@ export interface SettingsPreferences {
   rest_days?: string[]
 }
 
+/** Note with timestamp (User.userNotes / Harvey's notes about the user). */
+export interface UserNoteEntry {
+  note: string
+  extracted_at?: string
+}
+
 /** Payload returned by GET /api/settings. */
 export interface SettingsGetResponse {
   user: {
@@ -30,6 +36,7 @@ export interface SettingsGetResponse {
     preferred_session_length: number | null
     communication_style: string | null
     timezone: string
+    userNotes: UserNoteEntry[] | null
   }
   project: {
     id: string
@@ -46,6 +53,7 @@ export interface SettingsUpdateBody {
   commute?: CommuteShape | null
   preferred_session_length?: number | null
   communication_style?: string | null
+  userNotes?: UserNoteEntry[] | null
   available_time?: AvailabilityBlock[]
   preferences?: Partial<SettingsPreferences>
   projectId?: string

@@ -3,7 +3,26 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { SettingsGetResponse, SettingsUpdateBody, AvailabilityBlock } from '@/types/settings.types'
+import type { SettingsGetResponse, SettingsUpdateBody, AvailabilityBlock, UserNoteEntry } from '@/types/settings.types'
+
+function formatNoteDate(iso: string | undefined): string {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    const now = new Date()
+    const sameDay = d.toDateString() === now.toDateString()
+    if (sameDay) {
+      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+    }
+    return d.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    })
+  } catch {
+    return ''
+  }
+}
 import { WorkScheduleSection } from '@/components/settings/WorkScheduleSection'
 import { AvailabilitySection } from '@/components/settings/AvailabilitySection'
 import { PreferencesSection } from '@/components/settings/PreferencesSection'
@@ -55,6 +74,7 @@ export default function SettingsPage() {
         commute: data.user.commute,
         preferred_session_length: data.user.preferred_session_length,
         communication_style: data.user.communication_style,
+        userNotes: data.user.userNotes ?? null,
         available_time: availableTime,
         preferences: data.project?.contextData?.preferences ?? {},
         projectId: data.project?.id ?? undefined,
@@ -217,6 +237,80 @@ export default function SettingsPage() {
                 })
               }
             />
+            {/* Harvey's Notes — same as project details, for user-level notes */}
+            <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 hover:shadow-md transition-shadow">
+              <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
+                <span className="material-symbols-outlined text-slate-500">lightbulb</span>
+                Harvey&apos;s Notes
+              </h2>
+              <p className="text-slate-500 text-sm mb-5">
+                Observations about you (working style, preferences). Add or edit notes below, then click &quot;Save&quot; at the top to store them.
+              </p>
+              {(data.user.userNotes?.length ?? 0) > 0 ? (
+                <ul className="space-y-4">
+                  {[...(data.user.userNotes ?? [])].reverse().map((entry: UserNoteEntry, displayIndex: number) => {
+                    const notes = data.user.userNotes ?? []
+                    const realIndex = notes.length - 1 - displayIndex
+                    const updateNote = (note: string) => {
+                      const next = [...notes]
+                      next[realIndex] = { ...entry, note }
+                      updateUser({ userNotes: next })
+                    }
+                    const removeNote = () => {
+                      const next = notes.filter((_, i) => i !== realIndex)
+                      updateUser({ userNotes: next.length ? next : null })
+                    }
+                    return (
+                      <li
+                        key={realIndex}
+                        className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left"
+                      >
+                        <span className="material-symbols-outlined text-[#895af6]/70 shrink-0 mt-1 text-xl">
+                          format_quote
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <textarea
+                            value={entry.note}
+                            onChange={(e) => updateNote(e.target.value)}
+                            placeholder="Add or edit this note..."
+                            rows={5}
+                            className="w-full min-h-[120px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-700 placeholder:text-slate-400 focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
+                          />
+                          {entry.extracted_at && (
+                            <p className="text-xs text-slate-400 mt-2">
+                              {formatNoteDate(entry.extracted_at)}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={removeNote}
+                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 transition-colors"
+                          title="Remove note"
+                        >
+                          <span className="material-symbols-outlined text-xl">close</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  const notes = [...(data.user.userNotes ?? [])]
+                  notes.push({ note: '', extracted_at: new Date().toISOString() })
+                  updateUser({ userNotes: notes })
+                }}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-base font-medium text-slate-600 hover:border-[#895af6]/50 hover:bg-[#895af6]/5 hover:text-[#895af6] transition-colors"
+              >
+                <span className="material-symbols-outlined text-xl">add</span>
+                Add note
+              </button>
+              {!(data.user.userNotes?.length ?? 0) && (
+                <p className="text-sm text-slate-400 mt-3">Click &quot;Add note&quot; to create one, or let Harvey add observations as you chat. Remember to click &quot;Save&quot; to store them.</p>
+              )}
+            </section>
             <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
               <h2 className="text-lg font-semibold text-slate-800 mb-2">Project</h2>
               <p className="text-slate-500 text-sm mb-4">

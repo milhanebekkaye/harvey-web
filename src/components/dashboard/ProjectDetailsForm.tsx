@@ -314,18 +314,6 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <StatusBadge status={project.status} />
-            <button
-              type="button"
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50"
-            >
-              Archive
-            </button>
-            <button
-              type="button"
-              className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50"
-            >
-              Delete
-            </button>
           </div>
         </div>
         <p className="text-sm text-slate-500 italic mt-2">
@@ -599,10 +587,10 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           Harvey&apos;s Notes
         </h2>
         <p className="text-slate-500 text-sm mb-5">
-          Observations about your project. Edit below; save with the button at the bottom of the page.
+          Observations about your project. Add or edit notes below, then click &quot;Save Changes&quot; at the bottom to store them.
         </p>
         {(project.projectNotes?.length ?? 0) > 0 ? (
-          <ul className="space-y-3">
+          <ul className="space-y-4">
             {[...(project.projectNotes ?? [])].reverse().map((entry, displayIndex) => {
               const realIndex = (project.projectNotes!.length - 1) - displayIndex
               const updateNote = (note: string) => {
@@ -617,21 +605,21 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
               return (
                 <li
                   key={realIndex}
-                  className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50/50 p-3 text-left"
+                  className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left"
                 >
-                  <span className="material-symbols-outlined text-[#895af6]/70 shrink-0 mt-0.5 text-lg">
+                  <span className="material-symbols-outlined text-[#895af6]/70 shrink-0 mt-1 text-xl">
                     format_quote
                   </span>
                   <div className="min-w-0 flex-1">
                     <textarea
                       value={entry.note}
                       onChange={(e) => updateNote(e.target.value)}
-                      placeholder="Note..."
-                      rows={2}
-                      className="w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-[#895af6] focus:outline-none focus:ring-1 focus:ring-[#895af6]"
+                      placeholder="Add or edit this note..."
+                      rows={5}
+                      className="w-full min-h-[120px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-700 placeholder:text-slate-400 focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
                     />
                     {entry.extracted_at && (
-                      <p className="text-xs text-slate-400 mt-1.5">
+                      <p className="text-xs text-slate-400 mt-2">
                         {formatNoteDate(entry.extracted_at)}
                       </p>
                     )}
@@ -639,10 +627,10 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
                   <button
                     type="button"
                     onClick={removeNote}
-                    className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0"
+                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 transition-colors"
                     title="Remove note"
                   >
-                    <span className="material-symbols-outlined text-lg">close</span>
+                    <span className="material-symbols-outlined text-xl">close</span>
                   </button>
                 </li>
               )
@@ -656,13 +644,13 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
             notes.push({ note: '', extracted_at: new Date().toISOString() })
             updateProject({ projectNotes: notes })
           }}
-          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-base font-medium text-slate-600 hover:border-[#895af6]/50 hover:bg-[#895af6]/5 hover:text-[#895af6] transition-colors"
         >
-          <span className="material-symbols-outlined text-lg">add</span>
+          <span className="material-symbols-outlined text-xl">add</span>
           Add note
         </button>
         {!(project.projectNotes?.length ?? 0) && (
-          <p className="text-xs text-slate-400 mt-2">Click &quot;Add note&quot; or let Harvey add observations as you chat.</p>
+          <p className="text-sm text-slate-400 mt-3">Click &quot;Add note&quot; to create one, or let Harvey add observations as you chat. Remember to click &quot;Save Changes&quot; to save.</p>
         )}
       </section>
 

@@ -31,6 +31,7 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  useDroppable,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -177,6 +178,35 @@ interface TimelineViewProps {
 
 function canDragTask(task: DashboardTask): boolean {
   return task.status === 'pending' || task.status === 'focus' || task.status === 'urgent' || task.status === 'in_progress'
+}
+
+/**
+ * Droppable section container — registers empty space below tasks as a valid
+ * drop target so closestCenter doesn't fall back to the last task of the
+ * preceding section when the pointer is below all tasks in a day group.
+ *
+ * The `id` should be the YYYY-MM-DD date string of that section so
+ * handleDragEnd can identify which day the user is targeting.
+ */
+function DroppableSection({
+  id,
+  children,
+  className = '',
+}: {
+  id: string
+  children: React.ReactNode
+  className?: string
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className}${isOver ? ' rounded-lg ring-2 ring-purple-200' : ''}`}
+      style={{ minHeight: '60px' }}
+    >
+      {children}
+    </div>
+  )
 }
 
 interface SortableTaskItemProps {
@@ -337,6 +367,17 @@ export function TimelineView({
       }
       const draggedId = String(active.id)
       const overId = String(over.id)
+
+      // Hovering over a DroppableSection container (YYYY-MM-DD date string as id).
+      // overId won't match any task id, so the placeholder index falls through to
+      // sectionTasks.length → placeholder renders at the end of the section.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(overId)) {
+        const draggedTask = allTasks.find((t) => t.id === draggedId)
+        if (!draggedTask) return
+        setOverInfo({ draggedId, overId, destDateStr: overId })
+        return
+      }
+
       const overTask = allTasks.find((t) => t.id === overId)
       const draggedTask = allTasks.find((t) => t.id === draggedId)
       if (!overTask || !draggedTask) return
@@ -356,55 +397,104 @@ export function TimelineView({
       const draggedId = String(active.id)
       const overId = String(over.id)
       const draggedTask = allTasks.find((t) => t.id === draggedId)
-      const overTask = allTasks.find((t) => t.id === overId)
-      if (!draggedTask || !overTask) return
+      if (!draggedTask) return
       if (!canDragTask(draggedTask)) return
+
       const sourceDateStr = draggedTask.scheduledDate ? draggedTask.scheduledDate.split('T')[0] : null
-      const destDateStr = overTask.scheduledDate ? overTask.scheduledDate.split('T')[0] : null
+
+      // When over.id is a YYYY-MM-DD string, the pointer landed on a DroppableSection
+      // container (empty space below the last task). Append dragged task at end of that day.
+      const isDroppedOnSection = /^\d{4}-\d{2}-\d{2}$/.test(overId)
+
+      let destDateStr: string | null
+      let newDestOrder: string[]
+      let sourceSiblingsOrder: string[] = []
+
+      if (isDroppedOnSection) {
+        destDateStr = overId
+
+        const destSectionTasks = allTasks.filter(
+          (t) => t.scheduledDate && t.scheduledDate.split('T')[0] === destDateStr
+        )
+        const sourceSectionTasks = sourceDateStr
+          ? allTasks.filter((t) => t.scheduledDate && t.scheduledDate.split('T')[0] === sourceDateStr)
+          : []
+
+        // All IDs in dest section sorted by position, with dragged task excluded (cross-day case)
+        const destIdsByPosition = [...destSectionTasks]
+          .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+          .map((t) => t.id)
+          .filter((id) => id !== draggedId)
+
+        // Append dragged task at the end of destination section
+        newDestOrder = [...destIdsByPosition, draggedId]
+
+        if (sourceDateStr !== destDateStr) {
+          const sourceOrdered = [...sourceSectionTasks].sort(
+            (a, b) => (a.position ?? 999) - (b.position ?? 999)
+          )
+          sourceSiblingsOrder = sourceOrdered.map((t) => t.id).filter((id) => id !== draggedId)
+          console.log('[DnD] Section drop (cross-day): task appended at end of section container')
+          console.log('[DnD] dragged task:', draggedTask.title, '| source day:', sourceDateStr)
+          console.log('[DnD] destination day:', destDateStr)
+          console.log('[DnD] sourceSiblingsOrder:', sourceSiblingsOrder)
+          console.log('[DnD] destinationSiblingsOrder:', newDestOrder)
+        } else {
+          // Same-day: move to end. If it's already last, bail out (no-op).
+          const allDestIds = [...destSectionTasks]
+            .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+            .map((t) => t.id)
+          if (allDestIds[allDestIds.length - 1] === draggedId) return
+          newDestOrder = [...allDestIds.filter((id) => id !== draggedId), draggedId]
+        }
+      } else {
+        // Drop on a task card (existing logic)
+        const overTask = allTasks.find((t) => t.id === overId)
+        if (!overTask) return
+        destDateStr = overTask.scheduledDate ? overTask.scheduledDate.split('T')[0] : null
+        if (!destDateStr) return
+
+        const destSectionTasks = allTasks.filter(
+          (t) => t.scheduledDate && t.scheduledDate.split('T')[0] === destDateStr
+        )
+        const sourceSectionTasks = sourceDateStr
+          ? allTasks.filter((t) => t.scheduledDate && t.scheduledDate.split('T')[0] === sourceDateStr)
+          : []
+
+        // Sorted by position (use copies to avoid mutating filtered arrays)
+        const destIdsByPosition = [...destSectionTasks]
+          .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
+          .map((t) => t.id)
+        const overIndex = destIdsByPosition.indexOf(overId)
+        if (overIndex < 0) return
+
+        if (sourceDateStr === destDateStr) {
+          // Same-day: move within the list (arrayMove)
+          const currentIndex = destIdsByPosition.indexOf(draggedId)
+          newDestOrder = arrayMove(destIdsByPosition, currentIndex, overIndex)
+        } else {
+          // Cross-day: INSERT into destination at drop index.
+          const sourceOrdered = [...sourceSectionTasks].sort(
+            (a, b) => (a.position ?? 999) - (b.position ?? 999)
+          )
+          sourceSiblingsOrder = sourceOrdered.map((t) => t.id).filter((id) => id !== draggedId)
+          newDestOrder = [
+            ...destIdsByPosition.slice(0, overIndex),
+            draggedId,
+            ...destIdsByPosition.slice(overIndex),
+          ]
+          console.log('[DnD] Cross-day drag detected')
+          console.log('[DnD] dragged task:', draggedTask.title, '| source day:', sourceDateStr)
+          console.log('[DnD] destination day:', destDateStr)
+          console.log('[DnD] sourceSiblingsOrder:', sourceSiblingsOrder)
+          console.log('[DnD] destinationSiblingsOrder:', newDestOrder)
+        }
+      }
+
       if (!destDateStr) return
 
       const depIds = (draggedTask.dependsOn ?? []).filter(Boolean)
       const dependents = allTasks.filter((t) => (t.dependsOn ?? []).includes(draggedTask.id))
-      const destSectionTasks = allTasks.filter(
-        (t) => t.scheduledDate && t.scheduledDate.split('T')[0] === destDateStr
-      )
-      const sourceSectionTasks = sourceDateStr
-        ? allTasks.filter((t) => t.scheduledDate && t.scheduledDate.split('T')[0] === sourceDateStr)
-        : []
-
-      // Sorted by position (use copies to avoid mutating filtered arrays)
-      const destIdsByPosition = [...destSectionTasks]
-        .sort((a, b) => (a.position ?? 999) - (b.position ?? 999))
-        .map((t) => t.id)
-      const overIndex = destIdsByPosition.indexOf(overId)
-      if (overIndex < 0) return
-
-      let newDestOrder: string[]
-      let sourceSiblingsOrder: string[] = []
-
-      if (sourceDateStr === destDateStr) {
-        // Same-day: move within the list (arrayMove)
-        const currentIndex = destIdsByPosition.indexOf(draggedId)
-        newDestOrder = arrayMove(destIdsByPosition, currentIndex, overIndex)
-      } else {
-        // Cross-day: INSERT into destination at drop index. Source loses the task; no task moves from dest to source.
-        // 1. Source day: remove dragged task, order by position → sourceSiblingsOrder
-        const sourceOrdered = [...sourceSectionTasks].sort(
-          (a, b) => (a.position ?? 999) - (b.position ?? 999)
-        )
-        sourceSiblingsOrder = sourceOrdered.map((t) => t.id).filter((id) => id !== draggedId)
-        // 2. Destination day: insert dragged task at overIndex (drop target index)
-        newDestOrder = [
-          ...destIdsByPosition.slice(0, overIndex),
-          draggedId,
-          ...destIdsByPosition.slice(overIndex),
-        ]
-        console.log('[DnD] Cross-day drag detected')
-        console.log('[DnD] dragged task:', draggedTask.title, '| source day:', sourceDateStr)
-        console.log('[DnD] destination day:', destDateStr)
-        console.log('[DnD] sourceSiblingsOrder:', sourceSiblingsOrder)
-        console.log('[DnD] destinationSiblingsOrder:', newDestOrder)
-      }
 
       for (const depId of depIds) {
         const depTask = allTasks.find((t) => t.id === depId)
@@ -510,46 +600,14 @@ export function TimelineView({
           </span>
         </div>
 
-        <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
-          {isSortable ? (
-            <SortableContext items={sectionTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-              {(() => {
-                const nodes: React.ReactNode[] = []
-                sectionTasks.forEach((task, idx) => {
-                  const isExpanded = expandedTaskId === task.id
-                  const isActiveConversation = activeConversationTaskId === task.id
-                  if (destPlaceholderIndex === idx) {
-                    nodes.push(
-                      <div
-                        key="__dnd-placeholder__"
-                        className="h-16 rounded-xl border-2 border-dashed border-[#895af6]/40 bg-[#895af6]/5 transition-all duration-200"
-                        aria-hidden
-                      />
-                    )
-                  }
-                  nodes.push(
-                    <SortableTaskItem
-                      key={task.id}
-                      task={task}
-                      sectionDateStr={sectionDateStr}
-                      isExpanded={isExpanded}
-                      onTaskClick={onTaskClick}
-                      variant={gridLayout ? 'compact' : 'default'}
-                      gridLayout={gridLayout}
-                      isOverdue={isOverdue}
-                      isPast={isPast}
-                      isActiveConversation={isActiveConversation}
-                      onComplete={onComplete}
-                      onSkip={onSkip}
-                      onEdit={onEdit}
-                      onChecklistToggle={onChecklistToggle}
-                      onAskHarvey={onAskHarvey}
-                      isActionLoading={isActionLoading}
-                      allTasks={allTasks}
-                    />
-                  )
-                })
-                if (destPlaceholderIndex === sectionTasks.length) {
+        {isSortable ? (
+          <SortableContext items={sectionTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            {(() => {
+              const nodes: React.ReactNode[] = []
+              sectionTasks.forEach((task, idx) => {
+                const isExpanded = expandedTaskId === task.id
+                const isActiveConversation = activeConversationTaskId === task.id
+                if (destPlaceholderIndex === idx) {
                   nodes.push(
                     <div
                       key="__dnd-placeholder__"
@@ -558,11 +616,51 @@ export function TimelineView({
                     />
                   )
                 }
-                return nodes
-              })()}
-            </SortableContext>
-          ) : (
-            sectionTasks.map((task) => {
+                nodes.push(
+                  <SortableTaskItem
+                    key={task.id}
+                    task={task}
+                    sectionDateStr={sectionDateStr}
+                    isExpanded={isExpanded}
+                    onTaskClick={onTaskClick}
+                    variant={gridLayout ? 'compact' : 'default'}
+                    gridLayout={gridLayout}
+                    isOverdue={isOverdue}
+                    isPast={isPast}
+                    isActiveConversation={isActiveConversation}
+                    onComplete={onComplete}
+                    onSkip={onSkip}
+                    onEdit={onEdit}
+                    onChecklistToggle={onChecklistToggle}
+                    onAskHarvey={onAskHarvey}
+                    isActionLoading={isActionLoading}
+                    allTasks={allTasks}
+                  />
+                )
+              })
+              if (destPlaceholderIndex === sectionTasks.length) {
+                nodes.push(
+                  <div
+                    key="__dnd-placeholder__"
+                    className="h-16 rounded-xl border-2 border-dashed border-[#895af6]/40 bg-[#895af6]/5 transition-all duration-200"
+                    aria-hidden
+                  />
+                )
+              }
+              const containerClass = gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'
+              const isDateSection = sectionDateStr !== null && /^\d{4}-\d{2}-\d{2}$/.test(sectionDateStr)
+              return isDateSection ? (
+                <DroppableSection id={sectionDateStr!} className={containerClass}>
+                  {nodes}
+                </DroppableSection>
+              ) : (
+                <div className={containerClass}>{nodes}</div>
+              )
+            })()}
+          </SortableContext>
+        ) : (
+          <div className={gridLayout ? 'grid grid-cols-2 gap-4' : 'space-y-3'}>
+            {sectionTasks.map((task) => {
               const isExpanded = expandedTaskId === task.id
               const isActiveConversation = activeConversationTaskId === task.id
 
@@ -619,9 +717,9 @@ export function TimelineView({
                   )}
                 </div>
               )
-            })
-          )}
-        </div>
+            })}
+          </div>
+        )}
       </section>
     )
   }

@@ -11,10 +11,37 @@ import { createClient } from '@/lib/auth/supabase-server'
 import { updateUser } from '@/lib/users/user-service'
 import { getActiveProject } from '@/lib/tasks/task-service'
 import { prisma } from '@/lib/db/prisma'
-import type { SettingsUpdateBody } from '@/types/settings.types'
+import type { SettingsUpdateBody, UserNoteEntry } from '@/types/settings.types'
+
+function validateUserNotes(val: unknown): { valid: true; value: UserNoteEntry[] | null } | { valid: false; error: string } {
+  if (val === null || val === undefined) return { valid: true, value: null }
+  if (!Array.isArray(val)) return { valid: false, error: 'userNotes must be an array or null' }
+  const entries: UserNoteEntry[] = []
+  for (let i = 0; i < val.length; i++) {
+    const item = val[i]
+    if (!item || typeof item !== 'object' || !('note' in item)) {
+      return { valid: false, error: `userNotes[${i}] must be an object with note` }
+    }
+    const note = (item as { note: unknown }).note
+    const extracted_at = (item as { extracted_at?: unknown }).extracted_at
+    if (typeof note !== 'string') return { valid: false, error: `userNotes[${i}].note must be a string` }
+    entries.push({ note, ...(typeof extracted_at === 'string' ? { extracted_at } : {}) })
+  }
+  return { valid: true, value: entries.length ? entries : null }
+}
 
 function validateTime(s: string): boolean {
   return /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(s)
+}
+
+const DAY_NAME_TO_NUM: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
 }
 
 type WorkScheduleBlockPayload = { days?: number[]; startTime: string; endTime: string }
@@ -23,6 +50,52 @@ type WorkSchedulePayload = {
   startTime?: string
   endTime?: string
   blocks?: WorkScheduleBlockPayload[]
+  /** Extraction format from onboarding (snake_case, day names). */
+  days?: string[] | number[]
+  start_time?: string
+  end_time?: string
+}
+
+/**
+ * Normalize workSchedule from onboarding extraction shape (days, start_time, end_time)
+ * into the canonical shape (workDays 0-6, startTime, endTime) so validation passes.
+ */
+function normalizeWorkSchedule(ws: WorkSchedulePayload | null): WorkSchedulePayload | null {
+  if (ws == null || typeof ws !== 'object') return ws
+  // Already has valid blocks → keep as-is (ensure camelCase is used)
+  if (Array.isArray(ws.blocks) && ws.blocks.length > 0) {
+    return ws
+  }
+  // Already has workDays (numbers) + startTime + endTime → keep as-is
+  if (
+    Array.isArray(ws.workDays) &&
+    ws.workDays.length > 0 &&
+    ws.workDays.every((d) => typeof d === 'number' && d >= 0 && d <= 6) &&
+    typeof ws.startTime === 'string' &&
+    validateTime(ws.startTime) &&
+    typeof ws.endTime === 'string' &&
+    validateTime(ws.endTime)
+  ) {
+    return { workDays: ws.workDays, startTime: ws.startTime, endTime: ws.endTime }
+  }
+  // Extraction format: days (string[] or number[]) + start_time/end_time
+  const rawDays = ws.days
+  const start = (ws.startTime ?? ws.start_time) as string | undefined
+  const end = (ws.endTime ?? ws.end_time) as string | undefined
+  if (!start || !validateTime(start) || !end || !validateTime(end)) {
+    return ws
+  }
+  let workDaysNum: number[] = []
+  if (Array.isArray(rawDays) && rawDays.length > 0) {
+    workDaysNum = rawDays
+      .map((d) => (typeof d === 'number' ? (d >= 0 && d <= 6 ? d : undefined) : DAY_NAME_TO_NUM[String(d).toLowerCase()]))
+      .filter((n): n is number => n !== undefined)
+    workDaysNum = [...new Set(workDaysNum)].sort((a, b) => a - b)
+  }
+  if (workDaysNum.length === 0) {
+    workDaysNum = [1, 2, 3, 4, 5]
+  }
+  return { workDays: workDaysNum, startTime: start, endTime: end }
 }
 
 function validateWorkSchedule(ws: WorkSchedulePayload): string | null {
@@ -171,12 +244,18 @@ export async function POST(request: Request) {
     })
 
     if (body.workSchedule != null) {
-      const err = validateWorkSchedule(body.workSchedule as WorkSchedulePayload)
+      const normalized = normalizeWorkSchedule(body.workSchedule as WorkSchedulePayload)
+      const toValidate = normalized ?? body.workSchedule
+      const err = validateWorkSchedule(toValidate as WorkSchedulePayload)
       if (err) {
         return NextResponse.json(
           { error: err, code: 'VALIDATION_ERROR' },
           { status: 400 }
         )
+      }
+      // Persist canonical shape so future saves and GET match
+      if (normalized != null) {
+        body.workSchedule = normalized as SettingsUpdateBody['workSchedule']
       }
     }
 
@@ -201,17 +280,29 @@ export async function POST(request: Request) {
       }
     }
 
+    if (body.userNotes !== undefined) {
+      const result = validateUserNotes(body.userNotes)
+      if (!result.valid) {
+        return NextResponse.json(
+          { error: result.error, code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        )
+      }
+      body.userNotes = result.value
+    }
+
     // Resolve project for contextData update (same project GET /api/settings returns)
     const projectId =
       body.projectId ??
       (await getActiveProject(user.id).then((r) => (r.success && r.data ? r.data.id : null)))
 
-    if (body.workSchedule !== undefined || body.commute !== undefined || body.preferred_session_length !== undefined || body.communication_style !== undefined) {
+    if (body.workSchedule !== undefined || body.commute !== undefined || body.preferred_session_length !== undefined || body.communication_style !== undefined || body.userNotes !== undefined) {
       const userUpdate: Parameters<typeof updateUser>[1] = {}
       if (body.workSchedule !== undefined) userUpdate.workSchedule = body.workSchedule
       if (body.commute !== undefined) userUpdate.commute = body.commute
       if (body.preferred_session_length !== undefined) userUpdate.preferred_session_length = body.preferred_session_length ?? undefined
       if (body.communication_style !== undefined) userUpdate.communication_style = body.communication_style ?? undefined
+      if (body.userNotes !== undefined) userUpdate.userNotes = body.userNotes
       const result = await updateUser(user.id, userUpdate)
       if (!result.success) {
         return NextResponse.json(

@@ -499,16 +499,17 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     hasUserSentMessage &&
     lastAssistantText.includes('?') &&
     /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish|when.*ready|ready.*when|when.*timeline|lock.*timeline|ready to share|what.*ready/i.test(lastAssistantText)
-  // Start date: require explicit calendar phrasing (start date, begin, kick off); avoid "when do you want to start working"
+  // Start date: require explicit calendar phrasing (start date, begin, kick off, begin scheduling); match "What's your start date", etc.
   const isAskingAboutStartDate =
     hasUserSentMessage &&
     lastAssistantText.includes('?') &&
-    /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|kick\s*off|begin.*when/i.test(lastAssistantText)
+    /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|what'?s your start date|kick\s*off|begin.*when|begin scheduling/i.test(lastAssistantText)
   const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const todayStr = new Date().toISOString().slice(0, 10)
   const projectData = shadowFields?.project as { target_deadline?: unknown; schedule_start_date?: unknown } | undefined
   const deadlineAlreadySet = !!(projectData?.target_deadline != null && projectData?.target_deadline !== '')
-  const startDateAlreadySet = !!(projectData?.schedule_start_date != null && projectData?.schedule_start_date !== '')
+  // Don't suppress start-date widget based on extraction: show when Harvey asks; rely on answeredWidgetIds after user picks
+  const startDateAlreadySet = false
   let forcedDatePickerField: DatePickerField | null = null
   if (!datePickerInvocation) {
     if (!deadlineAlreadySet && isAskingAboutDeadline) forcedDatePickerField = 'deadline'
@@ -517,9 +518,9 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
 
   const effectiveDatePickerConfig =
     datePickerInvocation ??
-    (forcedDatePickerField && lastMessage?.id
+    (forcedDatePickerField && lastAssistantMessage?.id
       ? {
-          messageId: lastMessage.id,
+          messageId: lastAssistantMessage.id,
           field: forcedDatePickerField,
           label: forcedDatePickerField === 'deadline' ? 'Select your project deadline' : 'Select your schedule start date',
           min_date: forcedDatePickerField === 'deadline' ? tomorrowStr : todayStr,
