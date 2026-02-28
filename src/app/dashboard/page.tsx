@@ -168,6 +168,12 @@ export default function DashboardPage() {
   const [showRebuildModal, setShowRebuildModal] = useState(false)
   const [isRebuilding, setIsRebuilding] = useState(false)
 
+  /**
+   * Incremented after a successful reorder API call so ProjectTimelineView
+   * silently refetches its data without showing a loading spinner.
+   */
+  const [timelineRefreshTrigger, setTimelineRefreshTrigger] = useState(0)
+
   // ===== DATA FETCHING =====
 
   /**
@@ -848,7 +854,8 @@ export default function DashboardPage() {
           const data = await response.json().catch(() => ({}))
           throw new Error(data.error ?? 'Failed to reorder')
         }
-        // 4. Background sync (no loading state)
+        // 4. Background sync (no loading state) + signal timeline to refetch
+        setTimelineRefreshTrigger((prev) => prev + 1)
         void fetchTasks({ silent: true })
       } catch (err) {
         // 5. Revert on failure
@@ -1177,6 +1184,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             onComplete={handleCompleteTask}
             onSkip={handleSkipTask}
             onAskHarvey={handleAskHarvey}
+            refreshTrigger={timelineRefreshTrigger}
           />
         )}
       </main>

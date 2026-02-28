@@ -50,6 +50,23 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 *(Most recent entries go at the top of this section.)*
 
+### 2026-02-28 – Two timeline bugs: position-aware sort + cross-view refresh after reorder
+
+**Bug 1 – Timeline sort ignores position**
+- **File**: `src/lib/timeline/get-timeline-data.ts`
+- **Root cause**: `compareTasksChronologically` sorted same-day flexible tasks by `createdAt`, so drag-and-drop reordering had no effect on which task appeared as "Current" in the timeline view.
+- **Fix**: Added `position: number | null` to `TaskForSort` interface. Updated `toTaskForSort` helper to map `position`. Added `position` to all three Prisma `select` blocks (`activeTaskCandidates`, `unmetTasksFull`, `pendingCandidates`). In `compareTasksChronologically`, replaced the flexible+flexible secondary sort: now uses `position` ascending when both tasks have it; if only one has position, that task comes first; if neither has position, falls back to original `createdAt` sort. Fixed tasks and mixed flex/fixed comparisons are unchanged.
+- **Comment updated** in the JSDoc to reflect the new sort rule.
+
+**Bug 2 – Timeline view doesn't refetch after reorder**
+- **Root cause**: `ProjectTimelineView` has its own independent `GET /api/timeline` fetch and no mechanism to respond to reorder events from the list view.
+- **Fix**:
+  - `src/components/timeline/TimelineView.tsx`: Added `options?: { silent?: boolean }` parameter to `fetchTimeline`. When `silent: true`, skips `setIsLoading(true)` and suppresses error state/toast. Added `refreshTrigger?: number` prop. Added a `useEffect` on `refreshTrigger` that calls `fetchTimeline({ silent: true })` whenever the value changes (skips first render via `isFirstRenderRef`). `handleComplete`/`handleSkip` still call `fetchTimeline()` (full loading state).
+  - `src/components/dashboard/ProjectTimelineView.tsx`: Added `refreshTrigger?: number` prop, passed through to inner `TimelineView`.
+  - `src/app/dashboard/page.tsx`: Added `timelineRefreshTrigger` state (`useState(0)`). After successful reorder API response, calls `setTimelineRefreshTrigger(prev => prev + 1)` then `void fetchTasks({ silent: true })`. Passes `refreshTrigger={timelineRefreshTrigger}` to `ProjectTimelineView`.
+- **Result**: After a drag-and-drop reorder, the timeline view silently refetches and shows the updated active task without any loading spinner.
+- **Files touched**: `src/lib/timeline/get-timeline-data.ts`, `src/components/timeline/TimelineView.tsx`, `src/components/dashboard/ProjectTimelineView.tsx`, `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/`.
+
 ### 2026-02-28 – Reorder: optimistic update (instant drop, no loading delay)
 
 - **Agent / context**: Remove the 2–3 s freeze after dropping a task during drag-and-drop reorder.

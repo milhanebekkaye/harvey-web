@@ -11,7 +11,7 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
   - **Across days**: `scheduledDate` asc.
   - **Effective start**: Fixed task = `scheduledStartTime` (in user TZ, decimal hours). Flexible task = `window_start` string parsed to decimal hours (e.g. "09:00" → 9, "14:30" → 14.5).
   - **Same day, flexible vs fixed**: gap = (earliest fixed start on that day) − (flexible effective start). If gap ≥ flexible task’s duration in hours → flexible sorts first (it fits before the fixed task). Otherwise fixed sorts first, then flexible.
-  - **Among flexible**: dependency order (if A in B’s `depends_on`, A before B), then `createdAt` asc.
+  - **Among flexible**: `position` asc when both tasks have a position value; if only one has position it sorts first; if neither has position, falls back to `createdAt` asc. (Dependency order was previously used here but replaced by position so drag-and-drop reordering in the list view affects the timeline.)
   - **Among fixed**: `scheduledStartTime` asc.
   - **Legacy**: `is_flexible ?? false` → treated as fixed.
 - **Active task**: All pending with non-null `scheduledDate` are fetched (with `estimatedDuration`, `window_start`, `window_end`), sorted with `compareTasksChronologically(..., allTasks)`; first = active candidate. If it has **unmet dependencies**, those are fetched and sorted the same way; first = active (`reason: 'unmet-dependency'`).
@@ -28,7 +28,7 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
 - `src/components/dashboard/ProjectTimelineView.tsx`
   - Thin wrapper that renders timeline module in dashboard mode.
 - `src/components/timeline/TimelineView.tsx`
-  - Fetches timeline payload, handles edge states, and wires active-task actions.
+  - Fetches timeline payload, handles edge states, and wires active-task actions. Accepts `refreshTrigger?: number` prop — when this value increments the component silently refetches via `fetchTimeline({ silent: true })` (no loading spinner). Used by `dashboard/page.tsx` after a reorder API success.
 - `src/components/timeline/ActiveTaskCard.tsx`
   - Renders active task details and manages Harvey tip fetch + refresh lifecycle.
 - `src/components/timeline/HarveysTip.tsx`

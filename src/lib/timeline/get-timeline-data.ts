@@ -19,6 +19,7 @@ interface TaskForSort {
   estimatedDuration: number
   window_start: string | null
   window_end: string | null
+  position: number | null
 }
 
 /** Parse "HH:MM" to decimal hours for ordering (e.g. "09:00" → 9, "14:30" → 14.5). */
@@ -58,7 +59,7 @@ function getEarliestFixedStartOnDay(
  * Compare two tasks chronologically for timeline order.
  * Base rule: sort by effective start time (fixed = scheduledStartTime, flexible = window_start as decimal hours).
  * Same day: flexible vs fixed uses gap = earliestFixedStart - flexibleStart; if gap >= flexible duration then flexible first, else fixed first.
- * Among flexible: dependency order then createdAt. Among fixed: scheduledStartTime asc. Legacy: is_flexible ?? false → fixed.
+ * Among flexible: position asc (if available) → createdAt asc. Among fixed: scheduledStartTime asc. Legacy: is_flexible ?? false → fixed.
  */
 function compareTasksChronologically(
   a: TaskForSort,
@@ -75,8 +76,12 @@ function compareTasksChronologically(
   const bIsFlexible = b.is_flexible === true
 
   if (aIsFlexible && bIsFlexible) {
-    if ((b.depends_on ?? []).includes(a.id)) return -1
-    if ((a.depends_on ?? []).includes(b.id)) return 1
+    // Both have a position: sort by position ascending
+    if (a.position != null && b.position != null) return a.position - b.position
+    // One has position, the other doesn't: positioned task comes first
+    if (a.position != null) return -1
+    if (b.position != null) return 1
+    // Neither has position: fall back to createdAt
     return (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
   }
 
@@ -160,6 +165,7 @@ export async function getTimelineData(
       estimatedDuration: true,
       window_start: true,
       window_end: true,
+      position: true,
     },
   })
 
@@ -174,6 +180,7 @@ function toTaskForSort(t: {
   estimatedDuration?: number
   window_start?: string | null
   window_end?: string | null
+  position?: number | null
 }): TaskForSort {
   return {
     id: t.id,
@@ -185,6 +192,7 @@ function toTaskForSort(t: {
     estimatedDuration: t.estimatedDuration ?? 0,
     window_start: t.window_start ?? null,
     window_end: t.window_end ?? null,
+    position: t.position ?? null,
   }
 }
 
@@ -236,6 +244,7 @@ function toTaskForSort(t: {
           estimatedDuration: true,
           window_start: true,
           window_end: true,
+          position: true,
         },
       })
       const unmetForSort = unmetTasksFull.map(toTaskForSort)
@@ -384,6 +393,7 @@ function toTaskForSort(t: {
       estimatedDuration: true,
       window_start: true,
       window_end: true,
+      position: true,
     },
   })
 

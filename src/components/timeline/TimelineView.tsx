@@ -14,6 +14,8 @@ interface TimelineViewProps {
   onComplete?: (taskId: string) => void | Promise<void>
   onSkip?: (taskId: string) => void | Promise<void>
   onAskHarvey?: (taskId: string, title: string, label: string) => void | Promise<void>
+  /** Increment this value to trigger a silent background refetch of timeline data. */
+  refreshTrigger?: number
 }
 
 interface TimelineApiResponse extends TimelineData {
@@ -26,6 +28,7 @@ export function TimelineView({
   onComplete,
   onSkip,
   onAskHarvey,
+  refreshTrigger,
 }: TimelineViewProps) {
   const [timelineData, setTimelineData] = useState<TimelineData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -46,14 +49,14 @@ export function TimelineView({
     }, 3200)
   }, [])
 
-  const fetchTimeline = useCallback(async () => {
+  const fetchTimeline = useCallback(async (options?: { silent?: boolean }) => {
     if (!projectId) {
       setTimelineData(null)
-      setIsLoading(false)
+      if (!options?.silent) setIsLoading(false)
       return
     }
 
-    setIsLoading(true)
+    if (!options?.silent) setIsLoading(true)
 
     try {
       const response = await fetch(`/api/timeline?projectId=${encodeURIComponent(projectId)}`)
@@ -72,24 +75,36 @@ export function TimelineView({
         dependentTasks: json.dependentTasks,
       })
     } catch (error: unknown) {
-      setTimelineData({
-        lastCompletedTask: null,
-        activeTask: null,
-        upcomingTasks: [],
-        skippedTasks: [],
-        dependencies: [],
-        dependentTasks: [],
-      })
-
-      showToast(error instanceof Error ? error.message : 'Failed to load timeline')
+      if (!options?.silent) {
+        setTimelineData({
+          lastCompletedTask: null,
+          activeTask: null,
+          upcomingTasks: [],
+          skippedTasks: [],
+          dependencies: [],
+          dependentTasks: [],
+        })
+        showToast(error instanceof Error ? error.message : 'Failed to load timeline')
+      }
     } finally {
-      setIsLoading(false)
+      if (!options?.silent) setIsLoading(false)
     }
   }, [projectId, showToast])
 
   useEffect(() => {
     void fetchTimeline()
   }, [fetchTimeline])
+
+  // Silently refetch when refreshTrigger increments (e.g. after reorder in list view)
+  const isFirstRenderRef = useRef(true)
+  useEffect(() => {
+    if (refreshTrigger === undefined) return
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false
+      return
+    }
+    void fetchTimeline({ silent: true })
+  }, [refreshTrigger, fetchTimeline])
 
   useEffect(() => {
     return () => {
