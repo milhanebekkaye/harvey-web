@@ -100,8 +100,7 @@ export async function POST(request: NextRequest) {
         description: task.description ?? null,
         estimatedDuration: task.estimatedDuration ?? null,
         label: task.label ?? null,
-        dependsOn: dependencyTasks.map((d) => ({ title: d.title, status: d.status })),
-        unlocksCount,
+        dependsOn: dependencyTasks.map((d: { title: string; status: string }) => ({ title: d.title, status: d.status })),        unlocksCount,
         projectTitle: task.project?.title ?? null,
         projectGoals: task.project?.goals ?? null,
       }
