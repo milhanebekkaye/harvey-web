@@ -1,5 +1,9 @@
 # Harvey AI Cost Audit
 
+**Update (2026-03-01):** Model configuration has been centralized. All Anthropic model references now use `src/lib/ai/models.ts` (`MODELS` constants). No model strings remain hardcoded in routes or libs. Task Chat was updated from deprecated Sonnet to Haiku via the same config.
+
+---
+
 ## Section 1: Architecture Overview
 
 **How is the Anthropic client instantiated?**
@@ -241,7 +245,7 @@ The singleton instance is exported from `src/lib/ai/claude-client.ts`.
 - **Is there any caching of system prompts or context?**
   - **No.** System prompts (like `assembleProjectChatContext` and `buildTaskChatContext`) are rebuilt dynamically from the database for every single request. Only `Task.harveyTip` has DB-level caching.
 - **Is there a single centralized place to change model names, or is it hardcoded in every file?**
-  - **Hardcoded.** While `claude-client.ts` exports `CLAUDE_CONFIG.model`, almost every route (e.g., `chat/route.ts`, `chat/project/route.ts`, `chat/task/route.ts`, `tasks/tip/route.ts`) individually hardcodes `const MODEL_ID = 'claude-haiku-4-5-20251001'` or similar at the top of the file.
+  - **Yes.** All model identifiers are defined in `src/lib/ai/models.ts` and exported as `MODELS`. Every route and lib file imports the appropriate constant (e.g. `MODELS.ONBOARDING_CHAT`, `MODELS.TASK_CHAT`). To change a model globally, update it in `models.ts` only.
 
 ---
 

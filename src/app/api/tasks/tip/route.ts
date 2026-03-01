@@ -4,8 +4,8 @@ import { anthropic } from '@/lib/ai/claude-client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
 import { normalizeTaskLabel, parseSuccessCriteria } from '@/types/task.types'
+import { MODELS } from '@/lib/ai/models'
 
-const MODEL = 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 100
 const FALLBACK_TIP = 'Break this task into the first small step and start there.'
 const SYSTEM_PROMPT = `You are Harvey, an AI accountability coach.
@@ -123,7 +123,7 @@ What should the user do right now?`
 
     try {
       const response = await anthropic.messages.create({
-        model: MODEL,
+        model: MODELS.TASK_TIP,
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],

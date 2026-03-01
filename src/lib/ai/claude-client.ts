@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { StoredMessage } from '../../types/api.types'
 import { COMPLETION_MARKER } from './prompts'
+import { MODELS } from './models'
 
 /**
  * Singleton client instance
@@ -31,14 +32,10 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
- * Configuration for Claude API calls
- *
- * - Model: claude-sonnet-4-20250514 (fast, capable, cost-effective)
- * - Max tokens: 300 (keeps responses concise for chat)
+ * Configuration for Claude API calls (max tokens only).
+ * Model selection is centralized in src/lib/ai/models.ts.
  */
-/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
 export const CLAUDE_CONFIG = {
-  model: 'claude-haiku-4-5-20251001',
   maxTokens: 300,
 } as const
 
@@ -116,19 +113,21 @@ export function formatMessagesForClaude(
  *
  * @param systemPrompt - The system prompt for Harvey's behavior
  * @param messages - Conversation history formatted for Claude
+ * @param model - Optional model id; defaults to MODELS.ONBOARDING_CHAT
  * @returns Claude's response text
  * @throws Error if API call fails
  */
 export async function getChatCompletion(
   systemPrompt: string,
-  messages: Anthropic.MessageParam[]
+  messages: Anthropic.MessageParam[],
+  model: string = MODELS.ONBOARDING_CHAT
 ): Promise<string> {
   console.log('[ClaudeClient] Sending request to Claude')
-  console.log('[ClaudeClient] Model:', CLAUDE_CONFIG.model)
+  console.log('[ClaudeClient] Model:', model)
   console.log('[ClaudeClient] Message count:', messages.length)
 
   const response = await anthropic.messages.create({
-    model: CLAUDE_CONFIG.model,
+    model,
     max_tokens: CLAUDE_CONFIG.maxTokens,
     system: systemPrompt,
     messages,

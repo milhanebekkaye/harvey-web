@@ -8,9 +8,10 @@
  */
 
 import { anthropic } from '../ai/claude-client'
+import { MODELS } from '../ai/models'
 
-/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
-const MODEL_ID = 'claude-haiku-4-5-20251001'
+/** Success criteria generation uses centralized model config. */
+const MODEL_ID = MODELS.SUCCESS_CRITERIA
 
 const SYSTEM_PROMPT = `You are a project planning assistant. Given a task title and optional description, output 2–4 specific, measurable success criteria that would make this task clearly "done".
 

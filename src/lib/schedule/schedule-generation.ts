@@ -7,7 +7,8 @@
  * Ported from Telegram bot Python implementation.
  */
 
-import { anthropic, CLAUDE_CONFIG, withAnthropicRetry } from '../ai/claude-client'
+import { anthropic, withAnthropicRetry } from '../ai/claude-client'
+import { MODELS } from '../ai/models'
 import type {
   CommuteShape,
   ExtractedConstraints,
@@ -757,10 +758,10 @@ export async function extractConstraints(
   console.log('[ScheduleGeneration] Extracting constraints from conversation...')
 
   try {
-    // Claude Sonnet preferred for extraction (constraints + enrichment); CLAUDE_CONFIG may be Haiku for cost. Quality matters for schedule and context.
+    // Claude Haiku for extraction (constraints + enrichment); model from centralized config.
     const response = await withAnthropicRetry(() =>
       anthropic.messages.create({
-        model: CLAUDE_CONFIG.model,
+        model: MODELS.CONSTRAINTS_EXTRACTION,
         max_tokens: 4096,
         system: EXTRACTION_SYSTEM_PROMPT,
         messages: [
@@ -926,7 +927,7 @@ export async function generateTasks(
   // Call Claude API (with retry on 529 overloaded / 429 rate limit)
   const response = await withAnthropicRetry(() =>
     anthropic.messages.create({
-      model: CLAUDE_CONFIG.model,
+      model: MODELS.TASK_GENERATION,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages: [
@@ -1286,7 +1287,7 @@ Write your coaching message now (plain text, 3–4 sentences):`
 
   const response = await withAnthropicRetry(() =>
     anthropic.messages.create({
-      model: CLAUDE_CONFIG.model,
+      model: MODELS.SCHEDULE_COACHING,
       max_tokens: 400,
       system: COACHING_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],

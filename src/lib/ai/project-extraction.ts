@@ -6,7 +6,8 @@
  * Mirrors the constraint extraction pattern in schedule-generation.ts.
  */
 
-import { anthropic, CLAUDE_CONFIG } from './claude-client'
+import { anthropic } from './claude-client'
+import { MODELS } from './models'
 
 const EXTRACTION_PROMPT = `Extract project info from this onboarding conversation.
 
@@ -43,7 +44,7 @@ export async function extractProjectInfo(
   }
 
   const response = await anthropic.messages.create({
-    model: CLAUDE_CONFIG.model,
+    model: MODELS.PROJECT_EXTRACTION,
     max_tokens: 256,
     system: EXTRACTION_PROMPT,
     messages: [{ role: 'user', content: conversationText }],

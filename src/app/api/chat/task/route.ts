@@ -22,8 +22,8 @@ import { buildTaskChatContext } from '@/lib/context-builders/build-task-chat-con
 import { getTaskDiscussion, appendMessages } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
 import type { StoredMessage } from '@/types/api.types'
+import { MODELS } from '@/lib/ai/models'
 
-const MODEL_ID = 'claude-sonnet-4-20250514'
 const MAX_HISTORY_MESSAGES = 20
 
 function getMessageText(message: UIMessage): string {
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = await buildTaskChatContext(taskId, user.id)
 
     const result = streamText({
-      model: anthropic(MODEL_ID),
+      model: anthropic(MODELS.TASK_CHAT),
       system: systemPrompt,
       messages: modelMessages,
       experimental_transform: smoothStream({

@@ -41,16 +41,15 @@ import { z } from 'zod'
 import { anthropic } from '@ai-sdk/anthropic'
 import { getDateStringInTimezone } from '@/lib/timezone'
 import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
+import { MODELS } from '@/lib/ai/models'
 import { computeMissingFields, buildMissingFieldsGuidance } from '@/lib/onboarding/missing-fields'
 import { prisma } from '@/lib/db/prisma'
 import { isIntakeComplete } from '@/lib/ai/claude-client'
 import type { StoredMessage } from '@/types/api.types'
 import type { UIMessage } from 'ai'
 
-/** Model identifier - matches existing CLAUDE_CONFIG */
-/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
-
-const MODEL_ID = 'claude-haiku-4-5-20251001'
+/** Model identifier — use centralized config */
+const MODEL_ID = MODELS.ONBOARDING_CHAT
 const MAX_TOKENS = 300
 
 /** Extract text content from UIMessage parts */

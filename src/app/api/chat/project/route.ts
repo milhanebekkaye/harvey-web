@@ -49,9 +49,7 @@ import {
 import { getProjectById } from '@/lib/projects/project-service'
 import { userExists, createUser } from '@/lib/users/user-service'
 import type { StoredMessage } from '@/types/api.types'
-
-/** Claude model — Haiku for MVP testing (lower cost); switch back to Sonnet for paid users */
-const MODEL_ID = 'claude-haiku-4-5-20251001'
+import { MODELS } from '@/lib/ai/models'
 
 /** Max messages to send to Claude for conversation history (reduced for cost during MVP testing) */
 const MAX_HISTORY_MESSAGES = 10
@@ -340,12 +338,12 @@ export async function POST(request: NextRequest) {
 
     // ===== STEP 8: Stream Response =====
     console.log('[ProjectChat] route.ts calling streamText', {
-      model: MODEL_ID,
+      model: MODELS.PROJECT_CHAT,
       modelMessagesLength: modelMessages.length,
       tools: Object.keys(chatTools),
     })
     const result = streamText({
-      model: anthropic(MODEL_ID),
+      model: anthropic(MODELS.PROJECT_CHAT),
       system: systemPrompt,
       messages: modelMessages,
       tools: chatTools,

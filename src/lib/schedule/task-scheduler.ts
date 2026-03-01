@@ -25,6 +25,7 @@ import type {
   WorkScheduleShape,
 } from '../../types/api.types'
 import { anthropic, withAnthropicRetry } from '../ai/claude-client'
+import { MODELS } from '../ai/models'
 import { localTimeInTimezoneToUTC } from '../timezone'
 
 /** User life constraints: work schedule and commute. Blocked time is derived from these on-the-fly. */
@@ -309,8 +310,8 @@ const MIN_FRAGMENT_HOURS = 0.5 // 30 minutes
 /** Claude request token ceiling for slot-assignment structured output. */
 const CLAUDE_SCHEDULER_MAX_TOKENS = 4000
 
-/** Claude model used for slot assignment (Haiku required for this structured step). */
-const CLAUDE_SCHEDULER_MODEL = 'claude-haiku-4-5-20251001'
+/** Claude model for slot-assignment structured output — from centralized config. */
+const CLAUDE_SCHEDULER_MODEL = MODELS.TASK_SCHEDULER
 
 /** Max attempts for Claude assignment (first pass + one validation-guided retry). */
 const CLAUDE_SCHEDULER_MAX_ATTEMPTS = 2

@@ -12,7 +12,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getOnboardingDiscussion } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
-import { anthropic, CLAUDE_CONFIG } from '@/lib/ai/claude-client'
+import { anthropic } from '@/lib/ai/claude-client'
+import { MODELS } from '@/lib/ai/models'
 import { updateUser } from '@/lib/users/user-service'
 import { updateProject } from '@/lib/projects/project-service'
 import { computeMissingFields } from '@/lib/onboarding/missing-fields'
@@ -334,7 +335,7 @@ export async function POST(request: Request) {
     // 5. Call Haiku with extraction prompt (includes previous-confidence cap and today in user TZ)
     const extractionPromptWithCap = buildExtractionPrompt(previousConfidence, todayInUserTZ)
     const response = await anthropic.messages.create({
-      model: CLAUDE_CONFIG.model,
+      model: MODELS.ONBOARDING_EXTRACTION,
       max_tokens: 2000,
       messages: [{ role: 'user', content: extractionPromptWithCap + conversationText }],
     })

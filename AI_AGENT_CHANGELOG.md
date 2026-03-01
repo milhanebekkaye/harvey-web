@@ -48,6 +48,14 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-01 – Centralize AI model configuration (surgical refactor)
+
+- **Agent / context**: Cursor AI assistant (model config refactor)
+- **Summary**: Introduced a single source of truth for Anthropic model IDs (`src/lib/ai/models.ts` with `MODELS`). Replaced every hardcoded model string and `CLAUDE_CONFIG.model` usage across routes and libs with the corresponding `MODELS.*` constant. Task Chat was changed from deprecated `claude-sonnet-4-20250514` to Haiku via `MODELS.TASK_CHAT`. `CLAUDE_CONFIG` in `claude-client.ts` no longer has a `model` field; `getChatCompletion` now accepts an optional `model` parameter (default `MODELS.ONBOARDING_CHAT`).
+- **Files touched**: New: `src/lib/ai/models.ts`. Updated: `src/app/api/chat/route.ts`, `src/app/api/chat/project/route.ts`, `src/app/api/chat/task/route.ts`, `src/app/api/chat/checkin/route.ts`, `src/app/api/onboarding/extract/route.ts`, `src/app/api/tasks/tip/route.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/lib/ai/claude-client.ts`, `src/lib/ai/project-extraction.ts`, `src/lib/chat/generateSuccessCriteria.ts`, `src/lib/discussions/generate-task-opening-message.ts`. Docs: `docs/cost-audit.md`.
+- **Motivation**: Single place to change models for cost/quality tuning; eliminate scattered hardcoded strings and deprecated Sonnet reference in Task Chat.
+- **Risks / notes**: No logic or prompt changes. Verification: no remaining raw `claude-haiku-4-5-20251001`, `claude-sonnet-4-20250514`, or `CLAUDE_CONFIG.model` in source (only in `models.ts` values and historical docs).
+
 ### 2026-03-01 – Perform read-only API Cost Audit
 
 - **Agent / context**: Cursor AI assistant (Read-only analysis)

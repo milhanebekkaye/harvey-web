@@ -4,8 +4,7 @@
  */
 
 import { anthropic } from '@/lib/ai/claude-client'
-
-const OPENING_MESSAGE_MODEL = 'claude-haiku-4-5-20251001'
+import { MODELS } from '@/lib/ai/models'
 const MAX_TOKENS = 200
 
 /** Used when Haiku fails or task data is missing; discussion creation never blocked. */
@@ -70,7 +69,7 @@ export async function generateTaskOpeningMessage(
 ): Promise<string> {
   try {
     const response = await anthropic.messages.create({
-      model: OPENING_MESSAGE_MODEL,
+      model: MODELS.TASK_OPENING_MESSAGE,
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: buildUserMessage(task) }],

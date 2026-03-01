@@ -18,8 +18,8 @@ import { getProjectById } from '@/lib/projects/project-service'
 import { assembleCheckInContext } from '@/lib/checkin/checkin-context'
 import { streamText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
+import { MODELS } from '@/lib/ai/models'
 
-const MODEL_ID = 'claude-haiku-4-5-20251001'
 const MAX_TOKENS = 150
 
 function buildCheckInSystemPrompt(context: Awaited<ReturnType<typeof assembleCheckInContext>>): string {
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = buildCheckInSystemPrompt(context)
 
     const result = streamText({
-      model: anthropic(MODEL_ID),
+      model: anthropic(MODELS.DAILY_CHECKIN),
       maxOutputTokens: MAX_TOKENS,
       system: systemPrompt,
       messages: [{ role: 'user', content: 'Generate the check-in message for the context above.' }],
