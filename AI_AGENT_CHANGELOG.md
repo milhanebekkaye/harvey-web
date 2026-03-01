@@ -48,6 +48,15 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-01 – Perform read-only API Cost Audit
+
+- **Agent / context**: Cursor AI assistant (Read-only analysis)
+- **Summary**: Conducted a comprehensive read-only cost audit of the codebase, generating a detailed cost intelligence document analyzing every Anthropic API call, model usage, context size, caching behavior, and missing rate-limiting/token usage logging infrastructure.
+- **Files touched**: Generated new file `docs/cost-audit.md`. No existing files were modified.
+- **Motivation**: Provide cost visibility and identify major inefficiencies (e.g., N^2 onboarding extraction, untruncated onboarding history, expensive Sonnet usage in Task Chat).
+- **Risks / notes**: Read-only task, no functionality changed. The identified N^2 cost issues in `POST /api/onboarding/extract` should be fixed soon to avoid scaling costs.
+
+
 *(Most recent entries go at the top of this section.)*
 
 ### 2026-02-28 – Two timeline bugs: position-aware sort + cross-view refresh after reorder
