@@ -20,11 +20,35 @@ import { computeMissingFields } from '@/lib/onboarding/missing-fields'
 import { getDateStringInTimezone } from '@/lib/timezone'
 import { toNoonUTC } from '@/lib/utils/date-utils'
 
-const EXTRACTION_PROMPT = `You are extracting structured data from a conversation between a user and Harvey (an AI project coach).
+const EXTRACTION_PROMPT = `You are extracting structured data for Harvey, an AI project coach.
 
-Your task: Return ONLY valid JSON. No markdown, no backticks, no preamble text.
+Your task: Update the user's extracted profile based on new information 
+from the latest messages. Return ONLY valid JSON. No markdown, no 
+backticks, no preamble text.
 
-Output format:
+You will receive:
+1. CURRENT EXTRACTED STATE — everything already known (may have nulls)
+2. LAST MESSAGES — only the 2-3 most recent messages from the conversation
+
+Rules:
+- Read CURRENT EXTRACTED STATE as ground truth
+- Read LAST MESSAGES and identify new information or explicit corrections
+- Return the COMPLETE updated JSON with ALL fields filled
+- For notes fields (userNotes, projectNotes): if new info is found, return 
+  the existing notes with the new information appended as a new sentence. 
+  Never truncate or remove existing notes content.
+- For array fields (availabilityWindows, phases, tools_and_stack): return 
+  the complete updated array. If the user corrected or added something, 
+  apply the change to the full array and return it whole. Never return a 
+  partial array.
+- For scalar fields (title, timezone, skill_level, etc.): return the 
+  existing value unless the user explicitly stated a correction
+- NEVER return null for a field that already has a non-null value in 
+  CURRENT EXTRACTED STATE, unless the user explicitly said to remove it
+- If nothing changed for a field, return the existing value exactly as-is
+- Only extract information explicitly stated by the user. Do not infer.
+
+Output format — return this exact structure:
 {
   "user": {
     "timezone": string | null,
@@ -47,66 +71,66 @@ Output format:
     "tools_and_stack": string[] | null,
     "skill_level": string | null,
     "motivation": string | null,
-    "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string (ISO) | null }], "active_phase_id": number | null } | null,
+    "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string | null }], "active_phase_id": number | null } | null,
     "projectNotes": string | null,
     "schedule_start_date": string (ISO date YYYY-MM-DD) | null
   },
   "completion_confidence": number
 }
 
-CRITICAL RULES:
-1. For arrays, return actual JSON arrays, NOT stringified JSON (e.g., ["item"] not "[\"item\"]")
-2. For objects, return actual JSON objects, NOT stringified JSON
-3. If a field is not mentioned in the conversation, set it to null
-4. Do not invent information - only extract what was explicitly stated
-5. The response must be valid JSON parseable by JSON.parse()
-6. Extract from the ENTIRE conversation - consider all messages
-
 Field-Specific Guidance:
-- availabilityWindows: Array of time blocks. Distinguish FIXED vs FLEXIBLE:
-  - FIXED: User works a specific, predictable time block every day. Example: "I work 8-10pm every evening" → window_type: "fixed", start_time: "20:00", end_time: "22:00", type: e.g. "evening_work".
-  - FLEXIBLE: User has X hours available somewhere inside a larger time boundary; exact timing varies. Example: "I have 3 hours during my 9-5 workday" → window_type: "flexible", flexible_hours: 3, start_time: "09:00", end_time: "17:30", type: e.g. "work_on_project". Example: "I can work 2 hours in the afternoon" → window_type: "flexible", flexible_hours: 2, start_time: "12:00", end_time: "18:00". Do NOT store the full boundary as working time: for "3 hours during 9-5", store flexible_hours: 3, not 8.5h. Always include "type" (e.g. work_on_project, evening_work, weekend) as a label for the window.
-- workSchedule: Specifically their job hours
+- availabilityWindows: FIXED = specific predictable time block every day. 
+  FLEXIBLE = X hours available inside a larger boundary, exact timing varies.
+  Always include "type" label (work_on_project, evening_work, weekend, etc.)
+- workSchedule: Their job hours specifically
 - tools_and_stack: Programming languages, frameworks, tools mentioned
-- skill_level: Look for "beginner", "intermediate", "advanced" or infer from context
-- communication_style: Infer from how user communicates (brief = "direct", detailed = "detailed")
-- weekly_hours_commitment: How many hours per week they'll work on THIS project
-- task_preference: How they like to work — "quick_wins" (small actionable items), "deep_focus" (longer blocks), or "mixed"
-- preferred_session_length: (user) How many minutes they can focus in one sitting (number, e.g. 60)
-- energy_peak: (user) When they are most productive. Extract from phrases like "I'm a night owl", "I hit my stride in the evenings", "I'm sharpest in the morning". Values: "morning" (05:00–11:59), "afternoon" (12:00–17:59), or "evening" (18:00–23:59). Omit or null if not mentioned.
-- phases: MUST be an object with "phases" (array) and optional "active_phase_id". Each phase: id (number, 1-based), title (short name), goal (description), status ("active"|"future"|"completed"), deadline (ISO date or null). Example: { "phases": [{ "id": 1, "title": "MVP & Launch", "goal": "Full working app for spring break", "status": "active", "deadline": "2025-03-27" }, { "id": 2, "title": "Post-Launch", "goal": "Iteration based on feedback", "status": "future", "deadline": null }], "active_phase_id": 1 }. If user only describes steps as a list (e.g. "Design, Build, Integrate"), use each as title and goal as empty string.
-- schedule_start_date: (project) When they want to start working on this schedule. Parse natural language into ISO date YYYY-MM-DD: "today" → today's date; "tomorrow" → next day; "next Monday" / "Monday" → next occurrence of that weekday; "February 20", "Feb 20 2026" → parsed date. Use the conversation context for "today". Null if not mentioned.
-- target_deadline: The user's deadline is a specific calendar day, NOT a month+year combination. "March 27" means the 27th day of March (e.g. 2026-03-27), never the year 2027. "March 2027" is not a valid deadline — if the user says this, treat it as the first day of that month (2027-03-01). Always output a full YYYY-MM-DD date, never just a year or a month. If the date is ambiguous, prefer the nearest future occurrence.
+- skill_level: "beginner", "intermediate", "advanced" or infer from context
+- communication_style: Infer from how user writes (brief = "direct", detailed = "detailed")
+- weekly_hours_commitment: Hours per week on THIS project
+- task_preference: "quick_wins", "deep_focus", or "mixed"
+- preferred_session_length: Minutes they can focus in one sitting (number)
+- energy_peak: "morning" (05-11), "afternoon" (12-17), "evening" (18-23)
+- phases: Object with "phases" array and "active_phase_id". Each phase: 
+  id (1-based), title, goal, status, deadline (ISO or null)
+- schedule_start_date: When they want to start. Parse natural language to 
+  YYYY-MM-DD. "today", "tomorrow", "next Monday" etc.
+- target_deadline: Specific calendar day as YYYY-MM-DD. Never just a year.
 
-completion_confidence: A number between 0 and 75 ONLY. Never return 80 or above.
-
-This score represents how complete the extracted data is (0 = nothing extracted, 75 = everything you could possibly need has been provided).
-
-The 80+ range is reserved for a separate system signal. Your maximum is 75.
-
-IMPORTANT: completion_confidence must never increase by more than 15 points compared to the previous value. If you would naturally assign a score that is more than 15 points higher than the previous score, cap the increase at 15.
-
-The previous completion_confidence was: {{PREVIOUS_CONFIDENCE}}
-So the maximum you can assign this turn is: {{MAX_CONFIDENCE}}
-
+completion_confidence rules:
+- Represents how complete the profile is (0-75 max, never 80+)
+- Previous value: {{PREVIOUS_CONFIDENCE}}
+- Maximum allowed this turn: {{MAX_CONFIDENCE}}
+- Increase only if genuinely new blocking fields were filled
 {{TODAY_LINE}}
+CURRENT EXTRACTED STATE:
+{{CURRENT_EXTRACTED_STATE}}
 
-Conversation:
+Last messages:
 `
 
 /** Build extraction prompt with previous-confidence cap and optional today (user TZ) injected. */
-function buildExtractionPrompt(previousConfidence: number, todayInUserTZ?: string): string {
+function buildExtractionPrompt(
+  previousConfidence: number,
+  todayInUserTZ?: string,
+  currentExtractedState?: object
+): string {
   const prev = Math.min(75, Math.max(0, Math.round(previousConfidence)))
   const maxAllowed = Math.min(75, prev + 15)
-  let out = EXTRACTION_PROMPT.replace('{{PREVIOUS_CONFIDENCE}}', String(prev)).replace(
-    '{{MAX_CONFIDENCE}}',
-    String(maxAllowed)
-  )
+  let out = EXTRACTION_PROMPT
+    .replace('{{PREVIOUS_CONFIDENCE}}', String(prev))
+    .replace('{{MAX_CONFIDENCE}}', String(maxAllowed))
+
   const todayLine =
     todayInUserTZ != null
       ? `Today's date (user timezone): ${todayInUserTZ}\nUse this to resolve any relative dates.\n\n`
       : ''
   out = out.replace('{{TODAY_LINE}}', todayLine)
+
+  const stateJson = currentExtractedState
+    ? JSON.stringify(currentExtractedState, null, 2)
+    : '{}'
+  out = out.replace('{{CURRENT_EXTRACTED_STATE}}', stateJson)
+
   return out
 }
 
@@ -330,14 +354,60 @@ export async function POST(request: Request) {
       .map((m) => `${m.role === 'user' ? 'User' : 'Harvey'}: ${m.content}`)
       .join('\n\n')
 
+    // Step 1 (delta prep): last N messages and current DB state for future delta extraction
+    const lastMessages = messages.slice(-3)
+    const conversationTextDelta = lastMessages
+      .map((m) => `${m.role === 'user' ? 'User' : 'Harvey'}: ${m.content}`)
+      .join('\n\n')
+    const dbUser = project.user as {
+      timezone?: string | null
+      workSchedule?: unknown
+      commute?: unknown
+      availabilityWindows?: unknown
+      preferred_session_length?: number | null
+      communication_style?: string | null
+      userNotes?: unknown
+      energy_peak?: string | null
+    }
+    const currentExtractedState = {
+      user: {
+        timezone: dbUser.timezone,
+        workSchedule: dbUser.workSchedule,
+        commute: dbUser.commute,
+        availabilityWindows: dbUser.availabilityWindows,
+        preferred_session_length: dbUser.preferred_session_length,
+        communication_style: dbUser.communication_style,
+        userNotes: dbUser.userNotes,
+        energy_peak: dbUser.energy_peak,
+      },
+      project: {
+        title: project.title,
+        description: project.description,
+        goals: project.goals,
+        project_type: project.project_type,
+        target_deadline: project.target_deadline,
+        weekly_hours_commitment: project.weekly_hours_commitment,
+        task_preference: project.task_preference,
+        tools_and_stack: project.tools_and_stack,
+        skill_level: project.skill_level,
+        motivation: project.motivation,
+        phases: project.phases,
+        projectNotes: project.projectNotes,
+        schedule_start_date: project.schedule_start_date,
+      },
+    }
     console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length, '| previousConfidence:', previousConfidence)
 
-    // 5. Call Haiku with extraction prompt (includes previous-confidence cap and today in user TZ)
-    const extractionPromptWithCap = buildExtractionPrompt(previousConfidence, todayInUserTZ)
+    // 5. Call Haiku with extraction prompt (includes previous-confidence cap, today in user TZ, current state; only last messages as conversation)
+    const extractionPromptWithCap = buildExtractionPrompt(
+      previousConfidence,
+      todayInUserTZ,
+      currentExtractedState
+    )
     const response = await anthropic.messages.create({
       model: MODELS.ONBOARDING_EXTRACTION,
       max_tokens: 2000,
-      messages: [{ role: 'user', content: extractionPromptWithCap + conversationText }],
+      messages: [{ role: 'user', content: extractionPromptWithCap + conversationTextDelta }],
     })
 
     const textBlock = response.content.find((block) => block.type === 'text')

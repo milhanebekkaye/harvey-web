@@ -48,6 +48,22 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-02 – Onboarding extraction: delta + current state sent to Claude (Step 2 of 3)
+
+- **Agent / context**: Cursor AI assistant; Step 2 of the onboarding extraction refactor.
+- **Summary**: `POST /api/onboarding/extract` now sends only the last 3 messages (`conversationTextDelta`) plus current DB state (`currentExtractedState`) to Claude instead of the full conversation. EXTRACTION_PROMPT was rewritten for “update from current state + last messages”; `buildExtractionPrompt` now accepts optional `currentExtractedState` and injects it via `{{CURRENT_EXTRACTED_STATE}}`. The Claude call uses `conversationTextDelta` in the user message content. Removed the `[EXTRACTION DELTA DEBUG]` console.log from Step 1. DB write, merge logic, and parsing are unchanged.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`. Docs: `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Reduce tokens and cost per extraction; Claude now updates from known state instead of re-reading the full history.
+- **Risks / notes**: Same JSON output shape, so downstream parsing unchanged. If the model omits fields that were in current state, merge logic (only non-null written) preserves DB values. Watch for edge cases on long notes/arrays where the model might truncate.
+
+### 2026-03-02 – Onboarding extraction: prepare delta data and current state (Step 1 of 3)
+
+- **Agent / context**: Cursor AI assistant; Step 1 of a 3-step refactor to send only last 2–3 messages + current extracted state to Claude instead of full conversation history.
+- **Summary**: In `POST /api/onboarding/extract`, added preparation of (1) last 3 messages as `conversationTextDelta`, (2) current User/Project DB state as `currentExtractedState`. Neither is passed to Claude yet. Added `[EXTRACTION DELTA DEBUG]` console.log before the Claude call. Extraction prompt, merge/write logic, and the Claude call are unchanged.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`. Docs: `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Prepare data structures for a future step that will switch the Claude call to delta + current state; this step only builds and logs them so behavior remains identical.
+- **Risks / notes**: No behavioral change. Only new log at runtime. Step 2 will switch the call to use `conversationTextDelta` and `currentExtractedState`; Step 3 may adjust prompt/merge as needed.
+
 ### 2026-03-01 – Centralize AI model configuration (surgical refactor)
 
 - **Agent / context**: Cursor AI assistant (model config refactor)

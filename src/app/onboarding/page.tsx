@@ -506,14 +506,11 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|what'?s your start date|kick\s*off|begin.*when|begin scheduling/i.test(lastAssistantText)
   const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const todayStr = new Date().toISOString().slice(0, 10)
-  const projectData = shadowFields?.project as { target_deadline?: unknown; schedule_start_date?: unknown } | undefined
-  const deadlineAlreadySet = !!(projectData?.target_deadline != null && projectData?.target_deadline !== '')
-  // Don't suppress start-date widget based on extraction: show when Harvey asks; rely on answeredWidgetIds after user picks
-  const startDateAlreadySet = false
+  // Show date widget whenever Harvey asks about a date; do not suppress based on existing DB/shadow value (user may want to change it).
   let forcedDatePickerField: DatePickerField | null = null
   if (!datePickerInvocation) {
-    if (!deadlineAlreadySet && isAskingAboutDeadline) forcedDatePickerField = 'deadline'
-    else if (!startDateAlreadySet && isAskingAboutStartDate) forcedDatePickerField = 'start_date'
+    if (isAskingAboutDeadline) forcedDatePickerField = 'deadline'
+    else if (isAskingAboutStartDate) forcedDatePickerField = 'start_date'
   }
 
   const effectiveDatePickerConfig =
@@ -528,6 +525,26 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       : null)
   const datePickerAnswered = effectiveDatePickerConfig ? answeredWidgetIds.has(effectiveDatePickerConfig.messageId) : false
   const showDatePickerWidget = effectiveDatePickerConfig != null && !datePickerAnswered
+
+  // Clear terminal log: why the date widget is shown or not (for debugging).
+  console.log('[DatePickerWidget]', {
+    shown: showDatePickerWidget,
+    reason: effectiveDatePickerConfig == null
+      ? 'not_shown'
+      : datePickerAnswered
+        ? 'not_shown_already_answered'
+        : datePickerInvocation
+          ? 'shown_via_tool_invocation'
+          : 'shown_via_fallback',
+    toolInvocation: datePickerInvocation != null,
+    fallback: {
+      isAskingAboutDeadline,
+      isAskingAboutStartDate,
+      forcedField: forcedDatePickerField,
+      lastAssistantHasId: !!lastAssistantMessage?.id,
+    },
+    lastAssistantTextPreview: lastAssistantText.slice(0, 80) + (lastAssistantText.length > 80 ? '...' : ''),
+  })
 
   /** Build Schedule button: disabled / Stage 1 (confirm) / Stage 2 (direct). */
   const BuildScheduleButton = () => {
