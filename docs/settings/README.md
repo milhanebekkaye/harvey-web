@@ -18,7 +18,7 @@ The Settings page lets users view and edit all constraints and preferences that 
    - Commute evening: duration (minutes) + start time (optional)
 
 2. **Availability Windows** – Project allocations (stored on **Project.contextData**)
-   - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type). When overlapping blocks share a cell, personal is preferred for the displayed color.
+   - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type). When overlapping blocks share a cell, personal is preferred for the displayed color. Cells where both work schedule and a project block overlap show a diagonal stripe overlay (sky-blue).
    - List of blocks: day, start, end, type (work | personal); add / edit / delete; displayed newest first
    - Total hours per week
    - Empty state when no blocks

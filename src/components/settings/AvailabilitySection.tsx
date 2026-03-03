@@ -289,10 +289,14 @@ export function AvailabilitySection({
                 if (work) bg = 'bg-slate-300'
                 else if (comm) bg = 'bg-slate-200'
                 else if (avail.length) bg = type === 'personal' ? 'bg-sky-400/40' : 'bg-emerald-400/40'
+                const hasOverlap = work && avail.some(s => s.block?.type === 'work')
                 return (
                   <div
                     key={`${day}-${hour}`}
                     className={`${bg} min-h-[20px]`}
+                    style={hasOverlap ? {
+                      backgroundImage: 'repeating-linear-gradient(45deg, rgba(52,211,153,0.45) 0px, rgba(52,211,153,0.45) 3px, transparent 3px, transparent 8px)'
+                    } : undefined}
                   />
                 )
               })}

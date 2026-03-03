@@ -48,6 +48,15 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Week grid: diagonal stripe overlay when work schedule and project block overlap
+
+- **Agent / context**: Cursor AI assistant; add a visual overlay on grid cells where both work schedule (section above) and a project availability block overlap.
+- **Summary**:
+  - **AvailabilitySection.tsx**: After `bg` assignment, added `hasOverlap = work && avail.some(s => s.block?.type === 'work')`. When true (work schedule + project block in same cell), the cell div gets a `style` with a 45° repeating linear gradient (sky-blue stripes) so the overlap is visually distinct.
+- **Files touched**: `src/components/settings/AvailabilitySection.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Make it obvious when a cell has both work schedule (grey) and project availability (green) so users see they overlap.
+- **Risks / notes**: None. Overlay uses project blocks (type `'work'` in data), not personal.
+
 ### 2026-03-03 – Week grid: prefer personal segment when overlapping blocks share a cell
 
 - **Agent / context**: Cursor AI assistant; fix overlapping availability blocks so the new (e.g. personal) block is visible in the week grid when it overlaps an existing one.
