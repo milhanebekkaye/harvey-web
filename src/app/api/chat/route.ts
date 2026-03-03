@@ -42,6 +42,7 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { getDateStringInTimezone } from '@/lib/timezone'
 import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 import { computeMissingFields, buildMissingFieldsGuidance } from '@/lib/onboarding/missing-fields'
 import { prisma } from '@/lib/db/prisma'
 import { isIntakeComplete } from '@/lib/ai/claude-client'
@@ -313,6 +314,23 @@ export async function POST(request: NextRequest) {
         await appendMessages(discussionId, [userMessage, assistantMessage])
         // Project title/description and other fields are extracted by POST /api/onboarding/extract
         // (triggered by the client after each Harvey response). No early extraction here.
+
+        if (user?.id) {
+          try {
+            const usage = await result.usage
+            if (usage) {
+              logApiUsage({
+                userId: user.id,
+                feature: context === 'onboarding' ? 'onboarding_chat' : 'general_chat',
+                model: MODEL_ID,
+                inputTokens: usage.inputTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+              }).catch(() => {})
+            }
+          } catch {
+            // ignore
+          }
+        }
       },
     })
 

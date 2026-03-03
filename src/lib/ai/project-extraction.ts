@@ -8,6 +8,7 @@
 
 import { anthropic } from './claude-client'
 import { MODELS } from './models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 const EXTRACTION_PROMPT = `Extract project info from this onboarding conversation.
 
@@ -34,10 +35,12 @@ export interface ExtractedProjectInfo {
  * Extract project title and description from onboarding conversation.
  *
  * @param conversationText - Full conversation in "ROLE: content" format
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  * @returns Extracted title and description, or nulls if not inferrable
  */
 export async function extractProjectInfo(
-  conversationText: string
+  conversationText: string,
+  userId?: string
 ): Promise<ExtractedProjectInfo> {
   if (!conversationText.trim()) {
     return { project_title: null, project_description: null }
@@ -49,6 +52,16 @@ export async function extractProjectInfo(
     system: EXTRACTION_PROMPT,
     messages: [{ role: 'user', content: conversationText }],
   })
+
+  if (userId) {
+    logApiUsage({
+      userId,
+      feature: 'project_extraction',
+      model: MODELS.PROJECT_EXTRACTION,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => {})
+  }
 
   const textBlock = response.content.find((block) => block.type === 'text')
   let jsonText = textBlock?.type === 'text' ? textBlock.text : ''

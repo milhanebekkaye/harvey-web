@@ -26,6 +26,7 @@ import type {
 } from '../../types/api.types'
 import { anthropic, withAnthropicRetry } from '../ai/claude-client'
 import { MODELS } from '../ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 import { localTimeInTimezoneToUTC } from '../timezone'
 
 /** User life constraints: work schedule and commute. Blocked time is derived from these on-the-fly. */
@@ -1246,10 +1247,12 @@ Use the same task and slot context from the system prompt. Fix only these violat
 
 /**
  * Ask Claude Haiku for slot assignments and return raw text response.
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  */
 async function requestClaudeSchedulingAssignments(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  userId?: string
 ): Promise<string> {
   const response = await withAnthropicRetry(() =>
     anthropic.messages.create({
@@ -1259,6 +1262,17 @@ async function requestClaudeSchedulingAssignments(
       messages: [{ role: 'user', content: userPrompt }],
     })
   )
+
+  if (userId) {
+    logApiUsage({
+      userId,
+      feature: 'task_scheduler',
+      model: CLAUDE_SCHEDULER_MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => {})
+  }
+
   const textBlock = response.content.find((block) => block.type === 'text')
   const text = textBlock?.type === 'text' ? textBlock.text.trim() : ''
   if (!text) {
@@ -1672,7 +1686,8 @@ export async function assignTasksWithClaude(
   durationWeeks: number,
   userTimezone: string = 'UTC',
   userBlocked?: UserBlockedInput | null,
-  options?: SchedulerOptions | null
+  options?: SchedulerOptions | null,
+  userId?: string
 ): Promise<ScheduleResult> {
   const energyPeak = options?.energyPeak ?? constraints.energy_peak ?? null
   const availability = buildAvailabilityMap(constraints, userBlocked, energyPeak)
@@ -1736,7 +1751,7 @@ export async function assignTasksWithClaude(
       attempt === 1 ? defaultUserPrompt : buildClaudeRetryPrompt(previousResponse, lastViolations)
 
     try {
-      const responseText = await requestClaudeSchedulingAssignments(systemPrompt, userPrompt)
+      const responseText = await requestClaudeSchedulingAssignments(systemPrompt, userPrompt, userId)
       previousResponse = responseText
       const validation = parseAndValidateClaudeAssignments(
         responseText,

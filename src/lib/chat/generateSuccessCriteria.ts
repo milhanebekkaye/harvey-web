@@ -9,6 +9,7 @@
 
 import { anthropic } from '../ai/claude-client'
 import { MODELS } from '../ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 /** Success criteria generation uses centralized model config. */
 const MODEL_ID = MODELS.SUCCESS_CRITERIA
@@ -32,11 +33,13 @@ export type SuccessCriterionItem = {
  *
  * @param title - Task title
  * @param description - Optional task description
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  * @returns Array of { id, text, done } for storage in Task.successCriteria, or [] on error
  */
 export async function generateSuccessCriteria(
   title: string,
-  description?: string | null
+  description?: string | null,
+  userId?: string
 ): Promise<SuccessCriterionItem[]> {
   if (!title?.trim()) return []
 
@@ -51,6 +54,16 @@ export async function generateSuccessCriteria(
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     })
+
+    if (userId) {
+      logApiUsage({
+        userId,
+        feature: 'success_criteria',
+        model: MODEL_ID,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }).catch(() => {})
+    }
 
     const textBlock = response.content.find((block) => block.type === 'text')
     const raw = textBlock?.type === 'text' ? textBlock.text : ''

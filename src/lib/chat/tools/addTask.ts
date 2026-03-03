@@ -229,7 +229,7 @@ export async function executeAddTask(
     const priorityMap: Record<string, number> = { high: 1, medium: 3, low: 5 }
 
     // 6. Generate 2–4 success criteria for the task (same quality as onboarding tasks)
-    const successCriteria = await generateSuccessCriteria(title, description)
+    const successCriteria = await generateSuccessCriteria(title, description, userId)
 
     // 7. Create the task
     const data = {

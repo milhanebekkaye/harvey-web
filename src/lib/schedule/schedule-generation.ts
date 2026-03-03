@@ -9,6 +9,7 @@
 
 import { anthropic, withAnthropicRetry } from '../ai/claude-client'
 import { MODELS } from '../ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 import type {
   CommuteShape,
   ExtractedConstraints,
@@ -750,10 +751,12 @@ function deriveUserLifeConstraints(
  * - Exclusions (features user doesn't want)
  *
  * @param conversationText - Full conversation text in "ROLE: content" format
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  * @returns Extracted constraints object
  */
 export async function extractConstraints(
-  conversationText: string
+  conversationText: string,
+  userId?: string
 ): Promise<ExtractedConstraints> {
   console.log('[ScheduleGeneration] Extracting constraints from conversation...')
 
@@ -772,6 +775,16 @@ export async function extractConstraints(
         ],
       })
     )
+
+    if (userId) {
+      logApiUsage({
+        userId,
+        feature: 'constraints_extraction',
+        model: MODELS.CONSTRAINTS_EXTRACTION,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }).catch(() => {})
+    }
 
     const textBlock = response.content.find((block) => block.type === 'text')
     let jsonText = textBlock?.type === 'text' ? textBlock.text : ''
@@ -901,11 +914,13 @@ function repairJSON(jsonText: string): string {
  *
  * @param conversationText - Full conversation text in "ROLE: content" format
  * @param constraints - Extracted constraints from extractConstraints()
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  * @returns Raw Claude response text with task breakdown
  */
 export async function generateTasks(
   conversationText: string,
-  constraints: ExtractedConstraints
+  constraints: ExtractedConstraints,
+  userId?: string
 ): Promise<string> {
   logCapacityBreakdown(constraints)
   const scheduleWeeks = constraints.schedule_duration_weeks || 2
@@ -938,6 +953,16 @@ export async function generateTasks(
       ],
     })
   )
+
+  if (userId) {
+    logApiUsage({
+      userId,
+      feature: 'task_generation',
+      model: MODELS.TASK_GENERATION,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => {})
+  }
 
   // Extract text from response
   const textBlock = response.content.find((block) => block.type === 'text')
@@ -1269,9 +1294,11 @@ Write in a warm, concise voice. No markdown, no bullet points — plain text onl
 /**
  * Generate Harvey's post-schedule coaching message via Claude (Session 2).
  * Returns plain text; throws on API failure (caller should use fallback).
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  */
 export async function generateScheduleCoachingMessage(
-  context: ScheduleCoachingContext
+  context: ScheduleCoachingContext,
+  userId?: string
 ): Promise<string> {
   const userPrompt = `Scheduling context (use this to write your 3–4 sentence coaching message):
 - Total task blocks scheduled: ${context.totalTasksScheduled}
@@ -1293,6 +1320,16 @@ Write your coaching message now (plain text, 3–4 sentences):`
       messages: [{ role: 'user', content: userPrompt }],
     })
   )
+
+  if (userId) {
+    logApiUsage({
+      userId,
+      feature: 'schedule_coaching',
+      model: MODELS.SCHEDULE_COACHING,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => {})
+  }
 
   const textBlock = response.content.find((block) => block.type === 'text')
   const text = textBlock?.type === 'text' ? textBlock.text.trim() : ''

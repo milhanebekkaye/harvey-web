@@ -2,6 +2,8 @@
 
 **Update (2026-03-01):** Model configuration has been centralized. All Anthropic model references now use `src/lib/ai/models.ts` (`MODELS` constants). No model strings remain hardcoded in routes or libs. Task Chat was updated from deprecated Sonnet to Haiku via the same config.
 
+**Update (2026-03-03):** **Cost tracking: Done.** All 11 Anthropic API call sites (7 non-streaming + 4 streaming) log usage to `ApiUsageLog` and `UserUsageSummary`. See Section 5 for details.
+
 ---
 
 ## Section 1: Architecture Overview
@@ -237,7 +239,7 @@ The singleton instance is exported from `src/lib/ai/claude-client.ts`.
 ## Section 5: Missing Infrastructure
 
 - **Is there currently any token usage logging?**
-  - **No.** The application does not store, log, or aggregate token usage or costs from the AI SDK or Anthropic responses.
+  - **Yes — all call sites wired (2026-03-03 Phase 3 + Phase 4).** **User** has optional `subscription_start_date`; **ApiUsageLog** and **UserUsageSummary** tables exist. `MODEL_PRICING` and `computeCostUsd()` in `models.ts`; `logApiUsage()` in `usage-logger.ts`. **Non-streaming**: onboarding extraction, project extraction, success criteria, task opening message, task tip, constraints extraction, task generation, schedule coaching, task scheduler. **Streaming**: onboarding/general chat (`/api/chat`), project chat (`/api/chat/project`), task chat (`/api/chat/task`), daily check-in (`/api/chat/checkin`) — usage from Vercel AI SDK `result.usage` (inputTokens/outputTokens), logged at end of onFinish or when stream completes. Fire-and-forget everywhere; logging never blocks or throws.
 - **Is there any rate limiting on API routes?**
   - **No.** There is only a client-side localStorage check for the daily check-in (`harvey_checkin_${projectId}`). There are no backend API rate limits.
 - **Is there any conversation history truncation or summarization?**

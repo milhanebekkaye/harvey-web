@@ -19,6 +19,7 @@ import { assembleCheckInContext } from '@/lib/checkin/checkin-context'
 import { streamText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 const MAX_TOKENS = 150
 
@@ -142,6 +143,22 @@ export async function POST(request: NextRequest) {
           }
         } finally {
           controller.close()
+          if (user?.id) {
+            try {
+              const usage = await result.usage
+              if (usage) {
+                logApiUsage({
+                  userId: user.id,
+                  feature: 'daily_checkin',
+                  model: MODELS.DAILY_CHECKIN,
+                  inputTokens: usage.inputTokens ?? 0,
+                  outputTokens: usage.outputTokens ?? 0,
+                }).catch(() => {})
+              }
+            } catch {
+              // ignore
+            }
+          }
         }
       },
     })

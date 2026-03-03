@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         projectGoals: task.project?.goals ?? null,
       }
 
-      openingContent = await generateTaskOpeningMessage(taskContext)
+      openingContent = await generateTaskOpeningMessage(taskContext, user.id)
     }
 
     const created = await createDiscussion({

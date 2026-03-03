@@ -5,6 +5,7 @@ import { createClient } from '@/lib/auth/supabase-server'
 import { prisma } from '@/lib/db/prisma'
 import { normalizeTaskLabel, parseSuccessCriteria } from '@/types/task.types'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 const MAX_TOKENS = 100
 const FALLBACK_TIP = 'Break this task into the first small step and start there.'
@@ -128,6 +129,14 @@ What should the user do right now?`
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
       })
+
+      logApiUsage({
+        userId: user.id,
+        feature: 'task_tip',
+        model: MODELS.TASK_TIP,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }).catch(() => {})
 
       const textBlock = response.content.find((block) => block.type === 'text')
       tip = (textBlock?.type === 'text' ? textBlock.text.trim() : '') || FALLBACK_TIP

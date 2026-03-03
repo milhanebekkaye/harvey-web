@@ -376,9 +376,9 @@ export async function executeRegenerateSchedule(
             preferences: contextData.preferences as Record<string, string>,
             exclusions: contextData.exclusions,
           }
-        : await extractConstraints(conversationText)
+        : await extractConstraints(conversationText, userId)
 
-      const taskText = await generateTasks(conversationText, constraints)
+      const taskText = await generateTasks(conversationText, constraints, userId)
       const { tasks: parsedTasks } = parseTasks(taskText)
 
       if (parsedTasks.length === 0) {

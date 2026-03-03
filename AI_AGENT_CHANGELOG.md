@@ -48,6 +48,73 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – API cost tracking Phase 5: verification pass and MODEL_PRICING + docs
+
+- **Agent / context**: Cursor AI assistant; Phase 5 — final cleanup and verification of cost tracking.
+- **Summary**:
+  - **STEP 1 (non-streaming):** Verified all 7 files. Each has `logApiUsage` immediately after `anthropic.messages.create`, import present, userId in scope (route auth or optional param passed by caller). **Gap:** `getChatCompletion()` in `src/lib/ai/claude-client.ts` has a `messages.create` with no `logApiUsage`; it is not called from anywhere in the codebase (dead code), so no live call site is missing.
+  - **STEP 2 (streaming):** All 4 routes call `logApiUsage` inside onFinish (or stream `finally` for checkin). Usage uses `usage.inputTokens` and `usage.outputTokens` (Vercel AI SDK `LanguageModelUsage` type; no `promptTokens`/`completionTokens` in this SDK). Feature names: onboarding_chat/general_chat, project_chat, daily_checkin, task_chat.
+  - **STEP 3 (MODEL_PRICING):** Added `claude-sonnet-4-20250514` (input $3, output $15 per million). Kept `claude-haiku-4-5-20251001` (input $1, output $5) and `claude-sonnet-4-6` (same as 20250514).
+  - **STEP 4 (Product doc):** No document titled "Harvey Product Document" with "Section 7 Current State" was found in the repo. Updated `docs/cost-audit.md` with a top-level "Cost tracking: Done" line so current state is explicit there.
+- **Files touched**: `src/lib/ai/models.ts` (added Sonnet 4 20250514 to MODEL_PRICING), `docs/cost-audit.md` (current state line). Changelog: this entry.
+- **Motivation**: Ensure no call site is missed and pricing covers legacy Sonnet model ID; document completion status.
+- **Risks / notes**: None. Optional: add `logApiUsage` to `getChatCompletion()` in claude-client.ts if that helper is ever used later.
+
+### 2026-03-03 – API cost tracking Phase 4: wire logApiUsage into all 4 streaming routes
+
+- **Agent / context**: Cursor AI assistant; Phase 4 of API cost tracking — wire `logApiUsage` into the four streaming routes that use Vercel AI SDK `streamText()`.
+- **Summary**:
+  - **chat/route.ts**: In existing `onFinish`, added usage logging at the end. Usage is read from `result.usage` (streamText result; createUIMessageStream's onFinish does not receive usage in this SDK version). Feature: `context === 'onboarding' ? 'onboarding_chat' : 'general_chat'`. Model: `MODEL_ID` (ONBOARDING_CHAT).
+  - **chat/project/route.ts**: Same pattern — at end of `onFinish`, `await result.usage` then `logApiUsage` with feature `project_chat`, model `MODELS.PROJECT_CHAT`.
+  - **chat/task/route.ts**: Same — at end of `onFinish`, usage from `result.usage`, feature `task_chat`, model `MODELS.TASK_CHAT`.
+  - **chat/checkin/route.ts**: No onFinish (route uses custom ReadableStream over `result.textStream`). Added in the stream's `finally` block: `await result.usage` then `logApiUsage` with feature `daily_checkin`, model `MODELS.DAILY_CHECKIN`. Fire-and-forget with `.catch(() => {})`.
+  - AI SDK `LanguageModelUsage` uses `inputTokens` / `outputTokens` (not promptTokens/completionTokens); used `?? 0` for optional fields.
+- **Files touched**: `src/app/api/chat/route.ts`, `src/app/api/chat/project/route.ts`, `src/app/api/chat/task/route.ts`, `src/app/api/chat/checkin/route.ts`. Docs: `docs/cost-audit.md`, `ARCHITECTURE.md`.
+- **Motivation**: Complete cost tracking for all Anthropic API call sites; streaming routes now log token usage when the stream completes.
+- **Risks / notes**: No existing onFinish logic or business logic changed. Logging never blocks or throws. If `result.usage` is missing or fails, logging is skipped.
+
+### 2026-03-03 – API cost tracking Phase 3: wire logApiUsage into all non-streaming Anthropic calls
+
+- **Agent / context**: Cursor AI assistant; Phase 3 of API cost tracking — wire `logApiUsage` into every `anthropic.messages.create` call (non-streaming only).
+- **Summary**:
+  - **Deleted** temporary test route `src/app/api/test-cost-tracking/route.ts`.
+  - After each `anthropic.messages.create`, added fire-and-forget `logApiUsage({ userId, feature, model, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens }).catch(() => {})`. No `await`; logging never blocks or throws.
+  - **Routes**: `src/app/api/onboarding/extract/route.ts` (feature `onboarding_extraction`, userId from auth), `src/app/api/tasks/tip/route.ts` (feature `task_tip`, userId from auth).
+  - **Libs with optional userId**: `extractProjectInfo(conversationText, userId?)` — feature `project_extraction`; `generateSuccessCriteria(title, description?, userId?)` — feature `success_criteria` (addTask passes userId); `generateTaskOpeningMessage(task, userId?)` — feature `task_opening_message` (discussions/task route passes user.id); `extractConstraints(conversationText, userId?)` — feature `constraints_extraction` (regenerateSchedule passes userId); `generateTasks(conversationText, constraints, userId?)` — feature `task_generation` (generate-schedule route and regenerateSchedule pass userId); `generateScheduleCoachingMessage(context, userId?)` — feature `schedule_coaching` (generate-schedule passes user.id); `assignTasksWithClaude(..., userId?)` and internal `requestClaudeSchedulingAssignments(..., userId?)` — feature `task_scheduler` (generate-schedule passes user.id).
+- **Files touched**: Removed `src/app/api/test-cost-tracking/route.ts`. Updated: `src/app/api/onboarding/extract/route.ts`, `src/app/api/tasks/tip/route.ts`, `src/app/api/discussions/task/route.ts`, `src/app/api/schedule/generate-schedule/route.ts`, `src/lib/ai/project-extraction.ts`, `src/lib/chat/generateSuccessCriteria.ts`, `src/lib/chat/tools/addTask.ts`, `src/lib/discussions/generate-task-opening-message.ts`, `src/lib/schedule/schedule-generation.ts`, `src/lib/schedule/task-scheduler.ts`, `src/lib/chat/tools/regenerateSchedule.ts`.
+- **Motivation**: Persist per-call token usage and cost for all non-streaming Anthropic calls; Phase 4 will cover streaming routes (onFinish / usage from Vercel AI SDK).
+- **Risks / notes**: No prompts, error handling, or business logic changed. Logging is best-effort only. If `logApiUsage` fails, the request still succeeds.
+
+### 2026-03-03 – Temporary test route for cost tracking (local verification)
+
+- **Agent / context**: Cursor AI assistant; temporary GET route to verify Phase 2 usage logging.
+- **Summary**: Added **GET** `/api/test-cost-tracking` at `src/app/api/test-cost-tracking/route.ts`. Fetches first user, calls `logApiUsage` with fake values (feature `test_phase2`, model Haiku, 1000 input / 200 output tokens), then returns JSON: the created `ApiUsageLog` row (feature = test_phase2), the `UserUsageSummary` row for that user and computed periodStart, and `expectedCostUsd` from `computeCostUsd` (0.002 for 1000/1M*1 + 200/1M*5). For local testing only; delete after verification.
+- **Files touched**: New `src/app/api/test-cost-tracking/route.ts`.
+- **Motivation**: Verify that `logApiUsage` correctly inserts into ApiUsageLog and upserts UserUsageSummary before wiring into real routes.
+- **Risks / notes**: Temporary; remove before production or when done testing.
+
+### 2026-03-03 – API cost tracking: pricing constants and usage logger (Phase 2)
+
+- **Agent / context**: Cursor AI assistant; Phase 2 of API cost tracking — pricing and logging utility only; no routes wired yet.
+- **Summary**:
+  - **`src/lib/ai/models.ts`**: Added `MODEL_PRICING` (Haiku and Sonnet 4.6 $/million tokens) and `computeCostUsd(model, inputTokens, outputTokens)`. Existing `MODELS` unchanged.
+  - **`src/lib/ai/usage-logger.ts`** (new): Exports async `logApiUsage({ userId, feature, model, inputTokens, outputTokens })`. Computes cost via `computeCostUsd`; derives 30-day `periodStart` from user's `subscription_start_date` or `createdAt` (date-fns `differenceInDays` / `addDays`); runs in parallel: INSERT `ApiUsageLog`, UPSERT `UserUsageSummary` on `userId_periodStart`. Wrapped in try/catch — logs errors, never throws.
+- **Files touched**: `src/lib/ai/models.ts`, new `src/lib/ai/usage-logger.ts`. Docs: `ARCHITECTURE.md`, `docs/cost-audit.md`.
+- **Motivation**: Centralize pricing and provide a single call point for routes to log usage; logging must not affect request success.
+- **Risks / notes**: date-fns was already in package.json; no new deps. No route or existing logic modified. Next step: wire `logApiUsage` into each Anthropic call site (streaming and non-streaming).
+
+### 2026-03-03 – Prisma schema: API cost tracking (schema-only)
+
+- **Agent / context**: Cursor AI assistant; schema-only work for API cost tracking.
+- **Summary**:
+  - **User**: Added optional `subscription_start_date DateTime?` and reverse relations `apiUsageLogs`, `usageSummaries`.
+  - **ApiUsageLog** (table `api_usage_logs`): New model with id, userId, feature, model, inputTokens, outputTokens, costUsd, createdAt; relation to User.
+  - **UserUsageSummary** (table `user_usage_summaries`): New model with id, userId, periodStart, totalCostUsd, totalInputTokens, totalOutputTokens, callCount, updatedAt; unique on (userId, periodStart) for safe upserts; relation to User.
+  - Migration applied: `npx prisma migrate dev --name add_api_cost_tracking`; `npx prisma generate` run successfully.
+- **Files touched**: `src/prisma/schema.prisma`, new migration `src/prisma/migrations/20260303111809_add_api_cost_tracking/migration.sql`. Docs: `ARCHITECTURE.md`, `docs/cost-audit.md`.
+- **Motivation**: Prepare database for logging per-call token usage and cost, and for 30-day billing-period summaries per user.
+- **Risks / notes**: Schema-only; no routes or logic changed. Follow-up: wire Anthropic/Vercel AI SDK responses to log to `ApiUsageLog` and optionally update `UserUsageSummary`.
+
 ### 2026-03-02 – Onboarding extraction: delta + current state sent to Claude (Step 2 of 3)
 
 - **Agent / context**: Cursor AI assistant; Step 2 of the onboarding extraction refactor.

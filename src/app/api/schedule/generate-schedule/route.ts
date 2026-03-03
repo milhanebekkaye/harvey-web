@@ -214,7 +214,7 @@ export async function POST(request: NextRequest) {
     // ===== STEP 6: Generate Tasks =====
     console.log('[GenerateScheduleAPI] Step 6: 🎯 Generating tasks...')
 
-    const tasksResponse = await generateTasks(conversationTextFull, constraints)
+    const tasksResponse = await generateTasks(conversationTextFull, constraints, user.id)
 
     // ===== STEP 7: Parse Tasks =====
     console.log('[GenerateScheduleAPI] Step 7: Parsing tasks')
@@ -317,7 +317,8 @@ export async function POST(request: NextRequest) {
       durationWeeks,
       userTimezone,
       userBlocked,
-      schedulerOptions
+      schedulerOptions,
+      user.id
     )
 
     console.log(`[GenerateScheduleAPI] ✅ Scheduled ${scheduleResult.scheduledTasks.length} task blocks`)
@@ -609,7 +610,7 @@ export async function POST(request: NextRequest) {
     const COACHING_TIMEOUT_MS = 15_000
     try {
       coachingContent = await Promise.race([
-        generateScheduleCoachingMessage(coachingContext),
+        generateScheduleCoachingMessage(coachingContext, user.id),
         new Promise<string>((_, reject) =>
           setTimeout(() => reject(new Error('Coaching message timeout')), COACHING_TIMEOUT_MS)
         ),

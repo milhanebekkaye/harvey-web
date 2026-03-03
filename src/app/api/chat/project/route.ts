@@ -50,6 +50,7 @@ import { getProjectById } from '@/lib/projects/project-service'
 import { userExists, createUser } from '@/lib/users/user-service'
 import type { StoredMessage } from '@/types/api.types'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 /** Max messages to send to Claude for conversation history (reduced for cost during MVP testing) */
 const MAX_HISTORY_MESSAGES = 10
@@ -390,6 +391,23 @@ export async function POST(request: NextRequest) {
           }
         } catch (err) {
           console.error('[ProjectChat] Failed to persist assistant message:', err)
+        }
+
+        if (user?.id) {
+          try {
+            const usage = await result.usage
+            if (usage) {
+              logApiUsage({
+                userId: user.id,
+                feature: 'project_chat',
+                model: MODELS.PROJECT_CHAT,
+                inputTokens: usage.inputTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+              }).catch(() => {})
+            }
+          } catch {
+            // ignore
+          }
         }
       },
     })

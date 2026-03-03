@@ -26,10 +26,15 @@ model User {
   userNotes                Json?   // append-only array: [{ "note": string, "extracted_at": string }]
   energy_peak              String? // "morning" | "afternoon" | "evening" — when user is most productive
 
+  // Billing / cost tracking
+  subscription_start_date DateTime?
+
   // Relations
-  projects    Project[]
-  discussions Discussion[]
-  tasks       Task[]
+  projects         Project[]
+  discussions      Discussion[]
+  tasks           Task[]
+  apiUsageLogs    ApiUsageLog[]
+  usageSummaries  UserUsageSummary[]
 
   @@map("users")
 }
@@ -156,4 +161,33 @@ model Task {
   discussions Discussion[]
 
   @@map("tasks")
+}
+
+model ApiUsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature      String   // e.g. "schedule_generation", "project_chat"
+  model        String   // e.g. "claude-haiku-4-5-20251001"
+  inputTokens  Int
+  outputTokens Int
+  costUsd      Float
+  createdAt    DateTime @default(now())
+
+  @@map("api_usage_logs")
+}
+
+model UserUsageSummary {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodStart       DateTime // start date of the 30-day billing period
+  totalCostUsd      Float    @default(0)
+  totalInputTokens  Int      @default(0)
+  totalOutputTokens Int      @default(0)
+  callCount         Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, periodStart])
+  @@map("user_usage_summaries")
 }

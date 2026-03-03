@@ -23,6 +23,7 @@ import { getTaskDiscussion, appendMessages } from '@/lib/discussions/discussion-
 import { prisma } from '@/lib/db/prisma'
 import type { StoredMessage } from '@/types/api.types'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 
 const MAX_HISTORY_MESSAGES = 20
 
@@ -156,6 +157,23 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString(),
         }
         await appendMessages(discussion.id, [assistantMessage])
+
+        if (user?.id) {
+          try {
+            const usage = await result.usage
+            if (usage) {
+              logApiUsage({
+                userId: user.id,
+                feature: 'task_chat',
+                model: MODELS.TASK_CHAT,
+                inputTokens: usage.inputTokens ?? 0,
+                outputTokens: usage.outputTokens ?? 0,
+              }).catch(() => {})
+            }
+          } catch {
+            // ignore
+          }
+        }
       },
     })
 

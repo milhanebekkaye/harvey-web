@@ -28,7 +28,7 @@ Root of the repository:
 - **`docs/`**: Documentation of the project (how work files, features, etc.).
 - **`README.md`**: Generic Next.js README from `create-next-app`. For detailed internals, prefer this `ARCHITECTURE.md`.
 - **`src/`**: All application source code (Next.js app, components, domain logic, types).
-- **`prisma/`**: Prisma schema and database migrations for this project.
+- **`src/prisma/`**: Prisma schema and migrations (see `schema.prisma`). Core models: User, Project, Discussion, Task. **API cost tracking**: User has optional `subscription_start_date`; `ApiUsageLog` stores per-call token/cost; `UserUsageSummary` stores per-user, per–billing-period aggregates (unique on userId + periodStart). See `docs/cost-audit.md`.
 - **`tailwind.config.ts`**: Tailwind CSS configuration (design tokens, theme extensions, plugins).
 - **`tsconfig.json`**: TypeScript compiler configuration for the project.
 
@@ -299,6 +299,8 @@ This directory holds non-UI logic: integrations, services, scheduling, and utili
 ### `src/lib/ai/`
 
 - **`claude-client.ts`**: Helpers for Claude (`isIntakeComplete`, `cleanResponse`, `formatMessagesForClaude`). Non-streaming chat uses `getChatCompletion`; streaming chat uses Vercel AI SDK (`@ai-sdk/anthropic`) in the API route.
+- **`models.ts`**: Central model IDs (`MODELS`) and pricing (`MODEL_PRICING` $/million tokens). `computeCostUsd(model, inputTokens, outputTokens)` for cost calculation. See `docs/cost-audit.md`.
+- **`usage-logger.ts`**: Async `logApiUsage({ userId, feature, model, inputTokens, outputTokens })`. Writes to `ApiUsageLog` and upserts `UserUsageSummary` (30-day period from user `subscription_start_date` or `createdAt`). Never throws; failures are logged only. **Wired** into all Anthropic call sites: non-streaming (Phase 3) and all four streaming routes (Phase 4 — usage from `result.usage` in onFinish or when stream completes).
 - **`prompts.ts`**: All prompt templates and system instructions for AI interactions. **Onboarding**: `ONBOARDING_SYSTEM_PROMPT(todayFormatted, knownInfo, missingFieldsGuidance)` returns the system prompt with unambiguous date at the top ("TODAY IS: Monday, February 17, 2026. All scheduling starts from today."), known-info summary, and dynamic missing-fields guidance; `generateKnownInfoSummary(projectData, userData)` builds the summary of already-extracted fields so Harvey doesn’t re-ask. `COMPLETION_MARKER` is still used for intake-complete detection.
 - **`project-extraction.ts`**: Extracts `project_title` and `project_description` from onboarding conversation via Claude. Used in chat route `onFinish` during onboarding to populate Project model early; mirrors the constraint extraction pattern.
 

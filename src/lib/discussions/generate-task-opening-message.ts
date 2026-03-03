@@ -5,6 +5,7 @@
 
 import { anthropic } from '@/lib/ai/claude-client'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 const MAX_TOKENS = 200
 
 /** Used when Haiku fails or task data is missing; discussion creation never blocked. */
@@ -63,9 +64,11 @@ Generate the opening message.`
 /**
  * Generate a task-specific opening message via Claude Haiku.
  * On error: returns fallback string and logs; never throws (so discussion creation is never blocked).
+ * @param userId - Optional; if provided, usage is logged for cost tracking
  */
 export async function generateTaskOpeningMessage(
-  task: TaskContext
+  task: TaskContext,
+  userId?: string
 ): Promise<string> {
   try {
     const response = await anthropic.messages.create({
@@ -74,6 +77,16 @@ export async function generateTaskOpeningMessage(
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: buildUserMessage(task) }],
     })
+
+    if (userId) {
+      logApiUsage({
+        userId,
+        feature: 'task_opening_message',
+        model: MODELS.TASK_OPENING_MESSAGE,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+      }).catch(() => {})
+    }
 
     const textBlock = response.content.find((block) => block.type === 'text')
     const text = textBlock?.type === 'text' ? textBlock.text.trim() : ''

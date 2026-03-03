@@ -14,6 +14,7 @@ import { getOnboardingDiscussion } from '@/lib/discussions/discussion-service'
 import { prisma } from '@/lib/db/prisma'
 import { anthropic } from '@/lib/ai/claude-client'
 import { MODELS } from '@/lib/ai/models'
+import { logApiUsage } from '@/lib/ai/usage-logger'
 import { updateUser } from '@/lib/users/user-service'
 import { updateProject } from '@/lib/projects/project-service'
 import { computeMissingFields } from '@/lib/onboarding/missing-fields'
@@ -409,6 +410,14 @@ export async function POST(request: Request) {
       max_tokens: 2000,
       messages: [{ role: 'user', content: extractionPromptWithCap + conversationTextDelta }],
     })
+
+    logApiUsage({
+      userId: user.id,
+      feature: 'onboarding_extraction',
+      model: MODELS.ONBOARDING_EXTRACTION,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    }).catch(() => {})
 
     const textBlock = response.content.find((block) => block.type === 'text')
     let extractedText = textBlock?.type === 'text' ? textBlock.text : ''

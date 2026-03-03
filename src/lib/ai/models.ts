@@ -48,3 +48,34 @@ export const MODELS = {
   // Opening message when a task chat is opened for the first time
   TASK_OPENING_MESSAGE: 'claude-haiku-4-5-20251001',
 } as const
+
+export const MODEL_PRICING: Record<
+  string,
+  { input_per_million: number; output_per_million: number }
+> = {
+  'claude-haiku-4-5-20251001': {
+    input_per_million: 1.0,
+    output_per_million: 5.0,
+  },
+  'claude-sonnet-4-20250514': {
+    input_per_million: 3.0,
+    output_per_million: 15.0,
+  },
+  'claude-sonnet-4-6': {
+    input_per_million: 3.0,
+    output_per_million: 15.0,
+  },
+}
+
+export function computeCostUsd(
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  const pricing = MODEL_PRICING[model]
+  if (!pricing) return 0
+  return (
+    (inputTokens / 1_000_000) * pricing.input_per_million +
+    (outputTokens / 1_000_000) * pricing.output_per_million
+  )
+}
