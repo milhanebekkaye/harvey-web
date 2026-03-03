@@ -52,7 +52,7 @@ ENRICHMENT (include when inferrable):
 9. target_deadline: Any deadline or target date mentioned. ISO 8601 string or null.
 10. skill_level: Inferred from tools used and how they describe experience. "beginner" | "intermediate" | "advanced".
 11. tools_and_stack: Any specific frameworks, tools, or technologies mentioned (array of strings).
-12. project_type: One of "web app", "mobile app", "SaaS", "content", "script/automation", "other".
+12. project_type: A short string describing the type of project (e.g. "web app", "mobile app", "SaaS", "script/automation", "browser extension"). Use whatever best fits — do not restrict to a fixed list.
 13. weekly_hours_commitment: Hours per week they commit to this project (integer).
 14. motivation: One sentence, in the user's own words where possible — why they're building this.
 15. phases: If they described phases or milestones, use format below. If single-phase, one entry with status "active". Each phase: id (number), title, goal (string or null), deadline (ISO or null), status ("completed" | "active" | "future").

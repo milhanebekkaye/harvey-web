@@ -191,7 +191,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`projects/[projectId]/route.ts`**
   - GET `/api/projects/[projectId]`. Returns the project for the authenticated user (ownership checked). Used by Project Details page and for refetch after save.
-  - PATCH `/api/projects/[projectId]`. Partial update of project (title, description, goals, status, target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, task_preference, motivation). Validates types and ranges (e.g. weekly_hours 1–168, status active/paused/completed). Uses `project-service.getProjectById` and `project-service.updateProject`.
+  - PATCH `/api/projects/[projectId]`. Partial update of project (title, description, goals, status, target_deadline, skill_level, tools_and_stack, project_type, weekly_hours_commitment, task_preference, motivation). Validates types and ranges (e.g. weekly_hours 1–168, status active/paused/completed). `project_type` accepts any string or null (no fixed enum). Uses `project-service.getProjectById` and `project-service.updateProject`.
 
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.

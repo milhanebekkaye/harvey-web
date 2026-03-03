@@ -12,7 +12,6 @@ import { createClient } from '@/lib/auth/supabase-server'
 import { getProjectById, updateProject } from '@/lib/projects/project-service'
 import type { UpdateProjectData } from '@/lib/projects/project-service'
 
-const PROJECT_TYPES = ['web app', 'mobile app', 'SaaS', 'content', 'research', 'other'] as const
 const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced'] as const
 const STATUSES = ['active', 'paused', 'completed'] as const
 const MAX_TAGS = 10
@@ -99,8 +98,8 @@ function validatePatchBody(body: unknown): { data: UpdateProjectData; error: str
   }
   if (obj.project_type !== undefined) {
     if (obj.project_type !== null) {
-      if (typeof obj.project_type !== 'string' || !PROJECT_TYPES.includes(obj.project_type as (typeof PROJECT_TYPES)[number])) {
-        return { data: {}, error: `project_type must be one of: ${PROJECT_TYPES.join(', ')} or null` }
+      if (typeof obj.project_type !== 'string') {
+        return { data: {}, error: 'project_type must be a string or null' }
       }
       data.project_type = obj.project_type as string
     } else {

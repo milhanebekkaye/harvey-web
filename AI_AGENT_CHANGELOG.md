@@ -48,6 +48,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – project_type: allow any string (remove fixed enum validation)
+
+- **Agent / context**: Cursor AI assistant; fix validation error "project_type must be one of: web app, mobile app, SaaS, content, research, other or null" when DB had values from extraction (e.g. "script/automation") or user-entered types.
+- **Summary**:
+  - **PATCH `/api/projects/[projectId]`**: Removed `PROJECT_TYPES` const and allowlist validation. `project_type` is now validated only as string or null (any non-empty string is accepted).
+  - **Project Details form**: Replaced project type dropdown (`PROJECT_TYPE_OPTIONS`) with a free-text `EditableField` (type="text") and placeholder "e.g. web app, mobile app, SaaS, browser extension...".
+  - **Schedule-generation extraction prompt**: Replaced hardcoded list for `project_type` with guidance to use "a short string describing the type of project" with examples; model may use whatever best fits.
+- **Files touched**: `src/app/api/projects/[projectId]/route.ts`, `src/components/dashboard/ProjectDetailsForm.tsx`, `src/lib/schedule/schedule-generation.ts`, `ARCHITECTURE.md`, `docs/project-details/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Onboarding/schedule extraction could write values outside the PATCH allowlist (e.g. "script/automation"); saving Project Details then failed. DB stores plain TEXT; constraint was application-only.
+- **Risks / notes**: None. Downstream consumers (prompts, shadow panel, chat context) already treat `project_type` as an opaque string; no switch/conditional on value.
+- **Related docs**: `ARCHITECTURE.md` (projects API), `docs/project-details/README.md`.
+
 ### 2026-03-03 – Task description: render with MarkdownMessage in TaskDetails (timeline, list, calendar)
 
 - **Agent / context**: Cursor AI assistant; user request to render task description as markdown in expanded task views.

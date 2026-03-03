@@ -29,7 +29,7 @@ The Project Details page lets users view and edit everything Harvey has extracte
 ## API
 
 - **GET `/api/projects/[projectId]`**: Returns the project for the authenticated user (ownership checked). Used for refetch and by the server page (data is fetched server-side for initial load).
-- **PATCH `/api/projects/[projectId]`**: Partial update. Body can include: `title`, `description`, `goals`, `status`, `target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`. Validation: `weekly_hours_commitment` 1–168, `status` one of active/paused/completed, `project_type` from allowed set, `tools_and_stack` array of strings (max 10, no duplicates). Returns updated project (with ISO date strings).
+- **PATCH `/api/projects/[projectId]`**: Partial update. Body can include: `title`, `description`, `goals`, `status`, `target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`. Validation: `weekly_hours_commitment` 1–168, `status` one of active/paused/completed, `project_type` any string or null, `tools_and_stack` array of strings (max 10, no duplicates). Returns updated project (with ISO date strings).
 
 ## Where data is stored
 

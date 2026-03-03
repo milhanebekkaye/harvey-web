@@ -58,15 +58,6 @@ interface ProjectDetailsFormProps {
   initialProject: SerializedProject
 }
 
-const PROJECT_TYPE_OPTIONS: SelectOption[] = [
-  { value: 'web app', label: 'Web App' },
-  { value: 'mobile app', label: 'Mobile App' },
-  { value: 'SaaS', label: 'SaaS' },
-  { value: 'content', label: 'Content' },
-  { value: 'research', label: 'Research' },
-  { value: 'other', label: 'Other' },
-]
-
 const SKILL_LEVEL_OPTIONS: SelectOption[] = [
   { value: 'beginner', label: 'Beginner' },
   { value: 'intermediate', label: 'Intermediate' },
@@ -356,9 +347,8 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
             <EditableField
               label="Project Type"
               value={project.project_type}
-              type="select"
-              placeholder="Add project type..."
-              options={PROJECT_TYPE_OPTIONS}
+              type="text"
+              placeholder="e.g. web app, mobile app, SaaS, browser extension..."
               nullable
               onChange={(v) => updateProject({ project_type: v as string | null })}
             />
