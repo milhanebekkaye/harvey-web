@@ -13,7 +13,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/components/dashboard/TaskTile.tsx`
   - Compact task card, clickable to expand. Optional drag handle (GripVertical) on the left when `dragHandleProps` is provided (list view drag-and-drop).
 - `src/components/dashboard/TaskDetails.tsx`
-  - Expanded task details (description, checklist, actions).
+  - Expanded task details (description via MarkdownMessage, checklist, actions). Used in timeline/list expanded card and calendar modal.
 - `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`
   - “How long did it take?” widget after task completion. Uses single PATCH with ?returnProgressToday=true (response includes progress; fallback GET if absent). Builds acknowledgment: same day/overdue/future. Compares the completed task’s scheduled date to today (user timezone): same day → “That’s X/Y tasks done today”; overdue → “You’re catching up — good job finishing that one”; future → “You’re ahead of schedule — nice work.” Always appends “Next up: [task]” or “You’re all clear for now.”
 - `src/components/dashboard/TaskChecklistItem.tsx`

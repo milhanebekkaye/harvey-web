@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCategoryIcon } from '@/components/dashboard/TaskCategoryBadge'
+import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
+import { stripWrappingBold } from '@/lib/utils'
 import type { ChecklistItem, TaskLabel } from '@/types/task.types'
 import type { TimelineActiveTask, TimelineDependencyTask } from '@/types/timeline.types'
-import { HarveysTip } from '@/components/timeline/HarveysTip'
-import { SuccessCriteriaList } from '@/components/timeline/SuccessCriteriaList'
+import { HarveysTip } from './HarveysTip'
+import { SuccessCriteriaList } from './SuccessCriteriaList'
 import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 interface ActiveTaskCardProps {
@@ -154,7 +156,7 @@ export function ActiveTaskCard({
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
               Description
             </h4>
-            <p className="text-slate-700 text-sm leading-relaxed">{task.description}</p>
+            <MarkdownMessage content={stripWrappingBold(task.description)} className="text-slate-700 text-sm leading-relaxed" />
           </div>
 
           <div className="grid grid-cols-2 gap-6">

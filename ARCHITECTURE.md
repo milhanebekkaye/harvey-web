@@ -229,7 +229,7 @@ Auth-related UI used on sign-in/sign-up flows:
 
 Shared UI primitives used across features:
 
-- **`MarkdownMessage.tsx`**: Shared assistant-message markdown renderer (uses `react-markdown` + `remark-gfm`). Provides compact chat-friendly markdown styles (bold/italic, bullet + numbered lists, inline code, fenced code blocks with horizontal scroll, safe external links) using Harvey color accents. Used in onboarding, project chat, and per-task chat assistant bubbles. User bubbles remain plain text.
+- **`MarkdownMessage.tsx`**: Shared markdown renderer (uses `react-markdown` + `remark-gfm`). Provides compact markdown styles (bold/italic, bullet + numbered lists, inline code, fenced code blocks with horizontal scroll, safe external links) using Harvey color accents. Used in onboarding, project chat, and per-task chat assistant bubbles (user bubbles remain plain text), and in **TaskDetails** for task description in timeline/list expanded card and calendar modal.
 
 ### `src/components/dashboard/`
 
@@ -246,7 +246,7 @@ Dashboard UI for authenticated users:
 - **`chat/CompletionFeedbackWidget.tsx`**: Inline widget shown after “how long did it take?” when the user completes a task. User picks duration (less/same/more, optional minutes). On submit: single PATCH with `?returnProgressToday=true` (response includes progressToday, avoiding a separate GET; fallback to GET `/api/progress/today` if absent). The acknowledgment message compares the **completed task’s scheduled date** to **today** (in the user’s timezone from the progress response): if same day → “That’s X/Y tasks done today”; if overdue → “You’re catching up — good job finishing that one”; if future → “You’re ahead of schedule — nice work.” In all cases the message ends with “Next up: [task]” (today or nearest upcoming pending) or “You’re all clear for now.” The widget’s user-answer append call includes `widgetAnswer` metadata so the original widget message is marked answered in persistence.
 - **`TaskCategoryBadge.tsx`**: Styled badge indicating task label (Coding, Research, Design, Marketing, Communication, Personal, Planning).
 - **`TaskChecklistItem.tsx`**: UI for a single checklist item within a task (checkbox, label, status).
-- **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.).
+- **`TaskDetails.tsx`**: Detailed view of a selected task (description, status, success criteria, etc.). Task description is rendered with **MarkdownMessage** (markdown formatting) in timeline expanded card, list view expanded card, and calendar modal.
 - **`TaskModal.tsx`**: Modal dialog for creating or editing a task.
 - **`TaskStatusBadge.tsx`**: Badge displaying a task’s current status (e.g. Todo, In Progress, Done).
 - **`TaskTile.tsx`**: Compact card/tile representation of a task, used in lists or board views. Supports `isActiveConversation` for per-task chat indicator (parent wrapper shows purple glow + chat badge when that task’s chat is open). Optional **dragHandleProps** and **isDragging** for list-view drag-and-drop: when provided, a GripVertical handle is shown on the left (default variant only); when `isDragging` the card uses reduced opacity.
@@ -263,7 +263,7 @@ See `docs/timeline-view.md` for feature-level behavior and API contracts.
 - **`TimelineView.tsx`**: Timeline shell for right-pane timeline mode. Fetches `/api/timeline`, handles edge states, wires optimistic success-criteria save (`PATCH /api/tasks/[taskId]`), and passes data to card components.
 - **`TimelineRail.tsx`**: Vertical rail wrapper (purple/grey gradient line with child card slots).
 - **`CompletedTaskCard.tsx`**: Completed slot card with green check marker.
-- **`ActiveTaskCard.tsx`**: Expanded active card (description, success criteria, dependencies, Harvey tip slot, action buttons). Manages tip state and calls `POST /api/tasks/tip` on mount/refresh.
+- **`ActiveTaskCard.tsx`**: Expanded active card (description via **MarkdownMessage**, success criteria, dependencies, Harvey tip slot, action buttons). Manages tip state and calls `POST /api/tasks/tip` on mount/refresh.
 - **`SuccessCriteriaList.tsx`**: Interactive checklist list used inside ActiveTaskCard.
 - **`HarveysTip.tsx`**: Tip UI slot with Harvey avatar; shows in-content loading spinner while generating and disables refresh during requests.
 - **`UpcomingTaskCard.tsx`**: Collapsed upcoming task slot card.

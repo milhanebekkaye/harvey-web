@@ -30,7 +30,7 @@ Timeline View is now fully implemented as the primary dashboard view mode. It is
 - `src/components/timeline/TimelineView.tsx`
   - Fetches timeline payload, handles edge states, and wires active-task actions. Accepts `refreshTrigger?: number` prop — when this value increments the component silently refetches via `fetchTimeline({ silent: true })` (no loading spinner). Used by `dashboard/page.tsx` after a reorder API success.
 - `src/components/timeline/ActiveTaskCard.tsx`
-  - Renders active task details and manages Harvey tip fetch + refresh lifecycle.
+  - Renders active task details (description via MarkdownMessage) and manages Harvey tip fetch + refresh lifecycle.
 - `src/components/timeline/HarveysTip.tsx`
   - Tip display component with loading state and disabled refresh while fetching.
 

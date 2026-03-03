@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActiveTaskCard } from '@/components/timeline/ActiveTaskCard'
-import { CompletedTaskCard } from '@/components/timeline/CompletedTaskCard'
-import { SkippedTaskCard } from '@/components/timeline/SkippedTaskCard'
-import { TimelineRail } from '@/components/timeline/TimelineRail'
-import { UpcomingTaskCard } from '@/components/timeline/UpcomingTaskCard'
+import { ActiveTaskCard } from './ActiveTaskCard'
+import { CompletedTaskCard } from './CompletedTaskCard'
+import { SkippedTaskCard } from './SkippedTaskCard'
+import { TimelineRail } from './TimelineRail'
+import { UpcomingTaskCard } from './UpcomingTaskCard'
 import type { ChecklistItem } from '@/types/task.types'
 import type { TimelineData } from '@/types/timeline.types'
 

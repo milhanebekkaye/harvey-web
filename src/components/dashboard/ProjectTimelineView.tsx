@@ -1,6 +1,6 @@
 'use client'
 
-import { TimelineView } from '@/components/timeline'
+import { TimelineView } from '@/components/dashboard/timeline'
 
 interface ProjectTimelineViewProps {
   projectId: string | null

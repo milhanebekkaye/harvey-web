@@ -13,6 +13,8 @@
 'use client'
 
 import type { DashboardTask } from '@/types/task.types'
+import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
+import { stripWrappingBold } from '@/lib/utils'
 import { TaskChecklist } from './TaskChecklistItem'
 import { TaskStatusBadge } from './TaskStatusBadge'
 
@@ -144,9 +146,7 @@ export function TaskDetails({
           <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             Description
           </h4>
-          <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-            {task.description}
-          </p>
+          <MarkdownMessage content={stripWrappingBold(task.description)} className="text-sm text-slate-600 leading-relaxed" />
         </div>
       )}
 

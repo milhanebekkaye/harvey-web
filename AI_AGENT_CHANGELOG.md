@@ -48,6 +48,18 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Task description: render with MarkdownMessage in TaskDetails (timeline, list, calendar)
+
+- **Agent / context**: Cursor AI assistant; user request to render task description as markdown in expanded task views.
+- **Summary**:
+  - In **TaskDetails.tsx**, replaced the plain `<p>` rendering of `task.description` (lines 146–148) with the shared **MarkdownMessage** component so task descriptions support markdown (bold, lists, code, links) in all places that use TaskDetails.
+  - **TaskDetails** is used by: list view expanded task card (dashboard TimelineView) and calendar modal (TaskModal). So the fix applies to list view and calendar task detail modal.
+  - **Follow-up (timeline view)**: In **ActiveTaskCard.tsx** (timeline module), the “current task” card used when the dashboard is in Timeline view (ProjectTimelineView) also displayed `task.description` in a plain `<p>`. Replaced with **MarkdownMessage** (same styling intent: `text-slate-700 text-sm leading-relaxed`) so the timeline view active task description also supports markdown.
+- **Files touched**: `src/components/dashboard/TaskDetails.tsx`, `src/components/timeline/ActiveTaskCard.tsx`, `ARCHITECTURE.md` (TaskDetails, ActiveTaskCard, MarkdownMessage bullets), `docs/dashboard/README.md`, `docs/timeline-view/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Consistent markdown rendering for task descriptions in list view (TaskDetails), calendar modal (TaskDetails), and timeline view (ActiveTaskCard).
+- **Risks / notes**: None. MarkdownMessage is already used for chat; task descriptions may contain markdown from AI-generated or user-edited content.
+- **Related docs**: `ARCHITECTURE.md` (TaskDetails, ActiveTaskCard, MarkdownMessage), `docs/dashboard/README.md`, `docs/timeline-view/README.md`.
+
 ### 2026-03-03 – API cost tracking Phase 5: verification pass and MODEL_PRICING + docs
 
 - **Agent / context**: Cursor AI assistant; Phase 5 — final cleanup and verification of cost tracking.
