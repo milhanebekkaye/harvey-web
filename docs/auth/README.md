@@ -9,13 +9,17 @@ This feature handles user authentication and initial user record creation. It su
 - `src/components/auth/AuthButtons.tsx`
   - Google OAuth and email signup entry buttons.
 - `src/components/auth/EmailSignupForm.tsx`
-  - Email + name signup form. Calls `signUpWithEmail()`; on success shows “Check your email” UI (same as login). User must click the verification link; then callback creates DB user and redirects to onboarding.
+  - Email-only signup form. Calls `signUpWithEmail()`; on success shows “Check your email” UI (same as login). User must click the verification link; then callback creates DB user and redirects to `/onboarding/welcome` (if no name) or `/onboarding`.
 - `src/components/auth/EmailLoginForm.tsx`
   - Passwordless magic link login form. Before sending the link, calls `POST /api/auth/check-email`; if email does not exist, shows “No account found with this email. Sign up first.” and does not call Supabase. Otherwise sends link via Supabase.
 - `src/app/auth/callback/route.ts`
-  - OAuth and magic-link callback: exchanges code for session, creates DB user if missing. Redirect: if explicit `next` query param is present, redirects there; else if user has **any project** → `/dashboard`, else → `/onboarding`.
+  - OAuth and magic-link callback: exchanges code for session, creates DB user if missing. Redirect: if explicit `next` query param is present, redirects there; else if user has **any project** → `/dashboard`; else if user has **no name** (null or empty in DB) → `/onboarding/welcome`; else → `/onboarding`.
 - `src/app/api/auth/check-email/route.ts`
   - POST with `{ email }`; returns `{ exists: true }` or `{ exists: false }` (no user data). Used by magic-link form before sending the link.
+- `src/app/api/user/name/route.ts`
+  - PATCH with `{ name: string }`. Auth required. Updates the current user’s name in the `users` table. Used by `/onboarding/welcome`.
+- `src/app/onboarding/welcome/page.tsx`
+  - First screen after auth for new users with no name. Collects first name, PATCHes `/api/user/name`, then redirects to `/onboarding`.
 - `src/lib/auth/auth-service.ts`
   - Core auth service functions (Google OAuth, email signup, magic link, sign out, session/user checks).
 - `src/lib/auth/supabase.ts`
@@ -42,10 +46,10 @@ This feature handles user authentication and initial user record creation. It su
 6. Redirect: if explicit `next` param provided → that URL; else if user has **any project** → `/dashboard`; else → `/onboarding`.
 
 ### Email signup (with email verification)
-1. User enters name + email in `EmailSignupForm`.
+1. User enters email in `EmailSignupForm` (name is collected later on `/onboarding/welcome`).
 2. `signUpWithEmail()` calls `supabase.auth.signUp` with `emailRedirectTo` set to `/auth/callback` (Supabase sends a verification email; no DB user created yet).
 3. Form shows “Check your email” UI (same as login): “We sent a verification link to …”, “Click the link to verify your address and get started.”
-4. User clicks the link in the email → `GET /auth/callback?code=...` → callback creates DB user (from Supabase user + metadata) and redirects to `/onboarding` (or `/dashboard` if they have a project).
+4. User clicks the link in the email → `GET /auth/callback?code=...` → callback creates DB user (no name from metadata). Redirect: if user has a project → `/dashboard`; else if user has no name → `/onboarding/welcome`; else → `/onboarding`.
 
 ### Magic link login (existing users)
 1. User enters email in `EmailLoginForm`.
@@ -65,8 +69,8 @@ This feature handles user authentication and initial user record creation. It su
 ### `src/lib/auth/auth-service.ts`
 - `signInWithGoogle(options?)`
   - Starts Google OAuth flow via Supabase and redirects to `/auth/callback`.
-- `signUpWithEmail(email, name, redirectTo?)`
-  - Creates a Supabase Auth user and triggers a **verification email** (Supabase sends the link to `redirectTo` or `origin/auth/callback`). Does **not** create the app DB user here; the DB user is created in `/auth/callback` when the user clicks the link.
+- `signUpWithEmail(email, redirectTo?)`
+  - Creates a Supabase Auth user and triggers a **verification email** (Supabase sends the link to `redirectTo` or `origin/auth/callback`). Does **not** create the app DB user here; the DB user is created in `/auth/callback` when the user clicks the link. Name is collected on `/onboarding/welcome`.
 - `signInWithMagicLink(options)`
   - Sends passwordless magic link via Supabase.
 - `signOut()`
@@ -78,7 +82,7 @@ This feature handles user authentication and initial user record creation. It su
 - `GET(request)`
   - Exchanges OAuth/magic-link code for Supabase session.
   - Creates DB user if missing.
-  - Redirect: if `next` query param is present → that URL; else if user has **any project** (count > 0) → `/dashboard`; else → `/onboarding`.
+  - Redirect: if `next` query param is present → that URL; else if user has **any project** (count > 0) → `/dashboard`; else if user has **no name** (null or empty in DB) → `/onboarding/welcome`; else → `/onboarding`.
 
 ### `src/app/api/auth/check-email/route.ts`
 - `POST(request)` with body `{ email: string }`

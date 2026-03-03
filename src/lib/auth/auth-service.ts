@@ -84,42 +84,37 @@ export async function signInWithGoogle(
 
 /**
  * Sign up with email (with email verification)
- * 
+ *
  * Flow:
- * 1. User enters email + name
+ * 1. User enters email
  * 2. Create Supabase Auth user with email confirmation enabled (emailRedirectTo set)
  * 3. Supabase sends a verification link to the user's email
- * 4. User clicks link → /auth/callback → we create DB user there and redirect to onboarding
- * 
+ * 4. User clicks link → /auth/callback → we create DB user there and redirect to /onboarding/welcome or /onboarding
+ *
  * DB user is created in the auth callback when they click the link (not here), so we don't
- * create the user record until email is verified.
- * 
+ * create the user record until email is verified. Name is collected on /onboarding/welcome.
+ *
  * @param email - User's email address
- * @param name - User's full name
  * @param redirectTo - Optional redirect URL after verification (default: origin/auth/callback)
  * @returns Promise<AuthResponse> - Success or error
  */
 export async function signUpWithEmail(
   email: string,
-  name: string,
   redirectTo?: string
 ): Promise<AuthResponse> {
   try {
     const supabase = createClient()
-    
+
     const randomPassword = Math.random().toString(36).slice(-16) + Math.random().toString(36).slice(-16)
     const confirmRedirect = redirectTo ?? `${window.location.origin}/auth/callback`
-    
+
     // ===== Create Supabase Auth user with email confirmation =====
     console.log('[Auth] Creating Supabase auth user (email confirmation):', email)
-    
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password: randomPassword,
       options: {
-        data: {
-          full_name: name,
-        },
         emailRedirectTo: confirmRedirect, // Verification link sends user here; callback creates DB user
       },
     })

@@ -48,6 +48,19 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Onboarding welcome screen: collect name after auth, redirect logic
+
+- **Agent / context**: Cursor AI assistant; add `/onboarding/welcome` as first screen for new users to set their name before the main onboarding chat.
+- **Summary**:
+  - **Auth**: Removed name field from `EmailSignupForm`; signup now collects only email. `signUpWithEmail` in `auth-service.ts` no longer accepts or passes a name to Supabase metadata.
+  - **New page**: `src/app/onboarding/welcome/page.tsx` — client page with same rainbow/aurora background and glass card as signin; centered 80×80 avatar (`penguin_onboarding_screen_name.png`), heading “What should Harvey call you?”, single input “Your first name”, CTA “Let’s go →”. On submit: PATCH `/api/user/name` with `{ name }`, then redirect to `/onboarding`.
+  - **API**: `src/app/api/user/name/route.ts` — authenticated PATCH; reads current user from Supabase session, updates `name` in `users` table via Prisma `updateUser`.
+  - **Redirect**: In `auth/callback/route.ts`, when user has no project we now check DB user name; if null or empty, redirect to `/onboarding/welcome` instead of `/onboarding`. Uses `getUserById` to decide.
+- **Files touched**: `src/components/auth/EmailSignupForm.tsx`, `src/lib/auth/auth-service.ts`, `src/app/onboarding/welcome/page.tsx`, `src/app/api/user/name/route.ts`, `src/app/auth/callback/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/auth/README.md`, `docs/onboarding/README.md`.
+- **Motivation**: Defer name collection to a dedicated welcome step after email verification so new users see a single, focused screen before the onboarding chat.
+- **Risks / notes**: Existing OAuth/magic-link users with `user_metadata.name` still get name set in callback; only email-signup new users (no metadata name) and users with cleared name hit `/onboarding/welcome`. Dashboard “no project → onboarding” redirect still goes to `/onboarding` (not welcome); welcome is only from auth callback when no name.
+- **Related docs**: `ARCHITECTURE.md` (auth callback, onboarding), `docs/auth/README.md`, `docs/onboarding/README.md`.
+
 ### 2026-03-03 – Week grid: diagonal stripe overlay when work schedule and project block overlap
 
 - **Agent / context**: Cursor AI assistant; add a visual overlay on grid cells where both work schedule (section above) and a project availability block overlap.

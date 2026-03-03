@@ -6,18 +6,18 @@
  * THREE-STEP PROCESS:
  * 1. Exchange OAuth code for Supabase session
  * 2. Create database user if doesn't exist
- * 3. Determine redirect: if user has a project → /dashboard, else → /onboarding (or explicit next param)
+ * 3. Determine redirect: if user has a project → /dashboard; else if user has no name → /onboarding/welcome; else → /onboarding (or explicit next param)
  * 
  * Flow:
  * 1. User authenticates with Google or clicks magic link
  * 2. Redirects here with code
  * 3. We exchange code for session (Supabase Auth)
  * 4. We check if user exists in database; if not, create record
- * 5. If explicit next query param → redirect there; else if user has any project → /dashboard, else → /onboarding
+ * 5. If explicit next query param → redirect there; else if user has any project → /dashboard; else if user has no name → /onboarding/welcome; else → /onboarding
  */
 
 import { createClient } from '@/lib/auth/supabase-server'
-import { createUser, userExists } from '@/lib/users/user-service'
+import { createUser, userExists, getUserById } from '@/lib/users/user-service'
 import { prisma } from '@/lib/db/prisma'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
@@ -100,15 +100,22 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== STEP 3: Determine redirect target =====
-    // If explicit next param was provided, use it; otherwise send returning users to dashboard, new users to onboarding.
+    // If explicit next param was provided, use it; otherwise send returning users to dashboard, new users to onboarding or welcome (if no name).
     let redirectTarget: string
     if (nextParam != null && nextParam.trim() !== '') {
       redirectTarget = nextParam.startsWith('/') ? nextParam : `/${nextParam}`
       console.log('[AuthCallback] Using explicit next param:', redirectTarget)
     } else {
       const hasProject = await userHasProject(data.user.id)
-      redirectTarget = hasProject ? '/dashboard' : '/onboarding'
-      console.log('[AuthCallback] Redirecting to:', redirectTarget, '(hasProject:', hasProject, ')')
+      if (hasProject) {
+        redirectTarget = '/dashboard'
+        console.log('[AuthCallback] Redirecting to:', redirectTarget, '(hasProject: true)')
+      } else {
+        const dbUser = await getUserById(data.user.id)
+        const hasName = dbUser?.name != null && dbUser.name.trim() !== ''
+        redirectTarget = hasName ? '/onboarding' : '/onboarding/welcome'
+        console.log('[AuthCallback] Redirecting to:', redirectTarget, '(hasName:', hasName, ')')
+      }
     }
 
     return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin))

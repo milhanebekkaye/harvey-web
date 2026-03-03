@@ -1,14 +1,15 @@
 /**
  * EmailSignupForm Component
- * 
- * Collects user's email and name, then sends a verification link.
- * 
+ *
+ * Collects user's email and sends a verification link.
+ * Name is collected later on the /onboarding/welcome screen.
+ *
  * Flow:
- * 1. User enters email + name
+ * 1. User enters email
  * 2. Validates input
  * 3. Creates Supabase account with email confirmation (verification link sent)
  * 4. Shows "Check your email" UI (same UX as login)
- * 5. User clicks link → /auth/callback → DB user created → redirect to onboarding
+ * 5. User clicks link → /auth/callback → DB user created → redirect to /onboarding/welcome or /onboarding
  */
 
 'use client'
@@ -22,7 +23,7 @@ interface EmailSignupFormProps {
    * Returns to initial auth buttons
    */
   onBack: () => void
-  
+
   /**
    * Callback for error handling
    * Passes errors up to parent for display
@@ -33,7 +34,6 @@ interface EmailSignupFormProps {
 export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
   // Form state
   const [email, setEmail] = useState('')
-  const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Success state - same UX as login: show "Check your email" after sending verification link
@@ -52,16 +52,11 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
       onError('Please enter a valid email address')
       return
     }
-    
-    if (!name || name.trim().length < 2) {
-      onError('Please enter your full name')
-      return
-    }
 
     setLoading(true)
 
     try {
-      const result = await signUpWithEmail(email, name.trim(), `${window.location.origin}/auth/callback`)
+      const result = await signUpWithEmail(email, `${window.location.origin}/auth/callback`)
 
       if (result.success) {
         // Verification email sent; show same UI as login
@@ -135,28 +130,6 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
   // ===== SIGNUP FORM =====
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      
-      {/* Name Input Field */}
-      <div>
-        <label 
-          htmlFor="name" 
-          className="block text-sm font-medium text-slate-700 mb-2"
-        >
-          Full Name
-        </label>
-        <input
-          id="name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="John Doe"
-          required
-          disabled={loading}
-          autoFocus // Auto-focus for better UX
-          className="w-full h-12 px-4 bg-white border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#425ff0] focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-      </div>
-
       {/* Email Input Field */}
       <div>
         <label 
@@ -180,7 +153,7 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
       {/* Submit Button - Sends verification email */}
       <button
         type="submit"
-        disabled={loading || !email || !name}
+        disabled={loading || !email}
         className="w-full h-12 px-5 bg-[#425ff0] hover:bg-[#425ff0]/90 text-white rounded-lg transition-all duration-200 font-bold text-base shadow-lg shadow-[#425ff0]/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
       >
         {loading ? (

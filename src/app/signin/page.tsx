@@ -10,7 +10,7 @@
  *
  * States:
  * 1. 'buttons': Show AuthButtons (Google + Email options + Login link)
- * 2. 'signup': Show EmailSignupForm (collect email + name for new users)
+ * 2. 'signup': Show EmailSignupForm (collect email for new users)
  * 3. 'login': Show EmailLoginForm (magic link login for existing users)
  */
 
@@ -126,9 +126,9 @@ export default function SigninPage() {
           
           {/* Logo Section - Always visible */}
           <div className="flex flex-col items-center mb-8">
-            {/* Harvey Logo Icon */}
-            <div className="size-12 bg-[#425ff0] rounded-xl flex items-center justify-center text-white mb-6 shadow-lg shadow-[#425ff0]/20">
-              <span className="material-symbols-outlined text-3xl">auto_awesome</span>
+            {/* Harvey Logo Icon — 4× original: container size-48 (192px), icon text-9xl; change here to resize */}
+            <div className="size-48 bg-[#425ff0] rounded-xl flex items-center justify-center text-white mb-6 shadow-lg shadow-[#425ff0]/20">
+              <span className="material-symbols-outlined text-9xl">auto_awesome</span>
             </div>
             {/* Brand Name */}
             <div className="flex items-center gap-2 mb-2">
