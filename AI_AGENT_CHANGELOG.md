@@ -48,6 +48,48 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Week grid: prefer personal segment when overlapping blocks share a cell
+
+- **Agent / context**: Cursor AI assistant; fix overlapping availability blocks so the new (e.g. personal) block is visible in the week grid when it overlaps an existing one.
+- **Summary**:
+  - **AvailabilitySection.tsx** (line 286): When multiple segments cover the same (day, hour) cell, the grid now prefers a segment with `type === 'personal'` if present, otherwise uses the first segment. Replaced `avail[0]?.block?.type` with `(avail.find(s => s.block?.type === 'personal') ?? avail[0])?.block?.type`.
+- **Files touched**: `src/components/settings/AvailabilitySection.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Previously the grid used only the first matching segment per cell, so a newly added overlapping block (e.g. 12–14 personal inside 9–17 project) was invisible in the grid. Preferring personal when present makes overlapping blocks both visible (personal wins for color when both cover the cell).
+- **Risks / notes**: None. Single-line logic change; list and data unchanged.
+
+### 2026-03-03 – Availability blocks list: show newest first (display order reversed)
+
+- **Agent / context**: Cursor AI assistant; reverse display order of availability blocks so newest appears at top.
+- **Summary**:
+  - **AvailabilitySection.tsx**: The blocks list now renders `[...availableTime].reverse().map(...)` so the list shows newest block first. Inside the map, `index` is computed as `availableTime.length - 1 - reversedIndex` so `updateBlock(index, ...)` and `removeBlock(index)` still use the real array index; underlying array order is unchanged.
+- **Files touched**: `src/components/settings/AvailabilitySection.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Newest-added blocks appear at the top of the list for quicker access.
+- **Risks / notes**: None. Only display order changed; state and callbacks unchanged.
+
+### 2026-03-03 – Allow overlapping availability blocks + normalize before scheduler + label fix
+
+- **Agent / context**: Cursor AI assistant; allow overlapping availability blocks on Settings, normalize before scheduler/total-hours, and shorten legend label.
+- **Summary**:
+  - **API**: In `validateAvailabilityBlocks` (POST `/api/settings/update`), removed the pairwise overlap check; day name, time format, and end ≠ start validation are unchanged.
+  - **Scheduler**: Added `normalizeAvailabilityBlocks()` in `task-scheduler.ts` to merge overlapping blocks per day (sort by start, extend previous block if overlap, prefer `personal` type). `buildAvailabilityMap()` now uses normalized blocks; `calculateTotalAvailableHours()` in `schedule-generation.ts` sums over normalized blocks so overlapping blocks are not double-counted.
+  - **Settings UI**: Availability Windows legend label changed from “Work (project)” to “Project” in `AvailabilitySection.tsx`.
+- **Files touched**: `src/app/api/settings/update/route.ts`, `src/lib/schedule/task-scheduler.ts`, `src/lib/schedule/schedule-generation.ts`, `src/components/settings/AvailabilitySection.tsx`, `docs/settings/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Users could add overlapping blocks (e.g. 12–2 when 9–5 exists) but save failed silently (API 400, no client revert). Allowing overlap and normalizing downstream avoids silent failure and supports overlapping UI entries while keeping scheduler/total-hours correct.
+- **Risks / notes**: `segmentMinutesOnDay` in the update route is now unused (left in place). Normalizer merges same-day overlaps only; overnight blocks are not merged.
+- **Related docs**: `docs/settings/README.md`, `ARCHITECTURE.md` (settings API, task-scheduler).
+
+### 2026-03-03 – Sticky unsaved-changes save bar (Project Details + Settings)
+
+- **Agent / context**: Cursor AI assistant; implement shared sticky “unsaved changes” save bar for Project Details and Settings pages.
+- **Summary**:
+  - **New component**: `src/components/ui/StickyUnsavedBar.tsx` — fixed bottom bar (z-[60]) with “You have unsaved changes”, Discard and Save Changes buttons; renders only when `hasChanges` is true.
+  - **Project Details**: Replaced inline conditional Save button with `StickyUnsavedBar`; added `handleDiscard` (resets form to `lastSaved`); main content div uses `pb-24` so content is not hidden behind the bar.
+  - **Settings**: Added `savedSnapshot` state (set on initial fetch and after successful save refetch); `hasChanges = savedSnapshot !== null && data !== null && JSON.stringify(data) !== JSON.stringify(savedSnapshot)`; added `handleDiscard`; removed header Save button; added `StickyUnsavedBar` and `pb-24` on content div.
+- **Files touched**: `src/components/ui/StickyUnsavedBar.tsx` (new), `src/components/dashboard/ProjectDetailsForm.tsx`, `src/app/dashboard/settings/page.tsx`, `ARCHITECTURE.md`, `docs/project-details/README.md`, `docs/settings/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Consistent UX for saving: sticky bar at bottom on both pages when there are unsaved changes, with Discard and Save; avoids scrolling to find the save button.
+- **Risks / notes**: Project Details toast uses `z-50`; sticky bar uses `z-[60]` so it appears above the toast. No shared dashboard layout — bar is rendered per page.
+- **Related docs**: `ARCHITECTURE.md` (components, dashboard routes), `docs/project-details/README.md`, `docs/settings/README.md`.
+
 ### 2026-03-03 – project_type: allow any string (remove fixed enum validation)
 
 - **Agent / context**: Cursor AI assistant; fix validation error "project_type must be one of: web app, mobile app, SaaS, content, research, other or null" when DB had values from extraction (e.g. "script/automation") or user-entered types.

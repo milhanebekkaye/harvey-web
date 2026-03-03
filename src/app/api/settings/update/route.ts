@@ -178,35 +178,6 @@ function validateAvailabilityBlocks(blocks: { day: string; start: string; end: s
     // end <= start is valid: overnight block (e.g. Friday 23:00 - Saturday 02:00)
     if (endM === startM) return `End time must be different from start time for ${b.day} ${b.start}-${b.end}`
   }
-  // Overlap check: for each day, collect all segments (including overnight continuation from previous day), then check pairwise
-  const prevDay = (d: string) => dayNames[(dayNames.indexOf(d) + 6) % 7]
-  for (const day of dayNames) {
-    const segments: { start: number; end: number; label: string }[] = []
-    for (const b of blocks) {
-      const d = b.day.toLowerCase()
-      const [sh, sm] = b.start.split(':').map(Number)
-      const [eh, em] = b.end.split(':').map(Number)
-      const startM = sh * 60 + sm
-      const endM = eh * 60 + em
-      const label = `${b.day} ${b.start}-${b.end}`
-      if (d === day) {
-        const seg = segmentMinutesOnDay(startM, endM)
-        segments.push({ ...seg, label })
-      } else if (prevDay(day) === d && endM <= startM) {
-        // Overnight block from previous day continues into this day as [0, end)
-        segments.push({ start: 0, end: endM, label })
-      }
-    }
-    for (let i = 0; i < segments.length; i++) {
-      for (let j = i + 1; j < segments.length; j++) {
-        const a = segments[i]
-        const b = segments[j]
-        if (a.start < b.end && b.start < a.end) {
-          return `Overlapping blocks on ${day}: ${a.label} and ${b.label}`
-        }
-      }
-    }
-  }
   return null
 }
 

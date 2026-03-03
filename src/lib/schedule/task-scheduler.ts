@@ -495,6 +495,47 @@ function subtractBlockedFromSlots(
 }
 
 /**
+ * Merge overlapping availability blocks per day so downstream logic (buildAvailabilityMap, total hours) sees non-overlapping segments.
+ * Preserves flexible_hours / window_type; prefers 'personal' type when merging.
+ */
+export function normalizeAvailabilityBlocks(blocks: TimeBlock[]): TimeBlock[] {
+  const byDay: Record<string, TimeBlock[]> = {}
+  for (const block of blocks) {
+    const day = block.day.toLowerCase()
+    if (!byDay[day]) byDay[day] = []
+    byDay[day].push(block)
+  }
+
+  const result: TimeBlock[] = []
+  const toMins = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return (h ?? 0) * 60 + (m ?? 0)
+  }
+  const fromMins = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
+  for (const day of Object.keys(byDay)) {
+    const sorted = [...byDay[day]].sort((a, b) => toMins(a.start) - toMins(b.start))
+    const merged: TimeBlock[] = [{ ...sorted[0] }]
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = merged[merged.length - 1]
+      const curr = sorted[i]
+      const currStartM = toMins(curr.start)
+      const prevEndM = toMins(prev.end)
+      if (currStartM < prevEndM) {
+        const currEndM = toMins(curr.end)
+        if (currEndM > prevEndM) prev.end = fromMins(currEndM)
+        if (curr.type === 'personal') prev.type = 'personal'
+      } else {
+        merged.push({ ...curr })
+      }
+    }
+    result.push(...merged)
+  }
+  return result
+}
+
+/**
  * Build availability map from constraints (available_time) and subtract User work/commute.
  * Groups available time by day of week; blocks from User.workSchedule and User.commute are excluded.
  * Flexible blocks (flexible_hours set) use that as slot capacity and are not subtracted (already the user's capacity within the boundary).
@@ -511,7 +552,7 @@ function buildAvailabilityMap(
   energyPeak?: string | null
 ): Map<string, TimeSlot[]> {
   const availability = new Map<string, TimeSlot[]>()
-  const blocks = constraints.available_time || []
+  const blocks = normalizeAvailabilityBlocks(constraints.available_time || [])
   const blockWithMeta = (b: TimeBlock) => b as TimeBlock & { window_type?: 'fixed' | 'flexible'; label?: string; flexible_hours?: number }
   const isFlexibleBlock = (b: TimeBlock): boolean => {
     const meta = blockWithMeta(b)

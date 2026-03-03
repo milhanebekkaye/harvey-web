@@ -181,10 +181,74 @@ export function AvailabilitySection({
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-      <h2 className="text-lg font-semibold text-slate-800 mb-2">Availability Windows</h2>
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <h2 className="text-lg font-semibold text-slate-800">Availability Windows</h2>
+        {!adding && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="shrink-0 text-sm font-medium text-[#895af6] hover:text-[#7849d9]"
+          >
+            + Add block
+          </button>
+        )}
+      </div>
       <p className="text-slate-500 text-sm mb-4">
         When you can work on this project. Shown below: work hours (grey), commute (lighter), your availability blocks (green/blue).
       </p>
+
+      {adding && (
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
+          <select
+            value={newBlock.day}
+            onChange={(e) => setNewBlock((b) => ({ ...b, day: e.target.value }))}
+            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+          >
+            {DAYS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <input
+            type="time"
+            value={newBlock.start ?? ''}
+            onChange={(e) => setNewBlock((b) => ({ ...b, start: e.target.value }))}
+            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
+          />
+          <input
+            type="time"
+            value={newBlock.end ?? ''}
+            onChange={(e) => setNewBlock((b) => ({ ...b, end: e.target.value }))}
+            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
+          />
+          <select
+            value={newBlock.type ?? 'work'}
+            onChange={(e) => setNewBlock((b) => ({ ...b, type: e.target.value as 'work' | 'personal' }))}
+            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+          >
+            <option value="work">Project</option>
+            <option value="personal">Personal</option>
+          </select>
+          <button
+            type="button"
+            onClick={addBlock}
+            className="px-3 py-1.5 bg-[#895af6] text-white text-sm rounded-lg hover:bg-[#7849d9]"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdding(false)}
+            className="px-3 py-1.5 text-slate-600 text-sm"
+          >
+            Cancel
+          </button>
+          {newBlock.start && newBlock.end && parseTime(newBlock.start) > parseTime(newBlock.end) && (
+            <p className="w-full text-xs text-slate-500 mt-1">
+              This block crosses midnight and will appear on two days.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 text-sm text-slate-600">
         <span className="inline-flex items-center gap-1.5 mr-4">
@@ -194,7 +258,7 @@ export function AvailabilitySection({
           <span className="w-3 h-3 rounded bg-slate-200" /> Commute
         </span>
         <span className="inline-flex items-center gap-1.5 mr-4">
-          <span className="w-3 h-3 rounded bg-emerald-400" /> Work (project)
+          <span className="w-3 h-3 rounded bg-emerald-400" /> Project
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-sky-400" /> Personal
@@ -220,7 +284,7 @@ export function AvailabilitySection({
                 const avail = displaySegments.filter(
                   (s) => s.day === day && hour >= s.start && hour < s.end
                 )
-                const type = avail[0]?.block?.type
+                const type = (avail.find(s => s.block?.type === 'personal') ?? avail[0])?.block?.type
                 let bg = 'bg-white'
                 if (work) bg = 'bg-slate-300'
                 else if (comm) bg = 'bg-slate-200'
@@ -259,7 +323,9 @@ export function AvailabilitySection({
 
       {availableTime.length > 0 && (
         <ul className="space-y-2 mb-4">
-          {availableTime.map((block, index) => (
+          {[...availableTime].reverse().map((block, reversedIndex) => {
+            const index = availableTime.length - 1 - reversedIndex
+            return (
             <li
               key={`${block.day}-${block.start}-${index}`}
               className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100"
@@ -292,7 +358,7 @@ export function AvailabilitySection({
                     onChange={(e) => updateBlock(index, { type: e.target.value as 'work' | 'personal' })}
                     className="rounded border border-slate-200 px-2 py-1 text-sm"
                   >
-                    <option value="work">Work</option>
+                    <option value="work">Project</option>
                     <option value="personal">Personal</option>
                   </select>
                   <button
@@ -311,11 +377,9 @@ export function AvailabilitySection({
                       ? `${block.start} – ${nextDay(block.day).charAt(0).toUpperCase() + nextDay(block.day).slice(1, 3)} ${block.end} (overnight)`
                       : `${block.start}–${block.end}`}
                   </span>
-                  {block.type && (
-                    <span className={`text-xs px-2 py-0.5 rounded ${block.type === 'personal' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {block.type}
-                    </span>
-                  )}
+                  <span className={`text-xs px-2 py-0.5 rounded ${(block.type ?? 'work') === 'personal' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {(block.type ?? 'work') === 'personal' ? 'Personal' : 'Project'}
+                  </span>
                   <button
                     type="button"
                     onClick={() => setEditingId(`edit-${index}`)}
@@ -334,71 +398,9 @@ export function AvailabilitySection({
                 </>
               )}
             </li>
-          ))}
+            )
+          })}
         </ul>
-      )}
-
-      {adding && (
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200">
-          <select
-            value={newBlock.day}
-            onChange={(e) => setNewBlock((b) => ({ ...b, day: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
-          >
-            {DAYS.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-          <input
-            type="time"
-            value={newBlock.start ?? ''}
-            onChange={(e) => setNewBlock((b) => ({ ...b, start: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
-          />
-          <input
-            type="time"
-            value={newBlock.end ?? ''}
-            onChange={(e) => setNewBlock((b) => ({ ...b, end: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
-          />
-          <select
-            value={newBlock.type ?? 'work'}
-            onChange={(e) => setNewBlock((b) => ({ ...b, type: e.target.value as 'work' | 'personal' }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
-          >
-            <option value="work">Work</option>
-            <option value="personal">Personal</option>
-          </select>
-          <button
-            type="button"
-            onClick={addBlock}
-            className="px-3 py-1.5 bg-[#895af6] text-white text-sm rounded-lg hover:bg-[#7849d9]"
-          >
-            Add
-          </button>
-          <button
-            type="button"
-            onClick={() => setAdding(false)}
-            className="px-3 py-1.5 text-slate-600 text-sm"
-          >
-            Cancel
-          </button>
-          {newBlock.start && newBlock.end && parseTime(newBlock.start) > parseTime(newBlock.end) && (
-            <p className="w-full text-xs text-slate-500 mt-1">
-              This block crosses midnight and will appear on two days.
-            </p>
-          )}
-        </div>
-      )}
-
-      {!adding && (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="text-sm font-medium text-[#895af6] hover:text-[#7849d9]"
-        >
-          + Add block
-        </button>
       )}
     </section>
   )

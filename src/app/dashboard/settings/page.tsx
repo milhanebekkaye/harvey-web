@@ -23,6 +23,7 @@ function formatNoteDate(iso: string | undefined): string {
     return ''
   }
 }
+import { StickyUnsavedBar } from '@/components/ui/StickyUnsavedBar'
 import { WorkScheduleSection } from '@/components/settings/WorkScheduleSection'
 import { AvailabilitySection } from '@/components/settings/AvailabilitySection'
 import { PreferencesSection } from '@/components/settings/PreferencesSection'
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [savedSnapshot, setSavedSnapshot] = useState<SettingsGetResponse | null>(null)
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -50,6 +52,7 @@ export default function SettingsPage() {
       }
       const json: SettingsGetResponse = await res.json()
       setData(json)
+      setSavedSnapshot(json)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load settings')
     } finally {
@@ -102,10 +105,9 @@ export default function SettingsPage() {
         .then((r) => (r.ok ? r.json() : null))
         .then((json) => {
           if (json?.project != null && json?.user != null) {
-            setData({
-              user: json.user,
-              project: json.project,
-            })
+            const updatedData = { user: json.user, project: json.project }
+            setData(updatedData)
+            setSavedSnapshot(updatedData)
           }
         })
         .catch(() => {})
@@ -143,6 +145,11 @@ export default function SettingsPage() {
     []
   )
 
+  const hasChanges = savedSnapshot !== null && data !== null && JSON.stringify(data) !== JSON.stringify(savedSnapshot)
+  const handleDiscard = () => {
+    if (savedSnapshot) setData(savedSnapshot)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
@@ -169,7 +176,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-3xl mx-auto px-6 py-10 pb-24">
         <div className="flex items-center justify-between mb-8">
           <div>
             <Link
@@ -183,16 +190,6 @@ export default function SettingsPage() {
               Manage your work schedule, availability, and preferences.
             </p>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2.5 bg-[#895af6] text-white rounded-xl font-medium hover:bg-[#7849d9] disabled:opacity-60 transition-colors flex items-center gap-2"
-          >
-            {saveStatus === 'saving' && 'Saving...'}
-            {saveStatus === 'saved' && 'Saved ✓'}
-            {saveStatus === 'error' && 'Error'}
-            {saveStatus === 'idle' && !saving && 'Save'}
-          </button>
         </div>
 
         {error && saveStatus === 'error' && (
@@ -330,6 +327,13 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      <StickyUnsavedBar
+        hasChanges={hasChanges}
+        saving={saving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
     </div>
   )
 }

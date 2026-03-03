@@ -24,7 +24,7 @@ The Project Details page lets users view and edit everything Harvey has extracte
 - **Main**: Two-column grid (stacks on mobile):
   - **Project Info**: Description (textarea, 500 chars), Goals (textarea, 500 chars), Target Deadline (date, nullable), Project Type (select: Web App, Mobile App, SaaS, Content, Research, Other).
   - **Your Context**: Skill Level (Beginner / Intermediate / Advanced), Tools & Stack (tag pills, add/remove, max 10), Weekly Hours (1–168, +/-), Motivation (textarea, 300 chars).
-- **Bottom**: “Save Changes” button (only when there are unsaved changes). On save: PATCH `/api/projects/[projectId]`, toast “Changes saved”, timestamp updates.
+- **Bottom**: **Sticky unsaved bar** (fixed at bottom): when there are unsaved changes, a bar shows “You have unsaved changes” with **Discard** and **Save Changes** buttons. On save: PATCH `/api/projects/[projectId]`, toast “Changes saved”, timestamp updates. Main content has bottom padding so it is not hidden behind the bar.
 
 ## API
 
@@ -46,11 +46,12 @@ The Settings page has a “View Project Details” link; the Project Details pag
 
 - **Page**: `src/app/dashboard/project/[projectId]/page.tsx`, `loading.tsx`
 - **API**: `src/app/api/projects/[projectId]/route.ts`
-- **Components**: `src/components/dashboard/ProjectDetailsForm.tsx`, `EditableField.tsx`, `ProjectDropdownMenu.tsx`
+- **Components**: `src/components/dashboard/ProjectDetailsForm.tsx`, `EditableField.tsx`, `src/components/ui/StickyUnsavedBar.tsx`, `ProjectDropdownMenu.tsx`
 - **ChatSidebar**: `src/components/dashboard/ChatSidebar.tsx` (pill + dropdown integration)
 - **Settings**: `src/app/dashboard/settings/page.tsx` (Project section link)
 
 ## Unsaved changes
 
+- **Sticky bar**: When dirty, a fixed bar at the bottom shows “You have unsaved changes” with **Discard** (reverts to last saved) and **Save Changes** (PATCH). Implemented via shared **StickyUnsavedBar** (`src/components/ui/StickyUnsavedBar.tsx`).
 - **beforeunload**: When there are unsaved changes, the browser’s “Leave site?” prompt is shown on refresh or close.
 - **In-app navigation**: Clicking “Back to Dashboard” or “User Settings” with unsaved changes opens a confirm dialog: “You have unsaved changes. Are you sure you want to leave?”

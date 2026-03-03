@@ -23,7 +23,7 @@ import type {
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
 import type { AvailabilityWindow } from '../../types/user.types'
-import { parseTimeToHours } from './task-scheduler'
+import { normalizeAvailabilityBlocks, parseTimeToHours } from './task-scheduler'
 
 // ============================================
 // System Prompts (from Telegram bot)
@@ -355,11 +355,11 @@ function logCapacityBreakdown(constraints: ExtractedConstraints): void {
 export function calculateTotalAvailableHours(
   constraints: ExtractedConstraints
 ): number {
-  const availableTime = constraints.available_time || []
+  const blocksToSum = normalizeAvailabilityBlocks(constraints.available_time ?? [])
 
   let totalMinutes = 0
 
-  for (const block of availableTime) {
+  for (const block of blocksToSum) {
     const minutes = calculateBlockMinutes(block)
     totalMinutes += minutes
   }
@@ -368,7 +368,7 @@ export function calculateTotalAvailableHours(
   const hours = totalMinutes / 60
 
   console.log(
-    `[ScheduleGeneration] Calculated ${hours.toFixed(1)} available hours per week from ${availableTime.length} time blocks`
+    `[ScheduleGeneration] Calculated ${hours.toFixed(1)} available hours per week from ${blocksToSum.length} time blocks`
   )
 
   return hours

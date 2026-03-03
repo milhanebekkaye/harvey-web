@@ -9,6 +9,8 @@ The Settings page lets users view and edit all constraints and preferences that 
 
 ## Page structure
 
+- **Save UX**: When there are unsaved changes, a **sticky unsaved bar** (fixed at bottom) shows “You have unsaved changes” with **Discard** and **Save Changes** buttons. The header Save button was removed; save/discard are only in the bar. Main content has bottom padding so it is not hidden behind the bar. Implemented via shared **StickyUnsavedBar** (`src/components/ui/StickyUnsavedBar.tsx`). Dirty state is derived by comparing current `data` to `savedSnapshot` (set on load and after successful save).
+
 1. **Work Schedule** – User life constraints (stored on **User**)
    - **Per-block days and times**: each “work block” has its own **days** (Mon–Sun checkboxes) and **start/end time**. Example: Block 1 = Mon 9–12 and 15–17, Block 2 = Thu 8–13. “Add work block” adds a new row (default Mon–Fri 9–5); each block has Remove.
    - Legacy format (single workDays + startTime/endTime) is still accepted and shown as one block with those days.
@@ -16,8 +18,8 @@ The Settings page lets users view and edit all constraints and preferences that 
    - Commute evening: duration (minutes) + start time (optional)
 
 2. **Availability Windows** – Project allocations (stored on **Project.contextData**)
-   - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type)
-   - List of blocks: day, start, end, type (work | personal); add / edit / delete
+   - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type). When overlapping blocks share a cell, personal is preferred for the displayed color.
+   - List of blocks: day, start, end, type (work | personal); add / edit / delete; displayed newest first
    - Total hours per week
    - Empty state when no blocks
 
@@ -32,8 +34,8 @@ The Settings page lets users view and edit all constraints and preferences that 
 
 ## Data flow
 
-- **On load**: `GET /api/settings` returns `{ user, project }`. User includes workSchedule, commute, preferred_session_length, communication_style, timezone. Project (if any) includes contextData.available_time and contextData.preferences. No blocked_time is stored or returned.
-- **On save**: Single “Save” button sends `POST /api/settings/update` with the full form payload. Backend updates **User** (workSchedule, commute, preferred_session_length, communication_style) and **Project.contextData** (available_time, preferences only). No schedule rebuild; changes apply to the next generation or rescheduling.
+- **On load**: `GET /api/settings` returns `{ user, project }`. User includes workSchedule, commute, preferred_session_length, communication_style, timezone. Project (if any) includes contextData.available_time and contextData.preferences. No blocked_time is stored or returned. Response is stored in `data` and `savedSnapshot` (used for unsaved-changes detection).
+- **On save**: “Save Changes” in the sticky bar sends `POST /api/settings/update` with the full form payload. Backend updates **User** (workSchedule, commute, preferred_session_length, communication_style) and **Project.contextData** (available_time, preferences only). After success, a background refetch updates `data` and `savedSnapshot`. No schedule rebuild; changes apply to the next generation or rescheduling.
 
 ## Where data is stored
 
@@ -50,13 +52,13 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 
 - **Page**: `src/app/dashboard/settings/page.tsx`
 - **API**: `src/app/api/settings/route.ts` (GET), `src/app/api/settings/update/route.ts` (POST)
-- **Components**: `src/components/settings/WorkScheduleSection.tsx`, `AvailabilitySection.tsx`, `PreferencesSection.tsx`
+- **Components**: `src/components/ui/StickyUnsavedBar.tsx`, `src/components/settings/WorkScheduleSection.tsx`, `AvailabilitySection.tsx`, `PreferencesSection.tsx`
 - **Types**: `src/types/settings.types.ts`
 
 ## Validation
 
 - Times in 24h format. For availability blocks: end time must not equal start time. **Overnight blocks** (end &lt; start, e.g. Friday 23:00 – 02:00) are allowed and mean “until that time on the next calendar day”.
-- Availability blocks: no overlapping blocks; validated on client and server. Overlap is computed per calendar day: overnight blocks are expanded into segments (e.g. Friday 23:00–02:00 → Friday 23:00–24:00 and Saturday 00:00–02:00), and overlaps are checked on these segments.
+- Availability blocks: **overlapping blocks are allowed**. The scheduler and total-available-hours logic normalize (merge) overlapping blocks per day before use, so overlapping entries in the UI are accepted and not double-counted.
 - Work schedule: either legacy `workDays` + `startTime`/`endTime`, or `blocks` array. Each block in `blocks` has `days` (0–6), `startTime`, `endTime`; end &gt; start; two blocks that share a day must not have overlapping times.
 - Preferences: `energy_peak` must be one of `mornings`, `afternoons`, `evenings` when provided.
 
@@ -76,7 +78,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 
 ## Persistence and logging
 
-- **Save**: Single “Save” button sends the full payload. `available_time` is sorted by day then start time before writing. `preferences` (including `energy_peak`) is merged with existing contextData.preferences.
+- **Save**: “Save Changes” in the sticky unsaved bar sends the full payload. `available_time` is sorted by day then start time before writing. `preferences` (including `energy_peak`) is merged with existing contextData.preferences.
 - **API logging** (for debugging): `POST /api/settings/update` logs received body (has_available_time, available_time_count, preferences, projectId) and, when updating project, logs saved available_time count and preferences. Settings page in development logs the payload before send.
 
 ## No project

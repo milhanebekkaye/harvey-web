@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { StickyUnsavedBar } from '@/components/ui/StickyUnsavedBar'
 import { EditableField } from './EditableField'
 import type { SelectOption } from './EditableField'
 
@@ -238,8 +239,12 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
     }
   }
 
+  const handleDiscard = () => {
+    setProject(lastSaved)
+  }
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
+    <div className="max-w-5xl mx-auto px-6 py-10 pb-24">
       {/* Toast */}
       {toast && (
         <div
@@ -644,17 +649,6 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
         )}
       </section>
 
-      {hasChanges && (
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-5 py-2.5 bg-[#895af6] text-white rounded-xl font-medium hover:bg-[#7849d9] disabled:opacity-60 transition-colors mb-8"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-      )}
-
       {/* User Settings — same section style as "Project" on Settings page */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
         <h2 className="text-lg font-semibold text-slate-800 mb-2">User Settings</h2>
@@ -669,6 +663,13 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           View User Settings
         </button>
       </section>
+
+      <StickyUnsavedBar
+        hasChanges={hasChanges}
+        saving={saving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
     </div>
   )
 }
