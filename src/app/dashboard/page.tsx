@@ -708,15 +708,6 @@ export default function DashboardPage() {
   }
 
   /**
-   * Handle task edit (placeholder for now)
-   */
-  const handleEditTask = (taskId: string) => {
-    console.log('[Dashboard] Edit task:', taskId)
-    // TODO: Implement edit modal or inline editing
-    alert('Task editing coming soon!')
-  }
-
-  /**
    * Handle drag-and-drop reorder (list view). Calls reorder API then refreshes tasks.
    */
   const handleReorder = useCallback(
@@ -1153,7 +1144,6 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             onTaskClick={handleTaskClick}
             onComplete={handleCompleteTask}
             onSkip={handleSkipTask}
-            onEdit={handleEditTask}
             onChecklistToggle={handleChecklistToggle}
             isActionLoading={isActionLoading}
             isLoading={isLoadingTasks}

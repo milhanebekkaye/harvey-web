@@ -123,11 +123,6 @@ interface TimelineViewProps {
   onSkip?: (taskId: string) => void
 
   /**
-   * Callback when Edit button is clicked
-   */
-  onEdit?: (taskId: string) => void
-
-  /**
    * Callback when a checklist item is toggled
    */
   onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
@@ -221,7 +216,6 @@ interface SortableTaskItemProps {
   isActiveConversation: boolean
   onComplete?: (taskId: string) => void
   onSkip?: (taskId: string) => void
-  onEdit?: (taskId: string) => void
   onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
   onAskHarvey?: (taskId: string, title: string, label: string) => void
   isActionLoading?: boolean
@@ -289,7 +283,6 @@ function SortableTaskItem(props: SortableTaskItemProps) {
             task={task}
             onComplete={rest.onComplete}
             onSkip={rest.onSkip}
-            onEdit={rest.onEdit}
             onChecklistToggle={rest.onChecklistToggle}
             onAskHarvey={rest.onAskHarvey}
             isLoading={rest.isActionLoading}
@@ -322,7 +315,6 @@ export function TimelineView({
   onTaskClick,
   onComplete,
   onSkip,
-  onEdit,
   onChecklistToggle,
   isActionLoading = false,
   isLoading = false,
@@ -630,7 +622,6 @@ export function TimelineView({
                     isActiveConversation={isActiveConversation}
                     onComplete={onComplete}
                     onSkip={onSkip}
-                    onEdit={onEdit}
                     onChecklistToggle={onChecklistToggle}
                     onAskHarvey={onAskHarvey}
                     isActionLoading={isActionLoading}
@@ -706,7 +697,6 @@ export function TimelineView({
                         task={task}
                         onComplete={onComplete}
                         onSkip={onSkip}
-                        onEdit={onEdit}
                         onChecklistToggle={onChecklistToggle}
                         onAskHarvey={onAskHarvey}
                         isLoading={isActionLoading}

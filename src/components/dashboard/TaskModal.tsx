@@ -50,11 +50,6 @@ interface TaskModalProps {
   onSkip?: (taskId: string) => void
 
   /**
-   * Callback when Edit button is clicked
-   */
-  onEdit?: (taskId: string) => void
-
-  /**
    * Callback when a checklist item is toggled
    */
   onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
@@ -85,7 +80,6 @@ export function TaskModal({
   onClose,
   onComplete,
   onSkip,
-  onEdit,
   onChecklistToggle,
   isLoading = false,
 }: TaskModalProps) {
@@ -213,7 +207,6 @@ export function TaskModal({
             task={task}
             onComplete={onComplete}
             onSkip={onSkip}
-            onEdit={onEdit}
             onChecklistToggle={onChecklistToggle}
             isLoading={isLoading}
             showHeader={false}
