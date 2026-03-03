@@ -157,11 +157,16 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       communication_style: string | null
       userNotes: unknown
       energy_peak: string | null
+      onboarding_reason: string | null
+      current_work: string | null
+      work_style: string | null
+      biggest_challenge: string | null
     }>
   >(
     `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
             "availabilityWindows", "workSchedule", "commute",
-            "preferred_session_length", "communication_style", "userNotes", "energy_peak"
+            "preferred_session_length", "communication_style", "userNotes", "energy_peak",
+            "onboarding_reason", "current_work", "work_style", "biggest_challenge"
      FROM "users" WHERE "id" = $1`,
     userId
   )
@@ -181,6 +186,10 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     communication_style: row.communication_style ?? undefined,
     userNotes: row.userNotes ?? undefined,
     energy_peak: row.energy_peak ?? undefined,
+    onboarding_reason: row.onboarding_reason ?? undefined,
+    current_work: row.current_work ?? undefined,
+    work_style: row.work_style ?? undefined,
+    biggest_challenge: row.biggest_challenge ?? undefined,
   }
 }
 
@@ -300,6 +309,26 @@ export async function updateUser(
     if (data.energy_peak !== undefined) {
       updates.push(`"energy_peak" = $${paramIndex}`)
       values.push(data.energy_peak)
+      paramIndex++
+    }
+    if (data.onboarding_reason !== undefined) {
+      updates.push(`"onboarding_reason" = $${paramIndex}`)
+      values.push(data.onboarding_reason)
+      paramIndex++
+    }
+    if (data.current_work !== undefined) {
+      updates.push(`"current_work" = $${paramIndex}`)
+      values.push(data.current_work)
+      paramIndex++
+    }
+    if (data.work_style !== undefined) {
+      updates.push(`"work_style" = $${paramIndex}`)
+      values.push(data.work_style)
+      paramIndex++
+    }
+    if (data.biggest_challenge !== undefined) {
+      updates.push(`"biggest_challenge" = $${paramIndex}`)
+      values.push(data.biggest_challenge)
       paramIndex++
     }
 

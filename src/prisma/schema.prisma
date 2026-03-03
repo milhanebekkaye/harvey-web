@@ -26,6 +26,12 @@ model User {
   userNotes                Json?   // append-only array: [{ "note": string, "extracted_at": string }]
   energy_peak              String? // "morning" | "afternoon" | "evening" — when user is most productive
 
+  // Onboarding questions (Screen 2)
+  onboarding_reason  String?
+  current_work       String?
+  work_style         String?
+  biggest_challenge  String?
+
   // Billing / cost tracking
   subscription_start_date DateTime?
 

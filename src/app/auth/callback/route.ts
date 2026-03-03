@@ -113,8 +113,17 @@ export async function GET(request: NextRequest) {
       } else {
         const dbUser = await getUserById(data.user.id)
         const hasName = dbUser?.name != null && dbUser.name.trim() !== ''
-        redirectTarget = hasName ? '/onboarding' : '/onboarding/welcome'
-        console.log('[AuthCallback] Redirecting to:', redirectTarget, '(hasName:', hasName, ')')
+        const hasOnboardingReason = dbUser?.onboarding_reason != null && dbUser.onboarding_reason.trim() !== ''
+        if (!hasName) {
+          redirectTarget = '/onboarding/welcome'
+          console.log('[AuthCallback] Redirecting to:', redirectTarget, '(no name)')
+        } else if (!hasOnboardingReason) {
+          redirectTarget = '/onboarding/questions'
+          console.log('[AuthCallback] Redirecting to:', redirectTarget, '(name set, questions not done)')
+        } else {
+          redirectTarget = '/onboarding'
+          console.log('[AuthCallback] Redirecting to:', redirectTarget, '(questions done)')
+        }
       }
     }
 

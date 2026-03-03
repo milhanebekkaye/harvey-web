@@ -77,7 +77,8 @@ Core Next.js application structure.
 Additional route groups:
 
 - **`loading/page.tsx`**: A route that provides a loading/placeholder experience, likely displayed while the main experience or data loads.
-- **`onboarding/welcome/page.tsx`**: `/onboarding/welcome` route. Shown right after auth for new users who have no name set (e.g. email signup without name). Collects first name via PATCH `/api/user/name`, then redirects to `/onboarding`. Same visual style as signin (aurora background, glass card).
+- **`onboarding/welcome/page.tsx`**: `/onboarding/welcome` route. Shown right after auth for new users who have no name set (e.g. email signup without name). Collects first name via PATCH `/api/user/name`, then redirects to `/onboarding/questions`. Same visual style as signin (aurora background, glass card).
+- **`onboarding/questions/page.tsx`**: `/onboarding/questions` route. Screen 2: four questions (reason, current work, work style, biggest challenge). Same aurora/glass layout; 80×80 avatar, 4 progress dots, one question at a time with slide animation. On completion, PATCH `/api/user/onboarding` then redirect to `/onboarding`.
 - **`onboarding/page.tsx`**: `/onboarding` route. **Reload persistence (Batch 4)**: On mount, calls `GET /api/onboarding/restore` (optional `?projectId=` from URL). If restore returns `completed`, redirects to `/dashboard`. If restore returns `projectId` + messages, renders chat with those messages and runs extraction to fill the shadow panel; otherwise renders with Harvey’s greeting. Prevents duplicate projects on refresh. Split layout: 40% chat (left), 60% Shadow Panel (right). No top-of-page progress bar; the only progress indicator is the completion bar inside **ProjectShadowPanel**. After each Harvey response, triggers extraction via `POST /api/onboarding/extract` with `previousConfidence` (current `harveyConfidence`); stores result in `shadowFields` and `missingBlockingFields`. Raw `harveyConfidence` drives button logic; **maxHarveyConfidence** (floor: never decreases) is passed to the panel and modal for display. Chat request body includes `currentConfidence: harveyConfidence` so Harvey only gives the recap when score ≥ 80. **Build My Schedule button**: disabled when field completeness &lt; 40% or any blocking field is missing (`missingBlockingFields`); Stage 1 when can build but confidence &lt; 80% and no completion marker; Stage 2 when can build and (confidence ≥ 80% or completion marker). **Batch 5**: Progress shows Harvey's confidence (`completion_confidence`). Button “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct to schedule). Button lives at bottom of right column; confirmation modal “Build now or keep chatting?” for Stage 1. Extraction is non-blocking; errors are logged only.
 - **`signin/page.tsx`**: `/signin` route. Handles email-based sign-in and integration with Supabase auth.
 - **`dashboard/page.tsx`**: `/dashboard` route. Main authenticated user experience; shows tasks, timeline, calendar, and chat sidebar using dashboard components.
@@ -87,7 +88,7 @@ Additional route groups:
 
 Auth callback:
 
-- **`auth/callback/route.ts`**: Server route handling authentication callbacks (OAuth and magic-link redirects). Exchanges code for session, creates DB user if missing, then chooses redirect: if an explicit `next` query param is present, redirects there; otherwise if the user has **any project** (`prisma.project.count` for that user > 0), redirects to `/dashboard`; else if the user has **no name** (null or empty in DB), redirects to `/onboarding/welcome`; else redirects to `/onboarding`.
+- **`auth/callback/route.ts`**: Server route handling authentication callbacks (OAuth and magic-link redirects). Exchanges code for session, creates DB user if missing, then chooses redirect: if an explicit `next` query param is present, redirects there; otherwise if the user has **any project** (`prisma.project.count` for that user > 0), redirects to `/dashboard`; else if the user has **no name** (null or empty in DB), redirects to `/onboarding/welcome`; else if the user has **name but no onboarding_reason**, redirects to `/onboarding/questions`; else redirects to `/onboarding`.
 
 ### API routes – `src/app/api/`
 
@@ -99,6 +100,9 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`user/name/route.ts`**
   - Endpoint under `PATCH /api/user/name`. Auth required. Body: `{ name: string }`. Updates the current user’s `name` in the `users` table via `updateUser`. Used by `/onboarding/welcome` after new users set their first name.
+
+- **`user/onboarding/route.ts`**
+  - Endpoint under `PATCH /api/user/onboarding`. Auth required. Body: `{ onboarding_reason?, current_work?, work_style?, biggest_challenge? }`. Updates the current user’s onboarding-question fields via `updateUser`. Used by `/onboarding/questions` on completion.
 
 - **`chat/route.ts`**
   - Endpoint under `/api/chat`.

@@ -39,7 +39,7 @@ export default function OnboardingWelcomePage() {
         return
       }
 
-      router.push('/onboarding')
+      router.push('/onboarding/questions')
     } catch (err) {
       setError('Something went wrong')
       setLoading(false)
@@ -54,17 +54,17 @@ export default function OnboardingWelcomePage() {
       {/* Main Content Container - same width and layout as signin */}
       <div className="relative z-10 w-full max-w-[520px] px-6 py-12">
         <div className="glass-card rounded-2xl p-8 md:p-12 transition-all duration-300">
-          {/* Centered avatar - 80x80 with subtle drop shadow */}
+          {/* Centered avatar - 160x160 (2× original 80px) with subtle drop shadow */}
           <div className="flex justify-center mb-6">
             <div
-              className="relative size-20 rounded-full overflow-hidden shadow-lg"
+              className="relative size-40 rounded-full overflow-hidden shadow-lg"
               style={{ boxShadow: '0 4px 14px 0 rgba(0,0,0,0.08)' }}
             >
               <Image
                 src="/penguin_onboarding_screen_name.png"
                 alt=""
-                width={80}
-                height={80}
+                width={160}
+                height={160}
                 className="object-cover"
               />
             </div>

@@ -37,6 +37,12 @@ export interface User {
   communication_style?: string | null
   userNotes?: unknown
   energy_peak?: string | null // "morning" | "afternoon" | "evening"
+
+  // Onboarding questions
+  onboarding_reason?: string | null
+  current_work?: string | null
+  work_style?: string | null
+  biggest_challenge?: string | null
 }
 
 /**
@@ -87,6 +93,10 @@ export interface UpdateUserData {
   communication_style?: string       // "direct", "encouraging", "detailed"
   userNotes?: unknown          // [{ note, extracted_at }] — append-only array
   energy_peak?: string | null  // "morning" | "afternoon" | "evening"
+  onboarding_reason?: string | null
+  current_work?: string | null
+  work_style?: string | null
+  biggest_challenge?: string | null
 }
 
 /**

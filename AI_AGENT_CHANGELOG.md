@@ -48,6 +48,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Onboarding questions screen (4 questions, PATCH /api/user/onboarding)
+
+- **Agent / context**: Cursor AI assistant; implement onboarding questions screen after welcome (Screen 2).
+- **Summary**:
+  - **Schema**: Added four optional `String?` fields to `User`: `onboarding_reason`, `current_work`, `work_style`, `biggest_challenge`. Migration: `add_onboarding_fields`.
+  - **Types**: Extended `User` and `UpdateUserData` in `src/types/user.types.ts` with the four fields. **User service**: `getUserByIdRaw` SELECT and `updateUser` builder now include the four columns.
+  - **API**: New `PATCH /api/user/onboarding` in `src/app/api/user/onboarding/route.ts`. Auth via Supabase (same as name route). Body: `{ onboarding_reason?, current_work?, work_style?, biggest_challenge? }`; builds partial payload and calls `updateUser`. Log prefix: `[UserOnboardingAPI]`.
+  - **Page**: New `src/app/onboarding/questions/page.tsx` — client component, same aurora/glass layout as signin/welcome, 80×80 `harvey-penguin-2.png` avatar, 4 progress dots, one question at a time with Framer Motion horizontal slide. Q1/Q3/Q4 single-select chips (purple border/fill when selected); Q2 free text optional. “Continue →” full-width purple button; on Q4 Continue, PATCH then redirect to `/onboarding`.
+  - **Redirects**: Auth callback: if user has no project and has name but `onboarding_reason` is null → `/onboarding/questions`; if has name and has `onboarding_reason` → `/onboarding`. Welcome page now redirects to `/onboarding/questions` instead of `/onboarding`.
+- **Files touched**: `src/prisma/schema.prisma`, `src/types/user.types.ts`, `src/lib/users/user-service.ts`, `src/app/api/user/onboarding/route.ts` (new), `src/app/onboarding/questions/page.tsx` (new), `src/app/auth/callback/route.ts`, `src/app/onboarding/welcome/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Collect onboarding context (reason, current work, work style, biggest challenge) in a dedicated step before the main onboarding chat.
+- **Risks / notes**: Run `npx prisma migrate dev --schema=src/prisma/schema.prisma --name add_onboarding_fields` if migration was not applied (e.g. no DB). Existing users with no `onboarding_reason` will be sent to `/onboarding/questions` on next auth callback if they have no project.
+- **Related docs**: `ARCHITECTURE.md` (auth callback, API routes), `docs/onboarding/README.md`.
+
 ### 2026-03-03 – Onboarding welcome screen: collect name after auth, redirect logic
 
 - **Agent / context**: Cursor AI assistant; add `/onboarding/welcome` as first screen for new users to set their name before the main onboarding chat.

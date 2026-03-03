@@ -1,11 +1,13 @@
 # Onboarding (Chat Intake, Discussion Storage)
 
 ## What this feature is about
-New users without a name set are first sent to **`/onboarding/welcome`**, where they enter their first name (PATCH `/api/user/name`), then are redirected to the main onboarding chat at `/onboarding`. Onboarding itself is a chat-style intake where Harvey gathers project details and scheduling constraints. When Harvey needs a **deadline** or **schedule start date**, he asks the question alone then triggers a **date picker widget** in the chat; the user selects a date and it is sent as "My deadline is YYYY-MM-DD" (or "My start date is YYYY-MM-DD"). Extraction and storage use **noon UTC** for date-only values to avoid off-by-one display in timezones ahead of UTC. Harvey is guided (via the onboarding system prompt) to naturally surface motivation, technical background and tools, phases vs single deadline, what success looks like and by when, and how long the user can focus in one sitting — these topics emerge in conversation rather than as a checklist. Messages are stored in a `Discussion` record and later used to generate tasks and schedules; at schedule generation, a single extraction call populates both scheduling constraints and Project/User enrichment from the conversation.
+New users without a name set are first sent to **`/onboarding/welcome`**, where they enter their first name (PATCH `/api/user/name`), then to **`/onboarding/questions`** to answer four short questions (reason, current work, work style, biggest challenge). Answers are saved via PATCH `/api/user/onboarding`, then the user is redirected to the main onboarding chat at `/onboarding`. Onboarding itself is a chat-style intake where Harvey gathers project details and scheduling constraints. When Harvey needs a **deadline** or **schedule start date**, he asks the question alone then triggers a **date picker widget** in the chat; the user selects a date and it is sent as "My deadline is YYYY-MM-DD" (or "My start date is YYYY-MM-DD"). Extraction and storage use **noon UTC** for date-only values to avoid off-by-one display in timezones ahead of UTC. Harvey is guided (via the onboarding system prompt) to naturally surface motivation, technical background and tools, phases vs single deadline, what success looks like and by when, and how long the user can focus in one sitting — these topics emerge in conversation rather than as a checklist. Messages are stored in a `Discussion` record and later used to generate tasks and schedules; at schedule generation, a single extraction call populates both scheduling constraints and Project/User enrichment from the conversation.
 
 ## Files involved (and where to find them)
 - `src/app/onboarding/welcome/page.tsx`
-  - Welcome screen for new users with no name. Same visual style as signin (aurora background, glass card). Avatar, “What should Harvey call you?”, first-name input, “Let’s go →” CTA. On submit: PATCH `/api/user/name`, then redirect to `/onboarding`.
+  - Welcome screen for new users with no name. Same visual style as signin (aurora background, glass card). Avatar, “What should Harvey call you?”, first-name input, “Let’s go →” CTA. On submit: PATCH `/api/user/name`, then redirect to `/onboarding/questions`.
+- `src/app/onboarding/questions/page.tsx`
+  - Onboarding questions (Screen 2). Same aurora/glass layout; 80×80 avatar (`harvey-penguin-2.png`), 4 progress dots, one question at a time with horizontal slide (Framer Motion). Q1: "What brings you to Harvey?" (chips). Q2: "What are you working on right now?" (optional free text). Q3: "How do you usually work?" (chips). Q4: "What's your biggest challenge?" (chips). Continue → saves via PATCH `/api/user/onboarding` then redirects to `/onboarding`.
 - `src/app/onboarding/page.tsx`
   - Onboarding chat UI and main state machine (messages, typing, completion, CTA). **Reload persistence (Batch 4)**: On mount, calls `GET /api/onboarding/restore` (optional `?projectId=` from URL). If response has `completed`, redirects to `/dashboard`. If `restore: true` with `projectId` and `messages`, renders chat with those messages and runs extraction to populate the shadow panel; otherwise shows Harvey’s greeting. Prevents duplicate projects on refresh. **Feature D (Shadow Panel)**: Split layout 40% chat / 60% Shadow Panel. No top-of-page progress bar; the only progress indicator is the completion bar inside **ProjectShadowPanel**. After every Harvey response, triggers extraction (`POST /api/onboarding/extract` with `previousConfidence`), stores result in `shadowFields` state and passes it to **ProjectShadowPanel**. **Progress**: Display uses maxHarveyConfidence (floor); chat sends currentConfidence so Harvey only recaps when ≥ 80. **Step 6**: Weighted extraction progress (`calculateFieldCompleteness` (hidden) and Harvey's confidence from API (`harveyConfidence`)), minimum-fields check (`hasMinimumFields`), and completion-marker detection drive a three-state “Build My Schedule” button (disabled / Stage 1 with confirmation modal / Stage 2 direct); button at bottom of right column. Extraction runs only when `projectId` exists (set via stream `onData` or from restore); failures are logged and do not block the flow.
 - `src/components/onboarding/ProjectShadowPanel.tsx`
@@ -58,21 +60,22 @@ New users without a name set are first sent to **`/onboarding/welcome`**, where 
   - `Project` and `Discussion` models.
 
 ## Feature flow (end-to-end)
-1. New users without a name (e.g. after email signup) land on `/onboarding/welcome`, enter their first name, submit → PATCH `/api/user/name` → redirect to `/onboarding`.
-2. User visits `/onboarding` (or arrives from welcome). **Restore check**: Page calls `GET /api/onboarding/restore` (with `?projectId=` if in URL). If `completed`, redirect to `/dashboard`. If restore returns `projectId` + messages, chat initializes with those messages and extraction runs to fill the shadow panel; otherwise Harvey’s greeting is shown.
-3. User sends a message; UI calls `POST /api/chat` (streaming) with `{ messages, projectId?, context, currentConfidence }` via `useChat` (currentConfidence = current harveyConfidence so Harvey only recaps when ≥ 80).
-4. `Chat API` authenticates user via Supabase.
-5. First message:
+1. New users without a name (e.g. after email signup) land on `/onboarding/welcome`, enter their first name, submit → PATCH `/api/user/name` → redirect to `/onboarding/questions`.
+2. User answers the four questions on `/onboarding/questions`; on "Continue" after Q4 → PATCH `/api/user/onboarding` with all answers → redirect to `/onboarding`.
+3. User visits `/onboarding` (or arrives from questions). **Restore check**: Page calls `GET /api/onboarding/restore` (with `?projectId=` if in URL). If `completed`, redirect to `/dashboard`. If restore returns `projectId` + messages, chat initializes with those messages and extraction runs to fill the shadow panel; otherwise Harvey’s greeting is shown.
+4. User sends a message; UI calls `POST /api/chat` (streaming) with `{ messages, projectId?, context, currentConfidence }` via `useChat` (currentConfidence = current harveyConfidence so Harvey only recaps when ≥ 80).
+5. `Chat API` authenticates user via Supabase.
+6. First message:
    - Ensures DB `User` exists.
    - Creates `Project` with default title.
    - Creates `Discussion` linked to project.
-6. Subsequent messages:
+7. Subsequent messages:
    - Loads existing discussion by `projectId`.
-7. API streams Claude response via Vercel AI SDK (`streamText`).
-8. API appends user + assistant messages into `Discussion.messages` when stream completes.
-9. Client receives streamed text and `projectId` (via transient data). `isComplete` and `hasCompletionMarker` are set when response contains `PROJECT_INTAKE_COMPLETE`. Extraction progress (0–100) is computed from weighted extracted fields; minimum required fields (title, description or goals, availability, weekly hours) enable the “Build” button.
-10. **Build My Schedule button (Step 6)** in the right column: (1) Disabled when field completeness &lt; 40% or any blocking field is missing (description, availabilityWindows, specific tools_and_stack, skill_level); (2) Stage 1 when can build but Harvey confidence &lt; 80% and no completion marker — click opens “Build now or keep chatting?” modal; (3) Stage 2 when progress ≥ 80% or completion marker — click goes directly to schedule. When `isComplete`, left column also shows the legacy “Build my schedule” CTA.
-11. CTA or “Build Anyway” / Stage 2 button navigates to `/loading?projectId=...` (schedule generation starts there).
+8. API streams Claude response via Vercel AI SDK (`streamText`).
+9. API appends user + assistant messages into `Discussion.messages` when stream completes.
+10. Client receives streamed text and `projectId` (via transient data). `isComplete` and `hasCompletionMarker` are set when response contains `PROJECT_INTAKE_COMPLETE`. Extraction progress (0–100) is computed from weighted extracted fields; minimum required fields (title, description or goals, availability, weekly hours) enable the “Build” button.
+11. **Build My Schedule button (Step 6)** in the right column: (1) Disabled when field completeness &lt; 40% or any blocking field is missing (description, availabilityWindows, specific tools_and_stack, skill_level); (2) Stage 1 when can build but Harvey confidence &lt; 80% and no completion marker — click opens “Build now or keep chatting?” modal; (3) Stage 2 when progress ≥ 80% or completion marker — click goes directly to schedule. When `isComplete`, left column also shows the legacy “Build my schedule” CTA.
+12. CTA or “Build Anyway” / Stage 2 button navigates to `/loading?projectId=...` (schedule generation starts there).
 
 ## Function reference (what each function does)
 
@@ -134,7 +137,7 @@ New users without a name set are first sent to **`/onboarding/welcome`**, where 
 
 ## Data models used (from Prisma schema)
 - `Project`: created on first message; holds `title`, `description`, `goals`, `contextData` (schedule constraints), and enrichment fields (`target_deadline`, `skill_level`, `tools_and_stack`, `project_type`, `weekly_hours_commitment`, `motivation`, `phases`, `projectNotes`). Enrichment is populated at schedule generation from the same extraction that fills `contextData`.
-- `User`: holds `preferred_session_length`, `communication_style`, `userNotes` (populated at schedule generation).
+- `User`: holds `preferred_session_length`, `communication_style`, `userNotes` (populated at schedule generation); and onboarding questions `onboarding_reason`, `current_work`, `work_style`, `biggest_challenge` (populated on `/onboarding/questions` via PATCH `/api/user/onboarding`).
 - `Discussion`: `messages` is a JSON array of `{ role, content, timestamp }`.
 
 ## Early project title & description extraction
