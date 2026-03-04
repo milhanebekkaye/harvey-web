@@ -48,6 +48,20 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-03 – Auth layout split: smaller Harvey logo on signin, separate SigninCard and WelcomeNameCard
+
+- **Agent / context**: Cursor AI assistant; reduce Harvey logo size on signin only, separate signin and welcome into distinct card components for easier maintenance.
+- **Summary**:
+  - **Signin logo**: Harvey logo on the signin page is now **small** (size-12 container, text-3xl icon). The onboarding welcome card is unchanged (penguin avatar, 160×160).
+  - **AuthPageLayout** (`src/components/auth/AuthPageLayout.tsx`): Shared layout — aurora background, glass card wrapper, gradient blobs. Optional `bottomSection` for content below the card. Used by both signin and onboarding welcome pages.
+  - **SigninCard** (`src/components/auth/SigninCard.tsx`): Signin-only card content — small Harvey logo, brand name, header, error slot, children (auth forms), footer. Used inside AuthPageLayout on `/signin`.
+  - **WelcomeNameCard** (`src/components/onboarding/WelcomeNameCard.tsx`): Welcome-only card content — penguin avatar, “What should Harvey call you?”, name form. Used inside AuthPageLayout on `/onboarding/welcome`. Exported from `@/components/onboarding`.
+  - **Pages**: `signin/page.tsx` now uses AuthPageLayout + SigninCard + bottom links; `onboarding/welcome/page.tsx` is a thin wrapper around AuthPageLayout + WelcomeNameCard.
+- **Files touched**: `src/components/auth/AuthPageLayout.tsx` (new), `src/components/auth/SigninCard.tsx` (new), `src/components/onboarding/WelcomeNameCard.tsx` (new), `src/components/onboarding/index.ts`, `src/app/signin/page.tsx`, `src/app/onboarding/welcome/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`.
+- **Motivation**: Smaller logo on signin; clear separation so signin and welcome card content (and logo sizes) can be changed independently.
+- **Risks / notes**: None. Same visual behaviour; only structure and logo size changed.
+- **Related docs**: `ARCHITECTURE.md` (§ components/auth, § components/onboarding, § app signin and onboarding/welcome).
+
 ### 2026-03-03 – Onboarding questions screen (4 questions, PATCH /api/user/onboarding)
 
 - **Agent / context**: Cursor AI assistant; implement onboarding questions screen after welcome (Screen 2).
