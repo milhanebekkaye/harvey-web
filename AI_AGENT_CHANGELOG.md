@@ -48,6 +48,121 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-04 – Onboarding intro: slide 2 browser mockup bar and text styling
+
+- **Agent / context**: Cursor AI assistant; slide 2 only — add mockup bar above screenshot, update text styles.
+- **Summary**: **Screenshot**: Wrapped in container (same positioning; border-radius 20px, overflow hidden, box-shadow, border). Top bar above image: height 32px, background #F0F0F0, flex, padding 0 14px, gap 6px; three 10px dots #FF5F57, #FEBC2E, #28C840. Image below: width 100%, display block, border-radius 0. **Text**: Eyebrow 10px, 700, letter-spacing 0.15em, #8B5CF6, uppercase. Headline wrapped in div with border-left 3px solid #8B5CF6, padding-left 12px; headline 26px, 800, #111827, line-height 1.15, margin-top 10px. Body 13px, #9CA3AF, margin-top 14px, line-height 1.6.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`.
+- **Motivation**: Browser mockup treatment and refined typography for slide 2.
+- **Risks / notes**: None.
+
+### 2026-03-04 – Onboarding intro: slide 2 tweaks (screenshot padding, headline, penguin position)
+
+- **Agent / context**: Cursor AI assistant; three precise changes to slide 2 only.
+- **Summary**: **Screenshot**: right -20px → 40px, width 68% → 62% (full screenshot visible with right padding). **Headline**: two lines “Every Task” / “Fully Broken Down.”, font-size 28px → 22px. **Penguin**: bottom 80px → top 50% + translateY(-50%) (vertically centered), left 32px → 48px; container has no background/border/padding, raw PNG with drop-shadow only.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`.
+- **Motivation**: Better visibility of screenshot, clearer headline, centered penguin.
+- **Risks / notes**: None.
+
+### 2026-03-04 – Onboarding intro: slide 2 (THE DETAILS) new layout — screenshot right, text left, penguin
+
+- **Agent / context**: Cursor AI assistant; replace slide 2 stacked/mockup layout with full-bleed layout.
+- **Summary**: Slide 2 (THE DETAILS) only. Full slide: position relative, 100% width/height, overflow hidden. **Screenshot**: position absolute right (-20px), top 50% translateY(-50%), width 68%, border-radius 20px, box-shadow, border; screenshot-timeline.png, no browser mockup. **Text**: position absolute top 48px left 48px, width 28%, no card (on gradient); eyebrow THE DETAILS (11px purple, uppercase, letter-spacing 0.1em, font-weight 600); headline 28px/700 #1F2937 line-height 1.2; body 14px #6B7280. **Penguin**: position absolute bottom 80px left 32px, 140×140px, harvey/penguin-scarf.png, drop-shadow. Removed: browser mockup frame, illustration-problem bottom-right. Slides 0 and 1 unchanged.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Simpler slide 2 with screenshot right, text left, penguin bottom-left.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro: slide 1 side-by-side, slide 2 timeline screenshot
+
+- **Agent / context**: Cursor AI assistant; slide 1 side-by-side layout, slide 2 mockup uses full-app screenshot.
+- **Summary**:
+  - **Slide 1 (HARVEY'S ANSWER)**: Replaced stacked layout with side-by-side. Flex row, align center, justify center, gap 40px, padding 20px 60px, full height. Left (45%): glassmorphism text card (same as slide 2 — blur, border, border-radius 24px, padding 36px, purple aura). Right (45%): glassmorphism image card (padding 12px), screenshot-chat.png inside with max-height 480px, width auto, border-radius 16px, box-shadow. Portrait image kept tall and natural.
+  - **Slide 2 (THE DETAILS)**: Stacked layout unchanged. Only change: browser mockup screenshot from screenshot-task.png to screenshot-timeline.png (chat sidebar + timeline). Everything else identical.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Slide 1 distinct layout; slide 2 shows full app context.
+- **Risks / notes**: Assumes public/onboarding/screenshot-timeline.png exists.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro: slide 1 (HARVEY'S ANSWER) uses Design B layout
+
+- **Agent / context**: Cursor AI assistant; make slide 1 use the same Design B layout as slide 2.
+- **Summary**: Replaced slide 1 (HARVEY'S ANSWER) custom layout with the exact same structure as slide 2 (THE DETAILS): centered text card on top, browser mockup frame below (top bar + screenshot), illustration bottom-right. Content only: eyebrow “HARVEY'S ANSWER”, headline “Just ask. Harvey tells you exactly what to do.”, body “Harvey knows your full project. You ask, he answers. No more paralysis.”, screenshot `screenshot-chat.png` in mockup. Slide 0 and slide 2 unchanged.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Consistent Design B layout for slides 1 and 2; only content differs.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro: custom layouts for slides 1 and 2
+
+- **Agent / context**: Cursor AI assistant; replace generic layout for HARVEY'S ANSWER (slide 1) and THE DETAILS (slide 2) with custom designs.
+- **Summary**:
+  - **Slide 1 (index 1)**: Full height, relative, overflow hidden, padding 40px 60px. Screenshot (screenshot-chat.png) absolute right 65%, top 50% translateY(-50%) rotate(-1deg), border-radius 20px, shadow, border. Text card absolute left 60px, top 50% translateY(-50%), width 340px, glassmorphism (blur, purple aura), z-index above screenshot. Eyebrow/headline/body updated. Illustration (illustration-problem.png) absolute bottom-left 120×120, drop-shadow.
+  - **Slide 2 (index 2)**: Flex column center, padding 32px 60px, gap 24px. Centered text card 560px, glassmorphism, centered copy (THE DETAILS, headline 24px, body). Browser mockup: max-width 720px, 36px top bar #F0F0F0 with three dots (red/yellow/green), screenshot-task.png below. Illustration absolute bottom-right 100px, drop-shadow. Slide 0 unchanged.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Distinct layouts per slide for better narrative and visual hierarchy.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro: invert slide direction
+
+- **Agent / context**: Cursor AI assistant; inverse scrolling sense between intro slides.
+- **Summary**: Slide transform changed from `(currentSlide - index) * 100%` to `(index - currentSlide) * 100%`. When advancing: current slide now exits **left**, next slide enters from the **right** (previously: exit right, enter from left).
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`.
+- **Motivation**: User request to inverse the scrolling sense between screens.
+- **Risks / notes**: None.
+
+### 2026-03-04 – Onboarding intro: multi-slide client component
+
+- **Agent / context**: Cursor AI assistant; rewrite intro page as 3-slide carousel with horizontal transition.
+- **Summary**:
+  - **Architecture**: Three slides (0, 1, 2), one visible; `currentSlide` state. All slides in an `overflow: hidden` container, positioned absolutely. Transition: current exits left, next enters from right via `transform: translateX((currentSlide - index) * 100%)`, `transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)`.
+  - **Slide layout**: Full height, flex center, gap 48px, padding 0 80px. Slide 0: text left, image right. Slide 1: image left, text right. Slide 2: text left, image right.
+  - **Text card**: 420px width, glass (rgba(255,255,255,0.7), blur 20px, border, border-radius 24px, padding 40px), aura shadow (purple glow + 8px 32px).
+  - **Image card**: Same glass treatment, 420px, padding 16px; image inside 100% width, 280px height, border-radius 16px, object-fit cover (screenshots) / contain (illustration).
+  - **Bottom nav**: Fixed at bottom 32px; 3 progress dots (8px, purple/grey); CTA “Next →” on slides 0–1, “I'm ready →” on slide 2 (redirects to `/onboarding/questions`). Top: Harvey logo centered, 24px padding.
+  - Same full-page rainbow gradient background; slide content (problem / Harvey’s answer / details) unchanged.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Clearer narrative with one concept per slide and smooth horizontal progression.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro: glassmorphism treatment for text and images
+
+- **Agent / context**: Cursor AI assistant; apply glassmorphism to intro page text blocks and images.
+- **Summary**:
+  - **Text blocks**: Each row’s text is now a glassmorphism card (48% width): `background: rgba(255,255,255,0.65)`, `backdrop-filter: blur(16px)`, `border: 1px solid rgba(255,255,255,0.85)`, `border-radius: 20px`, `padding: 28px 32px`, `box-shadow: 0 8px 32px rgba(0,0,0,0.08)`.
+  - **Images**: All images use the same treatment: `border-radius: 20px`, `box-shadow: 0 16px 48px rgba(0,0,0,0.15)`, `border: 1px solid rgba(255,255,255,0.6)`. Screenshots max-height 220px, `object-fit: cover`; illustration max-height 260px, `object-fit: contain`. Image container 48% width, flex center.
+  - **Rows**: Gap 40px between text card and image; padding 20px 0; dividers `1px solid rgba(255,255,255,0.4)`.
+  - Same rainbow gradient background, content, layout order, and CTA unchanged.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Visual refresh with glassmorphism while keeping layout and copy.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro page redesign: no card, 100vh fit
+
+- **Agent / context**: Cursor AI assistant; redesign intro page to remove card wrapper and fit in viewport with zero scroll.
+- **Summary**:
+  - **Layout**: Same rainbow gradient full-page background as signin; **no outer card**. Root: `h-screen min-h-screen flex flex-col overflow-hidden`. Top: centered Harvey logo + name (same as auth header), 24px top padding. Middle: `flex-1 flex flex-col justify-evenly`, max-width 800px centered, three rows with 24px vertical padding, dividers `1px solid rgba(255,255,255,0.3)`. Bottom: centered purple CTA “I'm ready →”, 24px bottom padding.
+  - **Rows**: Each row flex, align-items center. Text 55%, image 45%. Row 1 — text left, image right (illustration-problem.png max-height 140px). Row 2 — image left (screenshot-chat.png max-height 150px, rounded-xl, shadow, border), text right. Row 3 — text left, image right (screenshot-task.png same as row 2). Body copy shortened; headlines 22px bold; body 14px grey, line-clamp-2 where specified.
+- **Files touched**: `src/app/onboarding/intro/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Cleaner full-bleed intro that fits in 100vh with no scroll.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding intro page (Screen 2: problem / solution / details)
+
+- **Agent / context**: Cursor AI assistant; add Screen 2 of onboarding flow between welcome and questions.
+- **Summary**:
+  - **New page**: `src/app/onboarding/intro/page.tsx` — client component. Same full-page rainbow gradient (aurora-bg) as signin; wider centered card (max-width 860px) with same glass-card styling (white/beige, rounded-2xl, shadow). User name from Supabase session (`getSession()` → `user_metadata.name` or `full_name`, fallback email prefix).
+  - **Card content**: Three alternating rows with 48px vertical padding and 1px dividers (rgba(0,0,0,0.06). Row 1: text left, image right — eyebrow “THE PROBLEM”, headline “Sound familiar, [name]?”, body about paralysis; image `public/onboarding/illustration-problem.png` (max-height 200px). Row 2: image left, text right — `screenshot-chat.png` with 12px rounded corners, drop shadow, thin border; eyebrow “HARVEY'S ANSWER”, headline “Just ask. Harvey tells you exactly what to do.” Row 3: text left, image right — `screenshot-task.png` same styling as Row 2; eyebrow “THE DETAILS”, headline “Every task. Fully broken down.” Bottom: purple CTA “I'm ready →” → redirect to `/onboarding/questions`.
+  - **Redirect**: Welcome name submission now redirects to `/onboarding/intro` instead of `/onboarding/questions` (WelcomeNameCard and welcome page comment).
+- **Files touched**: `src/app/onboarding/intro/page.tsx` (new), `src/components/onboarding/WelcomeNameCard.tsx`, `src/app/onboarding/welcome/page.tsx`, `ai_agent_changelog.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Introduce Harvey’s value (problem → answer → details) before the four onboarding questions.
+- **Risks / notes**: Intro page expects images at `public/onboarding/illustration-problem.png`, `screenshot-chat.png`, `screenshot-task.png`; add placeholders or assets if missing. Name comes from Supabase session metadata (may be empty after welcome if not synced; fallback to email prefix).
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
 ### 2026-03-03 – Auth layout split: smaller Harvey logo on signin, separate SigninCard and WelcomeNameCard
 
 - **Agent / context**: Cursor AI assistant; reduce Harvey logo size on signin only, separate signin and welcome into distinct card components for easier maintenance.

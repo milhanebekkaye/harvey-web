@@ -43,7 +43,7 @@ export function WelcomeNameCard() {
         return
       }
 
-      router.push('/onboarding/questions')
+      router.push('/onboarding/intro')
     } catch (err) {
       setError('Something went wrong')
       setLoading(false)

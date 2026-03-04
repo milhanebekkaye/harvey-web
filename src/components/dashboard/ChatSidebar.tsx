@@ -156,8 +156,12 @@ export function ChatSidebar({
           {/* Unified header: same layout for project and task — Harvey AI, then purple pill, then subtitle */}
           <div className="p-6 pb-4 shrink-0 border-b border-slate-100">
             <div className="flex items-center gap-3 mb-4">
-              <div className="size-12 rounded-full bg-[#895af6] flex items-center justify-center text-white shadow-lg overflow-hidden shrink-0">
-                <span className="text-2xl">&#x1F99E;</span>
+              <div className="size-12 rounded-full bg-[rgba(255,255,255,0.45)] flex items-center justify-center overflow-hidden shrink-0 p-0.5">
+                <img
+                  src="/harvey/penguin-hat.png"
+                  alt="Harvey"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900">
                 Harvey AI
