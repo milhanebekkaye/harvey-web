@@ -48,6 +48,36 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-04 – Onboarding vision page: three separate cards, no outer card
+
+- **Agent / context**: Cursor AI assistant; layout change only.
+- **Summary**: Removed the single outer card. Main content area: flex column, gap 20px, padding 20px 80px, width 100%, max-width 860px, margin 0 auto. Three individual cards (glass style: rgba(255,255,255,0.75), blur(20px), border-radius 24px, padding 32px 40px, max-width 580px). Card 1 align-self flex-start (TODAY), Card 2 align-self flex-end (TOMORROW), Card 3 align-self flex-start (THE VISION). Eyebrow margin-bottom 10px; body 15px, #374151, line-height 1.75. Centered purple "Almost there →" button below cards, margin-top 8px. Full-page rainbow gradient and Harvey logo at top unchanged.
+- **Files touched**: `src/app/onboarding/vision/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Visual refresh — alternating card alignment, no single container.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding vision page: three-row card content
+
+- **Agent / context**: Cursor AI assistant; rewrite vision card content only.
+- **Summary**: Replaced single text block and headline "Harvey is just getting started." with three rows separated by gradient dividers (height 1px, margin 28px 0). Row 1 (TODAY): text left, max-width 85%. Row 2 (TOMORROW): text right, margin-left auto, text-align right, max-width 85%. Row 3 (THE VISION): text left, max-width 85%. Each row: eyebrow (10px, 700, 0.18em, #8B5CF6, uppercase, margin-bottom 8px) + body (15px, #374151, line-height 1.75). Bottom gradient divider and "Almost there →" CTA unchanged. Background, logo, and outer card styling unchanged.
+- **Files touched**: `src/app/onboarding/vision/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Content and layout refresh for vision screen.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
+### 2026-03-04 – Onboarding vision and closer pages; questions redirect
+
+- **Agent / context**: Cursor AI assistant; add two new onboarding screens and update post-questions flow.
+- **Summary**:
+  - **New page** `src/app/onboarding/vision/page.tsx`: Client component. Same full-page rainbow gradient (aurora-bg) as signin. Centered card (max-width 640px, glass style with purple shadow). Eyebrow "THE FUTURE", headline "Harvey is just getting started.", body copy about Harvey’s future, gradient divider, CTA "Almost there →" → `/onboarding/closer`. Harvey logo at top (24px padding), outside card. User name loaded from Supabase session (same pattern as intro).
+  - **New page** `src/app/onboarding/closer/page.tsx`: Client component. Same layout and card styling. Eyebrow "YOU'RE EARLY", headline "[name], you're one of the first.", body about co-builder, CTA "Let's build something →" → `/onboarding`. Name from session.
+  - **Redirect change**: `src/app/onboarding/questions/page.tsx` — after saving answers (PATCH `/api/user/onboarding`), redirect changed from `/onboarding` to `/onboarding/vision`.
+- **Files touched**: `src/app/onboarding/vision/page.tsx` (new), `src/app/onboarding/closer/page.tsx` (new), `src/app/onboarding/questions/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Add vision and closer screens to onboarding flow before the main onboarding chat.
+- **Risks / notes**: None.
+- **Related docs**: `ARCHITECTURE.md` (§ app onboarding), `docs/onboarding/README.md`.
+
 ### 2026-03-04 – Onboarding intro: slide 2 browser mockup bar and text styling
 
 - **Agent / context**: Cursor AI assistant; slide 2 only — add mockup bar above screenshot, update text styles.

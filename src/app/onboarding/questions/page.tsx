@@ -2,7 +2,7 @@
  * Onboarding Questions Page
  *
  * Screen 2 after welcome: 4 questions (reason, current work, work style, biggest challenge).
- * Same visual style as signin/welcome. On completion, PATCH /api/user/onboarding then redirect to /onboarding.
+ * Same visual style as signin/welcome. On completion, PATCH /api/user/onboarding then redirect to /onboarding/vision.
  */
 
 'use client'
@@ -81,7 +81,7 @@ export default function OnboardingQuestionsPage() {
         return
       }
 
-      router.push('/onboarding')
+      router.push('/onboarding/vision')
     } catch {
       setError('Something went wrong')
       setLoading(false)
