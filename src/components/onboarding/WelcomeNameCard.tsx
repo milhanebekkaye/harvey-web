@@ -43,6 +43,7 @@ export function WelcomeNameCard() {
         return
       }
 
+      sessionStorage.setItem('harvey_user_name', trimmed)
       router.push('/onboarding/intro')
     } catch (err) {
       setError('Something went wrong')

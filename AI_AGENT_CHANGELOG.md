@@ -48,6 +48,15 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-04 – Onboarding: sessionStorage cache for user name
+
+- **Agent / context**: Cursor AI assistant; targeted name-loading optimization.
+- **Summary**: After PATCH /api/user/name succeeds (in WelcomeNameCard, used by /onboarding/welcome), set `sessionStorage.setItem('harvey_user_name', trimmed)` before redirect. On intro, vision, and closer pages: before calling GET /api/user/me, check `sessionStorage.getItem('harvey_user_name')`; if non-empty, use it immediately (no API call). Only call /api/user/me when cached is null or empty.
+- **Files touched**: `src/components/onboarding/WelcomeNameCard.tsx`, `src/app/onboarding/intro/page.tsx`, `src/app/onboarding/vision/page.tsx`, `src/app/onboarding/closer/page.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/onboarding/README.md`.
+- **Motivation**: Avoid API round-trip and loading state when user just set name on welcome and moves through intro → vision → closer in same session.
+- **Risks / notes**: sessionStorage is tab/session-scoped; direct visits to intro/vision/closer without welcome still use /api/user/me or session metadata.
+- **Related docs**: `docs/onboarding/README.md`.
+
 ### 2026-03-04 – Onboarding vision page: three separate cards, no outer card
 
 - **Agent / context**: Cursor AI assistant; layout change only.

@@ -120,12 +120,28 @@ export default function OnboardingIntroPage() {
   useEffect(() => {
     let cancelled = false
     async function loadName() {
+      const cached = sessionStorage.getItem('harvey_user_name')
+      if (cached != null && cached.trim()) {
+        setDisplayName(cached.trim())
+        setMounted(true)
+        return
+      }
+      try {
+        const res = await fetch('/api/user/me')
+        if (cancelled || !res.ok) return
+        const data = await res.json().catch(() => ({}))
+        if (data.name && typeof data.name === 'string' && data.name.trim()) {
+          setDisplayName(data.name.trim())
+          return
+        }
+      } catch {
+        // fallback below
+      }
       const session = await getSession()
       if (cancelled || !session?.user) return
       const name =
         (session.user.user_metadata?.name as string) ||
         (session.user.user_metadata?.full_name as string) ||
-        session.user.email?.split('@')[0] ||
         'there'
       setDisplayName(name)
     }
