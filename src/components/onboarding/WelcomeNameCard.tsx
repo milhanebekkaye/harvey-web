@@ -59,7 +59,7 @@ export function WelcomeNameCard() {
           style={{ boxShadow: '0 4px 14px 0 rgba(0,0,0,0.08)' }}
         >
           <Image
-            src="/penguin_onboarding_screen_name.png"
+            src="/harvey/penguin-scarf.png"
             alt=""
             width={160}
             height={160}

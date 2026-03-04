@@ -101,7 +101,7 @@ export default function OnboardingQuestionsPage() {
               style={{ boxShadow: '0 4px 14px 0 rgba(0,0,0,0.08)' }}
             >
               <Image
-                src="/harvey-penguin-2.png"
+                src="/harvey/penguin-hat.png"
                 alt=""
                 width={80}
                 height={80}
