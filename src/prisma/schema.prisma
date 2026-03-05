@@ -31,6 +31,8 @@ model User {
   current_work       String?
   work_style         String?
   biggest_challenge  String?
+  coaching_style     String?
+  experience_level   String?
 
   // Billing / cost tracking
   subscription_start_date DateTime?

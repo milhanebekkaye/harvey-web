@@ -161,12 +161,15 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       current_work: string | null
       work_style: string | null
       biggest_challenge: string | null
+      coaching_style: string | null
+      experience_level: string | null
     }>
   >(
     `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
             "availabilityWindows", "workSchedule", "commute",
             "preferred_session_length", "communication_style", "userNotes", "energy_peak",
-            "onboarding_reason", "current_work", "work_style", "biggest_challenge"
+            "onboarding_reason", "current_work", "work_style", "biggest_challenge",
+            "coaching_style", "experience_level"
      FROM "users" WHERE "id" = $1`,
     userId
   )
@@ -190,6 +193,8 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     current_work: row.current_work ?? undefined,
     work_style: row.work_style ?? undefined,
     biggest_challenge: row.biggest_challenge ?? undefined,
+    coaching_style: row.coaching_style ?? undefined,
+    experience_level: row.experience_level ?? undefined,
   }
 }
 
@@ -329,6 +334,16 @@ export async function updateUser(
     if (data.biggest_challenge !== undefined) {
       updates.push(`"biggest_challenge" = $${paramIndex}`)
       values.push(data.biggest_challenge)
+      paramIndex++
+    }
+    if (data.coaching_style !== undefined) {
+      updates.push(`"coaching_style" = $${paramIndex}`)
+      values.push(data.coaching_style)
+      paramIndex++
+    }
+    if (data.experience_level !== undefined) {
+      updates.push(`"experience_level" = $${paramIndex}`)
+      values.push(data.experience_level)
       paramIndex++
     }
 

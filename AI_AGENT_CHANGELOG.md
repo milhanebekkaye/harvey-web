@@ -48,6 +48,15 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-05 – Onboarding questions: add coaching_style and experience_level (steps 5 & 6)
+
+- **Agent / context**: Cursor AI assistant; extend onboarding questions flow without modifying existing questions.
+- **Summary**: Added two optional User fields (`coaching_style`, `experience_level`) in Prisma; migration `add_coaching_experience_fields`. Extended types and user-service (getUserByIdRaw SELECT, updateUser builder). PATCH `/api/user/onboarding` now accepts and persists both fields. Questions page: two new steps after the existing four — Step 5 "How do you want Harvey to coach you?" (single-select chips → `coaching_style`), Step 6 "Have you shipped something before?" (single-select chips → `experience_level`). Progress dots updated from 4 to 6; final PATCH sends all six fields. Card design, chip styling, and slide animation unchanged.
+- **Files touched**: `src/prisma/schema.prisma`, `src/prisma/migrations/`, `src/types/user.types.ts`, `src/lib/users/user-service.ts`, `src/app/api/user/onboarding/route.ts`, `src/app/onboarding/questions/page.tsx`, `ARCHITECTURE.md`, `docs/onboarding/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Feature request to capture coaching preference and shipping experience during onboarding.
+- **Risks / notes**: None. New fields are optional; existing users and flows unchanged.
+- **Related docs**: `ARCHITECTURE.md` (§ onboarding/questions, user/onboarding API), `docs/onboarding/README.md`.
+
 ### 2026-03-04 – Onboarding: sessionStorage cache for user name
 
 - **Agent / context**: Cursor AI assistant; targeted name-loading optimization.

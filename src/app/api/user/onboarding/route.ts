@@ -2,7 +2,7 @@
  * PATCH /api/user/onboarding
  *
  * Authenticated endpoint to save onboarding questions (onboarding_reason,
- * current_work, work_style, biggest_challenge). Used by /onboarding/questions.
+ * current_work, work_style, biggest_challenge, coaching_style, experience_level). Used by /onboarding/questions.
  */
 
 import { NextResponse } from 'next/server'
@@ -36,6 +36,12 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.biggest_challenge === 'string' && body.biggest_challenge.trim() !== '') {
       partialPayload.biggest_challenge = body.biggest_challenge.trim()
+    }
+    if (typeof body.coaching_style === 'string' && body.coaching_style.trim() !== '') {
+      partialPayload.coaching_style = body.coaching_style.trim()
+    }
+    if (typeof body.experience_level === 'string' && body.experience_level.trim() !== '') {
+      partialPayload.experience_level = body.experience_level.trim()
     }
 
     if (Object.keys(partialPayload).length === 0) {

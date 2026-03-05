@@ -43,6 +43,8 @@ export interface User {
   current_work?: string | null
   work_style?: string | null
   biggest_challenge?: string | null
+  coaching_style?: string | null
+  experience_level?: string | null
 }
 
 /**
@@ -97,6 +99,8 @@ export interface UpdateUserData {
   current_work?: string | null
   work_style?: string | null
   biggest_challenge?: string | null
+  coaching_style?: string | null
+  experience_level?: string | null
 }
 
 /**
