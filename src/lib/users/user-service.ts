@@ -243,12 +243,71 @@ export async function getUserById(userId: string): Promise<User | null> {
 export async function getUserByEmail(email: string): Promise<User | null> {
   try {
     console.log('[UserService] Fetching user by email:', email)
-    
-    const user = await prisma.user.findUnique({
-      where: { email },
-    })
 
-    return user
+    const rows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: string
+        email: string
+        name: string | null
+        timezone: string
+        createdAt: Date
+        updatedAt: Date
+        availabilityWindows: unknown
+        workSchedule: unknown
+        commute: unknown
+        preferred_session_length: number | null
+        communication_style: string | null
+        userNotes: unknown
+        energy_peak: string | null
+        onboarding_reason: string | null
+        current_work: string | null
+        work_style: unknown
+        biggest_challenge: string | null
+        coaching_style: string | null
+        experience_level: string | null
+      }>
+    >(
+      `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
+              "availabilityWindows", "workSchedule", "commute",
+              "preferred_session_length", "communication_style", "userNotes", "energy_peak",
+              "onboarding_reason", "current_work", "work_style", "biggest_challenge",
+              "coaching_style", "experience_level"
+       FROM "users" WHERE "email" = $1`,
+      email
+    )
+
+    const row = rows[0]
+    if (!row) return null
+
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      timezone: row.timezone,
+      createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+      updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
+      availabilityWindows: row.availabilityWindows ?? null,
+      workSchedule: row.workSchedule ?? null,
+      commute: row.commute ?? null,
+      preferred_session_length: row.preferred_session_length ?? undefined,
+      communication_style: row.communication_style ?? undefined,
+      userNotes: row.userNotes ?? undefined,
+      energy_peak: row.energy_peak ?? undefined,
+      onboarding_reason: row.onboarding_reason ?? undefined,
+      current_work: row.current_work ?? undefined,
+      work_style: (() => {
+        const val = row.work_style
+        if (!val) return undefined
+        if (Array.isArray(val)) return val
+        if (typeof val === 'string') {
+          try { return JSON.parse(val) } catch { return [val] }
+        }
+        return undefined
+      })(),
+      biggest_challenge: row.biggest_challenge ?? undefined,
+      coaching_style: row.coaching_style ?? undefined,
+      experience_level: row.experience_level ?? undefined,
+    }
   } catch (error) {
     console.error('[UserService] Error fetching user by email:', error)
     return null
