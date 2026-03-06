@@ -30,6 +30,31 @@ After step 3 the tour completes and the user flag is persisted.
 
 ---
 
+## Scroll-into-view behaviour
+
+Before measuring a target's `getBoundingClientRect`, the component calls:
+
+```js
+element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+```
+
+Then waits **600ms** for the scroll animation to settle before sampling the rect. This ensures Step 3 (`ask-harvey-button`) is fully in view even when it starts below the fold. The `calculateCutout` function returns a cleanup callback so pending timeouts are always cancelled on unmount or step change.
+
+The resize handler skips the scroll and remeasures immediately (`{ scroll: false }`).
+
+---
+
+## Entrance animation
+
+`isVisible` state is `false` when `cutoutRect` is null (between steps). Once `cutoutRect` is set, a 50ms delay flips `isVisible` to `true`, triggering:
+
+- `opacity: 0 → 1`
+- `transform`: 8px slide from the direction of the arrow → `translate(0,0)`
+
+This produces a subtle fade + slide per step without any external animation library.
+
+---
+
 ## Spotlight mechanism
 
 ```

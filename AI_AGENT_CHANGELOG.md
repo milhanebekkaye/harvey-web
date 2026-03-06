@@ -2,6 +2,26 @@
 
 ---
 
+### [2026-03-06] Guided Tour — Step 3 polish: scroll-into-view, visual upgrade, animation
+
+**File changed:** `src/components/dashboard/GuidedTour.tsx` only.
+
+**Changes:**
+
+1. **Scroll into view before measuring** — `calculateCutout` now calls `element.scrollIntoView({ behavior: 'smooth', block: 'center' })` before reading `getBoundingClientRect()`, with a 600ms settle delay (via `setTimeout`). Applies to all steps. The function returns a cleanup callback so every `useEffect` can cancel a pending timeout on unmount/re-run. The resize handler passes `{ scroll: false }` to skip scrolling and just remeasure.
+
+2. **Purple glow ring on cutout** — Box-shadow is now three layers in one declaration: inner purple border (`0 0 0 4px rgba(137,90,246,0.4)`), soft purple ambient glow (`0 0 24px 8px rgba(137,90,246,0.15)`), and the dark overlay (`0 0 0 9999px rgba(0,0,0,0.7)`). Opacity raised from 0.6 → 0.7. `box-shadow` added to the CSS transition list.
+
+3. **Tooltip card redesign** — Gradient accent bar (purple→pink), "Step N of 3" counter in purple, xl bold title, slate-500 body, progress dots with size difference (10px active / 8px inactive), "Next →" / "Got it ✓" button text, deeper shadow, border border-slate-100, p-7, width 360px.
+
+4. **CSS arrow on tooltip** — Absolutely positioned `div` using the CSS border trick, pointing toward the highlighted element for each `tooltipPosition` ('left' → right-pointing, 'right' → left-pointing, 'top' → down-pointing).
+
+5. **Entrance animation** — `isVisible` boolean state. When `cutoutRect` transitions from `null` to a value, a 50ms `setTimeout` flips `isVisible` to `true`. The tooltip card transitions `opacity` (0→1) and `transform` (slide 8px from arrow direction → 0). Setting `cutoutRect` to `null` on step change resets `isVisible` to `false`, producing a clean fade-out/in between steps.
+
+**Risk:** None — isolated to the component. No other files touched.
+
+---
+
 ### [2026-03-06] Guided Tour — Step 3: GuidedTour component + dashboard integration
 
 **Motivation:** Implement the spotlight overlay tour that appears once after a user's first schedule generation. The tour shows 3 steps highlighting the active task card, the chat sidebar, and the "Ask Harvey" button, then marks the tour complete in the database.
