@@ -328,9 +328,9 @@ export async function POST(request: NextRequest) {
             (m) => m.role === 'assistant' && m.id === 'harvey-greeting'
           )
           if (greetingUiMessage) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const greetingText = greetingUiMessage.parts
-              ?.find((p: { type: string }) => p.type === 'text')
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ?.find((p): p is { type: 'text'; text: string } => p.type === 'text')
               ?.text ?? (greetingUiMessage as any).content ?? ''
             if (greetingText) {
               messagesToSave.push({
