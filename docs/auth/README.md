@@ -111,8 +111,9 @@ This feature handles user authentication and initial user record creation. It su
   - Creates Supabase client for browser or server with correct cookie handling.
 
 ## Data models used (from Prisma schema)
-- `User`: stores `id`, `email`, `name`, `timezone`, and availability preference JSON fields.
+- `User`: stores `id`, `email`, `name`, `timezone`, availability preference JSON fields, and `has_completed_tour` for the one-time dashboard guided tour.
 
 ## Gaps / Not found in repo
 - No explicit onboarding completion flag stored in the database.
+- Tour completion is stored separately from onboarding completion via `User.has_completed_tour`.
 - No middleware/route guard for redirecting authenticated users away from `/signin`.

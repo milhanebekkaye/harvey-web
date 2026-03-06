@@ -38,6 +38,14 @@ Rules:
 - For notes fields (userNotes, projectNotes): if new info is found, return 
   the existing notes with the new information appended as a new sentence. 
   Never truncate or remove existing notes content.
+- For refineable text fields (description, goals, motivation): these 
+  should improve as the conversation reveals richer context. If you now 
+  have more specific or accurate information than what is currently stored, 
+  rewrite the field with a better version. A better version is more 
+  specific, more accurate, or better captures the user's actual intent. 
+  Only rewrite if strictly better — if unsure, keep the existing value 
+  exactly as-is. If the user explicitly corrects one of these fields, 
+  always apply the correction.
 - For array fields (availabilityWindows, phases, tools_and_stack): return 
   the complete updated array. If the user corrected or added something, 
   apply the change to the full array and return it whole. Never return a 

@@ -45,6 +45,7 @@ export interface User {
   biggest_challenge?: string | null
   coaching_style?: string | null
   experience_level?: string | null
+  has_completed_tour?: boolean
 }
 
 /**
@@ -101,6 +102,7 @@ export interface UpdateUserData {
   biggest_challenge?: string | null
   coaching_style?: string | null
   experience_level?: string | null
+  has_completed_tour?: boolean
 }
 
 /**

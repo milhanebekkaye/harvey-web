@@ -48,6 +48,34 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-06 – Add persisted dashboard tour completion flag
+
+- **Agent / context**: Cursor AI assistant – backend/database step for the guided dashboard tour.
+- **Summary**:
+  - Added `User.has_completed_tour` to the Prisma schema and user service/types so the app can persist whether the one-time dashboard tour has already been completed.
+  - Extended `GET /api/user/me` to return `has_completed_tour` alongside `name` without breaking the existing response shape.
+  - Added `PATCH /api/user/tour-complete` to mark the authenticated user’s tour as complete.
+- **Files touched**:
+  - `src/prisma/schema.prisma`
+  - `src/lib/users/user-service.ts`
+  - `src/types/user.types.ts`
+  - `src/app/api/user/me/route.ts`
+  - `src/app/api/user/tour-complete/route.ts`
+  - `ARCHITECTURE.md`
+  - `docs/auth/README.md`
+- **Motivation**: The upcoming guided dashboard spotlight tour needs a persistent user-level flag so it only appears once per account.
+- **Risks / notes**: Requires the new Prisma migration to be applied in each environment before the updated user service or routes are used there.
+- **Related docs**: `ARCHITECTURE.md` (`src/app/api/`, `src/prisma/`), `docs/auth/README.md`.
+
+### 2026-03-06 – Let extraction improve description, goals, motivation
+
+- **Agent / context**: Cursor AI assistant
+- **Summary**: Updated the onboarding extraction prompt to treat `description`, `goals`, and `motivation` as refineable text fields that may be rewritten when newer conversation context is strictly better than the current stored value.
+- **Files touched**: `src/app/api/onboarding/extract/route.ts`
+- **Motivation**: The previous prompt treated these fields like generic scalars, which made the model preserve early rough values too aggressively instead of improving them as the conversation became more specific.
+- **Risks / notes**: Rewrites remain prompt-controlled only; backend merge logic still writes any non-null extracted value returned by the model.
+- **Related docs**: None.
+
 ### 2026-03-06 – Prevent false positive date picker triggers
 
 - **Agent / context**: Cursor AI assistant

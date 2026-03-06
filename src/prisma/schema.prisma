@@ -33,6 +33,7 @@ model User {
   biggest_challenge  String?
   coaching_style     String?
   experience_level   String?
+  has_completed_tour Boolean  @default(false)
 
   // Billing / cost tracking
   subscription_start_date DateTime?

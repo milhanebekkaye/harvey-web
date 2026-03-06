@@ -1,7 +1,7 @@
 /**
  * GET /api/user/me
  *
- * Returns the current user's profile from the DB (e.g. name).
+ * Returns the current user's profile from the DB (e.g. name, tour status).
  * Used by onboarding screens to show the name stored on the user document
  * rather than session metadata or email prefix.
  */
@@ -24,11 +24,12 @@ export async function GET() {
 
     const dbUser = await getUserById(user.id)
     if (!dbUser) {
-      return NextResponse.json({ name: null }, { status: 200 })
+      return NextResponse.json({ name: null, has_completed_tour: false }, { status: 200 })
     }
 
     return NextResponse.json({
       name: dbUser.name ?? null,
+      has_completed_tour: dbUser.has_completed_tour ?? false,
     })
   } catch (error) {
     console.error('[UserMeAPI] GET error:', error)
