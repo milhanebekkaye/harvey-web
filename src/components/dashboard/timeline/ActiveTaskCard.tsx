@@ -246,20 +246,22 @@ export function ActiveTaskCard({
               <span className="material-symbols-outlined text-lg">smart_toy</span>
               Ask Harvey
             </button>
-            <button
-              type="button"
-              onClick={() => onSkip(task.id)}
-              className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors"
-            >
-              Skip
-            </button>
-            <button
-              type="button"
-              onClick={() => onComplete(task.id)}
-              className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg shadow-sm hover:opacity-90 transition-opacity"
-            >
-              Mark as Complete
-            </button>
+            <div data-tour="task-actions" className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onSkip(task.id)}
+                className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors"
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={() => onComplete(task.id)}
+                className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg shadow-sm hover:opacity-90 transition-opacity"
+              >
+                Mark as Complete
+              </button>
+            </div>
           </div>
         </div>
       </div>

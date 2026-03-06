@@ -2,6 +2,80 @@
 
 ---
 
+### [2026-03-06] Guided Tour — Fix Step 1 scroll + narrow Step 2 spotlight
+
+**Files changed:** `src/components/dashboard/GuidedTour.tsx`, `src/components/dashboard/timeline/ActiveTaskCard.tsx`.
+
+**Issue 1 — Step 1 title hidden above fold:**
+`scrollIntoView({ block: 'start' })` on the tall active-task card was unreliable — the browser centered the card, leaving the title above the viewport. Fix: for `stepIndex === 1`, skip `scrollIntoView` entirely and instead call `scrollContainer.scrollTo({ top: 0, behavior: 'smooth' })` on the right-panel `<main class="...overflow-y-auto">`. This guarantees the top of the panel (and the card title) is always visible. All other steps continue using `element.scrollIntoView` with their `scrollBlock` definition.
+
+**Issue 2 — Step 2 spotlight too wide (whole action row):**
+`data-tour="task-actions"` was on the outer flex row, capturing "View Full Details" and "Ask Harvey" in the cutout. Fix: removed the attribute from the outer div and added it to a new `<div data-tour="task-actions" className="flex items-center gap-3">` that wraps only the **Skip** and **Mark as Complete** buttons. Layout is visually identical — the wrapper div produces the same spacing as the previous `gap-3` between those two buttons.
+
+**Risk:** None — scroll strategy change is isolated to step 1; wrapper div is visually transparent.
+
+---
+
+### [2026-03-06] Guided Tour — Expand to 4 steps + per-step scroll configuration
+
+**Files changed:** `src/components/dashboard/timeline/ActiveTaskCard.tsx`, `src/components/dashboard/GuidedTour.tsx`.
+
+**Changes:**
+
+- `ActiveTaskCard.tsx` — Added `data-tour="task-actions"` to the action buttons container div (`pt-4 border-t border-slate-100 flex justify-end gap-3`). No style or behaviour changes.
+
+- `GuidedTour.tsx`:
+  - Added `scrollBlock: ScrollLogicalPosition` field to the `TourStep` interface so each step carries its own scroll alignment.
+  - Replaced the 3-step `TOUR_STEPS` array with 4 steps:
+    1. `active-task` — "Your first task is ready" — `scrollBlock: 'start'`
+    2. `task-actions` *(new)* — "Track your progress" — `scrollBlock: 'center'`
+    3. `chat-sidebar` — "Harvey is always here" — `scrollBlock: 'center'`
+    4. `ask-harvey-button` — "A personal coach for every task" — `scrollBlock: 'center'`
+  - Replaced the `stepIndex === 1 ? 'start' : 'center'` conditional in `calculateCutout` with `step.scrollBlock`, reading the value directly from the step definition.
+  - Step counter, progress dots, and "Got it ✓" button already used `TOUR_STEPS.length` — all auto-scaled to 4 with no additional changes.
+
+**Risk:** None — additive changes only; no existing step content, styling, or logic altered.
+
+---
+
+### [2026-03-06] Guided Tour — Fix premature mount + add DOM retry logic
+
+**Files changed:** `src/app/dashboard/page.tsx`, `src/components/dashboard/GuidedTour.tsx`.
+
+**Problem:** On page refresh, `GuidedTour` mounted before `ProjectTimelineView` had painted the `ActiveTaskCard` (`data-tour="active-task"`). The single `querySelector` returned `null` and the tour immediately skipped to Step 2.
+
+**Fix 1 — Render gate (`page.tsx`):**
+`GuidedTour` now only mounts once `tasks !== null`, meaning the dashboard's initial `fetchTasks()` call has succeeded and React has committed the updated tree (including `ProjectTimelineView`).
+
+```tsx
+{showTour && !hasCompletedTour && tasks !== null && (
+  <GuidedTour onComplete={handleTourComplete} />
+)}
+```
+
+**Fix 2 — DOM retry logic (`GuidedTour.tsx`):**
+Refactored `calculateCutout` so that a missing element no longer immediately skips. Instead it retries `document.querySelector` up to **3 times**, each 500ms apart. Only after 3 failed attempts does it fall back to skipping the step.
+
+All timeouts (retries + the existing scroll-settle delay) are now tracked in a shared array and cancelled together by a single cleanup function returned from the callback. This eliminates any possibility of stale timeouts firing after unmount.
+
+**Risk:** Low. The `tasks !== null` gate is conservative (tasks may be loaded but `ProjectTimelineView` still has its own fetch). The retry loop provides the safety net for the remaining gap.
+
+---
+
+### [2026-03-06] Guided Tour — Fix Step 1 scroll alignment
+
+**File changed:** `src/components/dashboard/GuidedTour.tsx` only.
+
+**Problem:** Step 1 highlights the active task card using `scrollIntoView({ block: 'center' })`. Because the card is tall, centering it pushed the task title above the viewport fold, making it invisible during the tour.
+
+**Fix:** `calculateCutout` now picks the `block` value based on `stepIndex`:
+- Step 1 (`active-task` card) → `block: 'start'` — aligns the top of the card to the top of the scroll container so the title is always visible.
+- All other steps → `block: 'center'` (unchanged).
+
+**Risk:** None — one-line conditional change; no other behaviour affected.
+
+---
+
 ### [2026-03-06] Guided Tour — Step 3 polish: scroll-into-view, visual upgrade, animation
 
 **File changed:** `src/components/dashboard/GuidedTour.tsx` only.

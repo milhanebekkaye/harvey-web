@@ -1218,8 +1218,9 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         )}
       </main>
 
-      {/* Guided tour spotlight overlay — shown once after first schedule generation */}
-      {showTour && !hasCompletedTour && (
+      {/* Guided tour spotlight overlay — shown once after first schedule generation.
+          Gate on tasks !== null so ActiveTaskCard is already in the DOM before the tour mounts. */}
+      {showTour && !hasCompletedTour && tasks !== null && (
         <GuidedTour onComplete={handleTourComplete} />
       )}
 

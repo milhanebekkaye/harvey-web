@@ -20,6 +20,7 @@ interface TourStep {
   title: string
   body: string
   tooltipPosition: TooltipPosition
+  scrollBlock: ScrollLogicalPosition
 }
 
 interface GuidedTourProps {
@@ -36,18 +37,28 @@ const TOUR_STEPS: TourStep[] = [
     title: 'Your first task is ready',
     body: "Harvey broke down your project into clear, executable tasks. This is your current task — with everything you need to get started: description, success criteria, and Harvey's coaching tip.",
     tooltipPosition: 'left',
+    scrollBlock: 'start',
+  },
+  {
+    target: '[data-tour="task-actions"]',
+    title: 'Track your progress',
+    body: "Complete tasks when you're done, or skip them if you can't get to it — Harvey will adapt. The more you use it, the better Harvey understands your rhythm and builds smarter schedules.",
+    tooltipPosition: 'top',
+    scrollBlock: 'center',
   },
   {
     target: '[data-tour="chat-sidebar"]',
     title: 'Harvey is always here',
     body: 'This is your direct line to Harvey. Ask him to reschedule tasks, change your availability, get a progress summary, or figure out what to work on next.',
     tooltipPosition: 'right',
+    scrollBlock: 'center',
   },
   {
     target: '[data-tour="ask-harvey-button"]',
     title: 'A personal coach for every task',
     body: 'Every task has its own conversation with Harvey. Click here to get specific guidance, ask questions, or break a task into smaller steps — without losing context.',
     tooltipPosition: 'top',
+    scrollBlock: 'center',
   },
 ]
 
@@ -133,17 +144,18 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
       const step = TOUR_STEPS[stepIndex - 1]
       if (!step) return () => {}
 
-      const el = document.querySelector(step.target)
-      if (!el) {
-        if (stepIndex < TOUR_STEPS.length) {
-          setCurrentStep(stepIndex + 1)
-        } else {
-          onComplete()
-        }
-        return () => {}
+      // All timeouts created during this call (retries + scroll settle) are tracked
+      // here so a single cleanup can cancel the whole chain.
+      const timeouts: ReturnType<typeof setTimeout>[] = []
+      let cancelled = false
+
+      const cleanup = () => {
+        cancelled = true
+        timeouts.forEach(clearTimeout)
       }
 
-      const measure = () => {
+      const measure = (el: Element) => {
+        if (cancelled) return
         const raw = el.getBoundingClientRect()
         setCutoutRect({
           top: raw.top - CUTOUT_PADDING,
@@ -153,15 +165,50 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
         })
       }
 
-      const shouldScroll = opts?.scroll !== false
-      if (shouldScroll) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        const t = setTimeout(measure, SCROLL_SETTLE_MS)
-        return () => clearTimeout(t)
+      const attempt = (retryCount: number) => {
+        if (cancelled) return
+
+        const el = document.querySelector(step.target)
+
+        if (!el) {
+          if (retryCount < 3) {
+            // Element not yet in DOM — retry after 500ms, up to 3 times
+            const t = setTimeout(() => attempt(retryCount + 1), 500)
+            timeouts.push(t)
+            return
+          }
+          // Still not found after 3 retries — skip or complete
+          if (stepIndex < TOUR_STEPS.length) {
+            setCurrentStep(stepIndex + 1)
+          } else {
+            onComplete()
+          }
+          return
+        }
+
+        const shouldScroll = opts?.scroll !== false
+        if (shouldScroll) {
+          if (stepIndex === 1) {
+            // Step 1 targets the tall active-task card. Scrolling the element
+            // into view leaves the title above the fold. Instead, reset the
+            // right-panel scroll container to the very top so the card header
+            // is always fully visible.
+            const scrollContainer = document.querySelector('main.overflow-y-auto')
+            if (scrollContainer) {
+              scrollContainer.scrollTo({ top: 0, behavior: 'smooth' })
+            }
+          } else {
+            el.scrollIntoView({ behavior: 'smooth', block: step.scrollBlock })
+          }
+          const t = setTimeout(() => measure(el), SCROLL_SETTLE_MS)
+          timeouts.push(t)
+        } else {
+          measure(el)
+        }
       }
 
-      measure()
-      return () => {}
+      attempt(0)
+      return cleanup
     },
     [onComplete]
   )
