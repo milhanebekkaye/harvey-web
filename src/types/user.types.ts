@@ -41,7 +41,7 @@ export interface User {
   // Onboarding questions
   onboarding_reason?: string | null
   current_work?: string | null
-  work_style?: string | null
+  work_style?: string[] | null
   biggest_challenge?: string | null
   coaching_style?: string | null
   experience_level?: string | null
@@ -97,7 +97,7 @@ export interface UpdateUserData {
   energy_peak?: string | null  // "morning" | "afternoon" | "evening"
   onboarding_reason?: string | null
   current_work?: string | null
-  work_style?: string | null
+  work_style?: string[] | null
   biggest_challenge?: string | null
   coaching_style?: string | null
   experience_level?: string | null

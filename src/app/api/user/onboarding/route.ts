@@ -31,8 +31,8 @@ export async function PATCH(request: Request) {
     if (typeof body.current_work === 'string' && body.current_work.trim() !== '') {
       partialPayload.current_work = body.current_work.trim()
     }
-    if (typeof body.work_style === 'string' && body.work_style.trim() !== '') {
-      partialPayload.work_style = body.work_style.trim()
+    if (Array.isArray(body.work_style) && body.work_style.length > 0) {
+      partialPayload.work_style = body.work_style
     }
     if (typeof body.biggest_challenge === 'string' && body.biggest_challenge.trim() !== '') {
       partialPayload.biggest_challenge = body.biggest_challenge.trim()

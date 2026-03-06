@@ -55,7 +55,7 @@ export default function OnboardingQuestionsPage() {
   const [step, setStep] = useState(1)
   const [onboarding_reason, setOnboarding_reason] = useState<string | null>(null)
   const [current_work, setCurrent_work] = useState('')
-  const [work_style, setWork_style] = useState<string | null>(null)
+  const [work_style, setWork_style] = useState<string[]>([])
   const [biggest_challenge, setBiggest_challenge] = useState<string | null>(null)
   const [coaching_style, setCoaching_style] = useState<string | null>(null)
   const [experience_level, setExperience_level] = useState<string | null>(null)
@@ -65,7 +65,7 @@ export default function OnboardingQuestionsPage() {
   const canContinue =
     step === 1 ? onboarding_reason != null :
     step === 2 ? true :
-    step === 3 ? work_style != null :
+    step === 3 ? work_style.length > 0 :
     step === 4 ? biggest_challenge != null :
     step === 5 ? coaching_style != null :
     experience_level != null
@@ -86,7 +86,7 @@ export default function OnboardingQuestionsPage() {
         body: JSON.stringify({
           onboarding_reason: onboarding_reason ?? undefined,
           current_work: current_work.trim() || undefined,
-          work_style: work_style ?? undefined,
+          work_style: work_style.length > 0 ? work_style : undefined,
           biggest_challenge: biggest_challenge ?? undefined,
           coaching_style: coaching_style ?? undefined,
           experience_level: experience_level ?? undefined,
@@ -221,12 +221,16 @@ export default function OnboardingQuestionsPage() {
                     <button
                       key={opt}
                       type="button"
-                      onClick={() => setWork_style(opt)}
+                      onClick={() => setWork_style(prev =>
+                        prev.includes(opt)
+                          ? prev.filter(s => s !== opt)
+                          : [...prev, opt]
+                      )}
                       className="px-4 py-2.5 rounded-full text-sm font-medium transition-all border-2"
                       style={{
-                        borderColor: work_style === opt ? PURPLE : '#e2e8f0',
-                        backgroundColor: work_style === opt ? `${PURPLE}14` : 'transparent',
-                        color: work_style === opt ? PURPLE : '#475569',
+                        borderColor: work_style.includes(opt) ? PURPLE : '#e2e8f0',
+                        backgroundColor: work_style.includes(opt) ? `${PURPLE}14` : 'transparent',
+                        color: work_style.includes(opt) ? PURPLE : '#475569',
                       }}
                     >
                       {opt}

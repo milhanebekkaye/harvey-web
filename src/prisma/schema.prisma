@@ -29,7 +29,7 @@ model User {
   // Onboarding questions (Screen 2)
   onboarding_reason  String?
   current_work       String?
-  work_style         String?
+  work_style         Json?
   biggest_challenge  String?
   coaching_style     String?
   experience_level   String?

@@ -10,6 +10,7 @@ export interface DatePickerWidgetProps {
   label: string
   minDate: string
   onSelect: (date: string) => void
+  onDismiss?: () => void
   answered?: boolean
 }
 
@@ -18,6 +19,7 @@ export function DatePickerWidget({
   label,
   minDate,
   onSelect,
+  onDismiss,
   answered = false,
 }: DatePickerWidgetProps) {
   const [selectedDate, setSelectedDate] = useState<string>('')
@@ -59,14 +61,26 @@ export function DatePickerWidget({
                 disabled={isDisabled}
                 className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#8B5CF6] focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/20 disabled:bg-slate-50 disabled:text-slate-500"
               />
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={isDisabled || !selectedDate}
-                className="self-start rounded-lg bg-[#8B5CF6] px-4 py-2 text-sm font-medium text-white hover:bg-[#7C4FDB] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Confirm
-              </button>
+              <div className="flex gap-2 self-start mt-1">
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  disabled={isDisabled || !selectedDate}
+                  className="rounded-lg bg-[#8B5CF6] px-4 py-2 text-sm font-medium text-white hover:bg-[#7C4FDB] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Confirm
+                </button>
+                {onDismiss && (
+                  <button
+                    type="button"
+                    onClick={onDismiss}
+                    disabled={isDisabled}
+                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Not relevant to the question
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>

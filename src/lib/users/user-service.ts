@@ -159,7 +159,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       energy_peak: string | null
       onboarding_reason: string | null
       current_work: string | null
-      work_style: string | null
+      work_style: unknown
       biggest_challenge: string | null
       coaching_style: string | null
       experience_level: string | null
@@ -191,7 +191,15 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     energy_peak: row.energy_peak ?? undefined,
     onboarding_reason: row.onboarding_reason ?? undefined,
     current_work: row.current_work ?? undefined,
-    work_style: row.work_style ?? undefined,
+    work_style: (() => {
+      const val = row.work_style
+      if (!val) return undefined
+      if (Array.isArray(val)) return val
+      if (typeof val === 'string') {
+        try { return JSON.parse(val) } catch { return [val] }
+      }
+      return undefined
+    })(),
     biggest_challenge: row.biggest_challenge ?? undefined,
     coaching_style: row.coaching_style ?? undefined,
     experience_level: row.experience_level ?? undefined,
@@ -327,8 +335,8 @@ export async function updateUser(
       paramIndex++
     }
     if (data.work_style !== undefined) {
-      updates.push(`"work_style" = $${paramIndex}`)
-      values.push(data.work_style)
+      updates.push(`"work_style" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.work_style))
       paramIndex++
     }
     if (data.biggest_challenge !== undefined) {

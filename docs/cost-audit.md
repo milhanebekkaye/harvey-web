@@ -61,6 +61,19 @@ The singleton instance is exported from `src/lib/ai/claude-client.ts`.
 - **Estimated Output Tokens:** ~300.
 - **Estimated Cost per call:** $0.0012 + $0.0012 = **$0.0024**
 
+### 2b. Onboarding Greeting
+- **File & Route:** `src/app/api/onboarding/greeting/route.ts` (`GET /api/onboarding/greeting`)
+- **Model:** `MODELS.ONBOARDING_EXTRACTION` (Haiku)
+- **Streaming:** No (`anthropic.messages.create`)
+- **Trigger:** Onboarding page load when there is no restore (new session). Client fetches once before showing the first message.
+- **Estimated frequency:** 1 per new onboarding session.
+- **System prompt:** Short instructions for a 2–3 sentence greeting; address by first name, acknowledge profile, one open question, tone by coaching preference. ~150 tokens.
+- **User message:** User name + `buildUserProfile(user)` output (onboarding questions). ~100–300 tokens depending on profile.
+- **Estimated Input Tokens:** ~200–400.
+- **Estimated Output Tokens:** ~80.
+- **Estimated Cost per call:** ~**$0.001**
+- **Cost tracking:** `logApiUsage` with feature `onboarding_greeting`.
+
 ### 3. Schedule Constraints Extraction
 - **File & Function:** `src/lib/schedule/schedule-generation.ts` (`extractConstraints`)
 - **Model:** `CLAUDE_CONFIG.model` (`claude-haiku-4-5-20251001`)
@@ -239,7 +252,7 @@ The singleton instance is exported from `src/lib/ai/claude-client.ts`.
 ## Section 5: Missing Infrastructure
 
 - **Is there currently any token usage logging?**
-  - **Yes — all call sites wired (2026-03-03 Phase 3 + Phase 4).** **User** has optional `subscription_start_date`; **ApiUsageLog** and **UserUsageSummary** tables exist. `MODEL_PRICING` and `computeCostUsd()` in `models.ts`; `logApiUsage()` in `usage-logger.ts`. **Non-streaming**: onboarding extraction, project extraction, success criteria, task opening message, task tip, constraints extraction, task generation, schedule coaching, task scheduler. **Streaming**: onboarding/general chat (`/api/chat`), project chat (`/api/chat/project`), task chat (`/api/chat/task`), daily check-in (`/api/chat/checkin`) — usage from Vercel AI SDK `result.usage` (inputTokens/outputTokens), logged at end of onFinish or when stream completes. Fire-and-forget everywhere; logging never blocks or throws.
+  - **Yes — all call sites wired (2026-03-03 Phase 3 + Phase 4; 2026-03-05 onboarding greeting).** **User** has optional `subscription_start_date`; **ApiUsageLog** and **UserUsageSummary** tables exist. `MODEL_PRICING` and `computeCostUsd()` in `models.ts`; `logApiUsage()` in `usage-logger.ts`. **Non-streaming**: onboarding greeting (`GET /api/onboarding/greeting`), onboarding extraction, project extraction, success criteria, task opening message, task tip, constraints extraction, task generation, schedule coaching, task scheduler. **Streaming**: onboarding/general chat (`/api/chat`), project chat (`/api/chat/project`), task chat (`/api/chat/task`), daily check-in (`/api/chat/checkin`) — usage from Vercel AI SDK `result.usage` (inputTokens/outputTokens), logged at end of onFinish or when stream completes. Fire-and-forget everywhere; logging never blocks or throws.
 - **Is there any rate limiting on API routes?**
   - **No.** There is only a client-side localStorage check for the daily check-in (`harvey_checkin_${projectId}`). There are no backend API rate limits.
 - **Is there any conversation history truncation or summarization?**

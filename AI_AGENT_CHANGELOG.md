@@ -48,6 +48,127 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ## Change log
 
+### 2026-03-06 – Prevent false positive date picker triggers
+
+- **Agent / context**: Cursor AI assistant
+- **Summary**: Refactored the fallback regex logic in `src/app/onboarding/page.tsx` to extract only sentences ending with a question mark (`?`) from the assistant's message, and apply the date-matching regex exclusively against those questions.
+- **Files touched**: `src/app/onboarding/page.tsx`
+- **Motivation**: The previous regex checked the entire message for date-related keywords (like "ready to share") and just required a `?` to be present *anywhere* in the message. This caused false positives (e.g. Harvey saying "you want it ready to share by end of this week. What does Harvey do?"). By isolating actual questions, we ensure the date picker only appears when Harvey is explicitly asking about dates.
+- **Risks / notes**: None.
+- **Related docs**: None.
+
+### 2026-03-06 – Add dismiss button to date picker widget
+
+- **Agent / context**: Cursor AI assistant (adding an escape hatch for false positive date questions)
+- **Summary**: Added an `onDismiss` prop to `DatePickerWidget` which renders a "Not a date question" button. Implemented `handleDateDismissed` in `page.tsx` to mark the widget as answered without sending a message.
+- **Files touched**: `src/components/onboarding/DatePickerWidget.tsx`, `src/app/onboarding/page.tsx`
+- **Motivation**: The regex fallback for showing the date picker was too aggressive and could trap the user by blocking the chat input when Harvey's message contained date-related phrases but wasn't actually asking for a date. The dismiss button allows users to manually close the widget and continue chatting.
+- **Risks / notes**: This is a UX fix. Next step is to improve the regex itself.
+- **Related docs**: None.
+
+### 2026-03-06 – Fix endless loading in onboarding greeting
+
+- **Agent / context**: Cursor AI assistant (fixing unintended freeze after reverting streaming)
+- **Summary**: Removed `AbortController` from the greeting fetch in `src/app/onboarding/page.tsx` while retaining the `useRef` strict-mode guard.
+- **Files touched**: `src/app/onboarding/page.tsx`
+- **Motivation**: Reverting the streaming update merged two different React strict-mode fixes. The `AbortController` aborted the fetch and silently exited (leaving `greetingLoading=true` forever) because the `useRef` guard correctly blocked the second strict-mode remount from firing a new request. Using *only* `useRef` safely guarantees a single request without aborting the promise resolution.
+- **Risks / notes**: None.
+- **Related docs**: None.
+
+### 2026-03-06 – Revert streaming personalized greeting
+
+- **Agent / context**: Cursor AI assistant (reverting previous three streaming-related changes)
+- **Summary**: Reverted `src/app/api/onboarding/greeting/route.ts` back to a `GET` endpoint using `anthropic.messages.create` instead of `streamText`. Reverted `src/app/onboarding/page.tsx` to use `fetch` with an `AbortController` instead of `useCompletion`.
+- **Files touched**: `src/app/api/onboarding/greeting/route.ts`, `src/app/onboarding/page.tsx`
+- **Motivation**: The user reported that the streaming implementation for the greeting was still not working properly, and requested to revert to the last stable non-streaming version.
+- **Risks / notes**: The `useRef` guard was replaced back with the `AbortController` approach for preventing double fetches in React StrictMode.
+- **Related docs**: None.
+
+### 2026-03-06 – Fix stream formatting and token tracking in greeting
+
+- **Agent / context**: Cursor AI assistant (fixing TypeError and Prisma crash)
+- **Summary**: Updated `src/app/api/onboarding/greeting/route.ts` to map `usage.inputTokens` and `usage.outputTokens` instead of `promptTokens`/`completionTokens`. Updated the stream response formatting to fallback gracefully across AI SDK versions via `result.toDataStreamResponse?.() ?? result.toTextStreamResponse()`.
+- **Files touched**: `src/app/api/onboarding/greeting/route.ts`
+- **Motivation**: The `useCompletion` endpoint crashed because `usage.promptTokens` evaluated to undefined (crashing Prisma), and `result.toDataStreamResponse` was not a function in the installed version of the Vercel AI SDK.
+- **Risks / notes**: None.
+- **Related docs**: None required.
+
+### 2026-03-06 – Prevent double greeting fetch via useRef
+
+- **Agent / context**: Cursor AI assistant (fixing double API fetch due to React StrictMode and useCompletion)
+- **Summary**: Added a `hasFetched` ref to `OnboardingChatContent` to track and prevent duplicate network requests from the `useCompletion` hook.
+- **Files touched**: `src/app/onboarding/page.tsx`
+- **Motivation**: After migrating from `fetch` (with an `AbortController`) to the Vercel AI SDK's `useCompletion`, React's StrictMode double-mount in development mode caused the `complete()` API to fire twice. Adding a `useRef` guard stops the second render from firing a duplicate HTTP request.
+- **Risks / notes**: None.
+- **Related docs**: None required.
+
+### 2026-03-06 – Stream personalized greeting in onboarding chat
+
+- **Agent / context**: Cursor AI assistant
+- **Summary**: Refactored `GET /api/onboarding/greeting` to a `POST` endpoint using Vercel AI SDK's `streamText` to stream the personalized Harvey greeting word-by-word. Replaced the `fetch` and local string state in `src/app/onboarding/page.tsx` with `useCompletion` to natively capture the stream while displaying the typing indicator.
+- **Files touched**: `src/app/api/onboarding/greeting/route.ts`, `src/app/onboarding/page.tsx`
+- **Motivation**: Ensure the very first greeting message behaves like all other Harvey messages with a visible typewriter stream effect instead of appearing instantaneously after a long loader. 
+- **Risks / notes**: Usage logging is now processed via `.then()` chained to `result.usage` natively returning `promptTokens` and `completionTokens` rather than waiting for the synchronous output of the standard Anthropic SDK API. The `useCompletion` SDK call receives headers properly to attach cookies during POST.
+- **Related docs**: None required.
+
+### 2026-03-06 – Convert work_style from single string to multi-select array
+
+- **Agent / context**: Cursor AI assistant
+- **Summary**: Changed `work_style` on the `User` model from `String?` to `Json?` to support multiple selections in onboarding step 3. Updated `user-service.ts` to parse the JSON array or fallback to a string wrap, adjusted the PATCH API body validation, updated `questions/page.tsx` chip selection to act as a toggle, and updated the prompt compiler to serialize the array for Claude.
+- **Files touched**: `src/prisma/schema.prisma`, `src/types/user.types.ts`, `src/lib/users/user-service.ts`, `src/app/api/user/onboarding/route.ts`, `src/app/onboarding/questions/page.tsx`, `src/lib/ai/prompts.ts`
+- **Motivation**: Allow users to select multiple options for their work style (e.g., both "Evenings" and "Weekends").
+- **Risks / notes**: Handled backwards compatibility safely in `getUserByIdRaw` mapping by detecting and parsing strings/JSON dynamically, preventing breaks for existing users.
+- **Related docs**: None required.
+
+### 2026-03-06 – Prepend personalized greeting to onboarding discussion
+
+- **Agent / context**: Cursor AI assistant (persisting the personalized greeting)
+- **Summary**: Modified `src/app/api/chat/route.ts` to capture the greeting from the initial client payload and save it as the first message in the discussion.
+- **Files touched**: `src/app/api/chat/route.ts`
+- **Motivation**: The greeting fetch was run by the client and shown in the UI, but it was lost on backend persistence because the route ignored it. By extracting it from the `uiMessages` payload when `isNewDiscussion` is true, the discussion history retains the correct context on refresh and for the constraint extraction prompt.
+- **Risks / notes**: The `timestamp` for the greeting is manually offset by 1 second before the user's initial message to ensure Chronological ordering.
+- **Related docs**: None required.
+
+### 2026-03-06 – Fix double greeting fetch in onboarding
+
+- **Agent / context**: Cursor AI assistant (fixing double API fetch due to React StrictMode)
+- **Summary**: Refactored the `useEffect` that fetches `GET /api/onboarding/greeting` to use an `AbortController`.
+- **Files touched**: `src/app/onboarding/page.tsx`
+- **Motivation**: In development mode with React Strict Mode, components mount, unmount, and remount. Without an abort cleanup, the fetch fired twice. Added `AbortController` to abort the fetch on unmount, preventing state updates on unmounted components and duplicate network requests.
+- **Risks / notes**: The `catch` block explicitly checks for `err.name === 'AbortError'` to ignore aborts cleanly without triggering the fallback.
+- **Related docs**: None required.
+
+
+### 2026-03-05 – Docs: API cost tracking guide for agents
+
+- **Agent / context**: Cursor AI assistant; documentation only (no code changes to cost tracking).
+- **Summary**: Analyzed existing cost tracking (ApiUsageLog, UserUsageSummary, `logApiUsage` in `usage-logger.ts`, `computeCostUsd` in `models.ts`). Created **`docs/cost-tracking/README.md`** so future agents know: (1) cost tracking infrastructure (schema, logger signature and body, cost calculation), (2) the rule that every new Anthropic API call must log usage via `logApiUsage`, (3) patterns for non-streaming vs streaming (token source, fire-and-forget), (4) where it’s already wired. No new code; no schema or logger changes.
+- **Files touched**: `docs/cost-tracking/README.md` (new), `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`.
+- **Motivation**: Ensure agents adding new API calls know to add cost tracking and how to do it.
+- **Risks / notes**: None.
+- **Related docs**: `docs/cost-audit.md`, `ARCHITECTURE.md` (§ src/prisma, usage-logger).
+
+### 2026-03-05 – Onboarding: personalized greeting API and chat logging
+
+- **Agent / context**: Cursor AI assistant; new greeting endpoint and onboarding page greeting flow.
+- **Summary**:
+  - **New GET `/api/onboarding/greeting`** (`src/app/api/onboarding/greeting/route.ts`): Auth required (Supabase); fetches full user from DB (404 if not found); builds `userProfile` via `buildUserProfile`; calls Anthropic Haiku (`MODELS.ONBOARDING_EXTRACTION`) with system prompt (2–3 sentence greeting, first name, profile, one open question, coaching tone); user message = name + profile; max_tokens 150. Returns `{ greeting: string }`; on any error returns fallback greeting with 200. Cost tracking: `logApiUsage` with feature `onboarding_greeting`. Logging: generating for user, profile fields, generated preview, and on error `[greeting] Failed`.
+  - **Onboarding page**: In `OnboardingChatContent`, added `greeting` and `greetingLoading` state. When there is no restore (`initialProjectId == null`), on mount fetches `GET /api/onboarding/greeting`; on success uses `data.greeting`, on error uses `INITIAL_GREETING`; always sets `greetingLoading` false when done. When restore, `greetingLoading` set false immediately. First message uses `greeting || INITIAL_GREETING` when not loading (via keyed `OnboardingChatView` so useChat remounts with the greeting). While greeting is loading (no restore), shows one Harvey bubble + pulsing typing indicator; input not blocked. Logging: fetching greeting, greeting loaded preview, and on error "Greeting fetch failed, using default".
+  - **Chat route**: In onboarding branch, after building `userProfile`, added `console.log('[chat/onboarding] userProfile injected:', ...)` and `console.log('[chat/onboarding] currentConfidence:', currentConfidence)`.
+- **Files touched**: `src/app/api/onboarding/greeting/route.ts` (new), `src/app/onboarding/page.tsx`, `src/app/api/chat/route.ts`, `docs/cost-audit.md`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: Personalized first message for new users using name and onboarding-question profile; better debugging for userProfile/confidence in chat.
+- **Risks / notes**: Greeting API runs once per new session; cost tracked. Fallback greeting ensures client always has a usable string.
+- **Related docs**: `ARCHITECTURE.md` (§ onboarding), `docs/onboarding/README.md`, `docs/cost-audit.md` (Section 2b, Section 5).
+
+### 2026-03-05 – Onboarding chat: inject user profile (six questions) into system prompt
+
+- **Agent / context**: Cursor AI assistant; surgical change to pass onboarding-question answers into Harvey’s prompt.
+- **Summary**: Added `userProfile` parameter (string) to `ONBOARDING_SYSTEM_PROMPT` (after `missingFieldsGuidance`, before `currentConfidence`). Prompt now injects a “USER PROFILE (collected before this conversation)” block after knownInfo when non-empty. New exported `buildUserProfile(user)` in `prompts.ts` formats the six User fields (onboarding_reason, current_work, work_style, biggest_challenge, coaching_style, experience_level) as bullet lines; only non-null, non-empty values are included. Chat route: in the onboarding branch, after loading `projectWithUser`, calls `buildUserProfile(projectWithUser.user)` and passes the result as `userProfile` to `ONBOARDING_SYSTEM_PROMPT`; empty string when project or user is null.
+- **Files touched**: `src/lib/ai/prompts.ts`, `src/app/api/chat/route.ts`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/onboarding/README.md`.
+- **Motivation**: So Harvey can use the six pre-chat onboarding answers (why they’re here, current work, work style, biggest challenge, coaching style, experience level) during the project intake conversation.
+- **Risks / notes**: None. Profile block is optional (empty string when no data).
+- **Related docs**: `ARCHITECTURE.md` (§ chat/route, prompts.ts), `docs/onboarding/README.md`.
+
 ### 2026-03-05 – Onboarding questions: add coaching_style and experience_level (steps 5 & 6)
 
 - **Agent / context**: Cursor AI assistant; extend onboarding questions flow without modifying existing questions.

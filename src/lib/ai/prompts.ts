@@ -77,6 +77,26 @@ export function generateKnownInfoSummary(
   return summary
 }
 
+/**
+ * Builds a short user profile string from onboarding-question fields (collected before the chat).
+ * Only includes lines where the value is non-null and non-empty.
+ */
+export function buildUserProfile(user: Record<string, unknown>): string {
+  const lines: string[] = []
+  if (user.onboarding_reason) lines.push(`- Why they're here: ${String(user.onboarding_reason)}`)
+  if (user.current_work) lines.push(`- Currently working on: ${String(user.current_work)}`)
+  if (user.work_style) {
+    const styles = Array.isArray(user.work_style)
+      ? (user.work_style as string[]).join(', ')
+      : String(user.work_style)
+    if (styles) lines.push(`- Typical work style: ${styles}`)
+  }
+  if (user.biggest_challenge) lines.push(`- Biggest challenge: ${String(user.biggest_challenge)}`)
+  if (user.coaching_style) lines.push(`- Coaching preference: ${String(user.coaching_style)}`)
+  if (user.experience_level) lines.push(`- Experience level: ${String(user.experience_level)}`)
+  return lines.join('\n')
+}
+
 /** Returns the next calendar day in YYYY-MM-DD. */
 function calculateNextDay(isoDate: string): string {
   const d = new Date(isoDate + 'T12:00:00Z')
@@ -100,6 +120,7 @@ function calculateNextDay(isoDate: string): string {
  * @param todayFormatted - Long date string, e.g. "Monday, February 17, 2026"
  * @param knownInfo - Summary of already-extracted project/user data
  * @param missingFieldsGuidance - What info is still needed (or "all information needed")
+ * @param userProfile - Optional formatted string from buildUserProfile (onboarding questions collected before chat)
  * @param currentConfidence - Current completion score (0-100) from extraction; Harvey must not recap below 80
  * @param todayISO - Today in user timezone YYYY-MM-DD (for show_date_picker)
  * @param tomorrowISO - Tomorrow in user timezone YYYY-MM-DD (for show_date_picker)
@@ -108,6 +129,7 @@ export const ONBOARDING_SYSTEM_PROMPT = (
   todayFormatted: string,
   knownInfo: string,
   missingFieldsGuidance: string,
+  userProfile: string,
   currentConfidence: number = 0,
   todayISO?: string,
   tomorrowISO?: string
@@ -118,7 +140,7 @@ Use this for all date calculations. When someone says "next Friday" or "in 6 day
 ${todayISO != null && tomorrowISO != null ? `\nUse these for show_date_picker: today is ${todayISO}, tomorrow is ${tomorrowISO}.\n` : ''}
 
 ${knownInfo}
-
+${userProfile ? `\nUSER PROFILE (collected before this conversation):\n${userProfile}\n` : ''}
 ${missingFieldsGuidance}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

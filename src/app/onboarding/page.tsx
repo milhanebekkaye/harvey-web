@@ -138,7 +138,7 @@ function uiMessageToChatMessage(msg: UIMessage): ChatMessage {
   }
 }
 
-/** Initial messages for useChat - Harvey's greeting */
+/** Initial messages for useChat - Harvey's greeting (default when no personalized greeting) */
 const INITIAL_MESSAGES: UIMessage[] = [
   {
     id: 'harvey-greeting',
@@ -242,7 +242,16 @@ interface OnboardingChatContentProps {
   initialExtracted?: { user: Record<string, unknown>; project: Record<string, unknown> } | null
 }
 
-function OnboardingChatContent({ initialMessages, initialProjectId, initialExtracted }: OnboardingChatContentProps) {
+interface OnboardingChatViewProps extends OnboardingChatContentProps {
+  showGreetingLoading?: boolean
+}
+
+function OnboardingChatView({
+  initialMessages,
+  initialProjectId,
+  initialExtracted,
+  showGreetingLoading = false,
+}: OnboardingChatViewProps) {
   const router = useRouter()
   const chatEndRef = useRef<HTMLDivElement>(null)
   const projectIdRef = useRef<string | null>(initialProjectId)
@@ -463,6 +472,13 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
     [sendMessage]
   )
 
+  const handleDateDismissed = useCallback(
+    (messageId: string) => {
+      setAnsweredWidgetIds((prev) => new Set(prev).add(messageId))
+    },
+    []
+  )
+
   const fieldCompleteness = calculateFieldCompleteness(shadowFields)
   const canBuild =
     fieldCompleteness >= 40 && (missingBlockingFields?.length ?? 0) === 0
@@ -493,17 +509,23 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
 
   const lastAssistantText = lastAssistantMessage ? getTextFromUIMessage(lastAssistantMessage) : ''
   const hasUserSentMessage = messages.some((m) => m.role === 'user')
+  
+  // Extract only the questions (sentences ending with '?') from Harvey's message to avoid false positives in statement sentences.
+  const questionsInMessage = lastAssistantText.match(/[^.?!]*\?/g) || []
+
   // Only match when Harvey is asking a question about dates (question mark + date-related term). Skip fallback on initial load (no user message yet).
   // Deadline: also match "when do you want ... ready", "lock in a timeline", "ready to share" (e.g. beta launch date).
   const isAskingAboutDeadline =
     hasUserSentMessage &&
-    lastAssistantText.includes('?') &&
-    /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish|when.*ready|ready.*when|when.*timeline|lock.*timeline|ready to share|what.*ready/i.test(lastAssistantText)
+    questionsInMessage.some((q) =>
+      /when.*deadline|what.*deadline|deadline.*when|when.*finish|when.*due|target.*date.*\?|what.*date.*finish|when.*ready|ready.*when|when.*timeline|lock.*timeline|ready to share|what.*ready/i.test(q)
+    )
   // Start date: require explicit calendar phrasing (start date, begin, kick off, begin scheduling); match "What's your start date", etc.
   const isAskingAboutStartDate =
     hasUserSentMessage &&
-    lastAssistantText.includes('?') &&
-    /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|what'?s your start date|kick\s*off|begin.*when|begin scheduling/i.test(lastAssistantText)
+    questionsInMessage.some((q) =>
+      /when.*begin|when.*kick|start\s+date|schedule\s+start|when.*start\s+date|what.*start\s+date|what'?s your start date|kick\s*off|begin.*when|begin scheduling/i.test(q)
+    )
   const tomorrowStr = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const todayStr = new Date().toISOString().slice(0, 10)
   // Show date widget whenever Harvey asks about a date; do not suppress based on existing DB/shadow value (user may want to change it).
@@ -672,11 +694,12 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
                   onSelect={(dateStr) =>
                     handleDateSelected(effectiveDatePickerConfig.messageId, effectiveDatePickerConfig.field, dateStr)
                   }
+                  onDismiss={() => handleDateDismissed(effectiveDatePickerConfig.messageId)}
                   answered={datePickerAnswered}
                 />
               )}
 
-              {isTyping && (
+              {(isTyping || showGreetingLoading) && (
                 <div className="flex items-center gap-2 text-[#8B5CF6]/60 text-sm">
                   <span className="material-symbols-outlined text-lg animate-pulse">
                     more_horiz
@@ -744,6 +767,55 @@ function OnboardingChatContent({ initialMessages, initialProjectId, initialExtra
       <div className="fixed top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[#8B5CF6]/5 rounded-full blur-[100px] -z-10" />
       <div className="fixed bottom-[-10%] right-[-5%] w-[30%] h-[30%] bg-[#8B5CF6]/10 rounded-full blur-[80px] -z-10" />
     </div>
+  )
+}
+
+function OnboardingChatContent({ initialMessages, initialProjectId, initialExtracted }: OnboardingChatContentProps) {
+  const [greeting, setGreeting] = useState<string>('')
+  const [greetingLoading, setGreetingLoading] = useState<boolean>(() => initialProjectId == null)
+  const hasFetched = useRef(false)
+
+  useEffect(() => {
+    if (initialProjectId != null) {
+      setGreetingLoading(false)
+      return
+    }
+
+    if (hasFetched.current) return
+    hasFetched.current = true
+
+    console.log('[onboarding] Fetching personalized greeting...')
+    fetch('/api/onboarding/greeting', { 
+      credentials: 'include',
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        console.log('[onboarding] Greeting loaded:', data.greeting?.slice(0, 80))
+        setGreeting(data.greeting ?? '')
+        setGreetingLoading(false)
+      })
+      .catch((err) => {
+        console.warn('[onboarding] Greeting fetch failed, using default')
+        setGreetingLoading(false)
+      })
+  }, [initialProjectId])
+
+  const effectiveInitialMessages: UIMessage[] =
+    initialProjectId != null
+      ? initialMessages
+      : greetingLoading
+        ? [{ id: 'harvey-greeting', role: 'assistant', parts: [{ type: 'text' as const, text: '' }] }]
+        : [{ id: 'harvey-greeting', role: 'assistant', parts: [{ type: 'text' as const, text: greeting || INITIAL_GREETING }] }]
+  const chatKey = initialProjectId ?? (greetingLoading ? 'loading' : 'loaded')
+
+  return (
+    <OnboardingChatView
+      key={chatKey}
+      initialMessages={effectiveInitialMessages}
+      initialProjectId={initialProjectId}
+      initialExtracted={initialExtracted}
+      showGreetingLoading={initialProjectId == null && greetingLoading}
+    />
   )
 }
 

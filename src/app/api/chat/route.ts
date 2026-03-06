@@ -40,7 +40,7 @@ import { createUIMessageStream, createUIMessageStreamResponse, streamText, smoot
 import { z } from 'zod'
 import { anthropic } from '@ai-sdk/anthropic'
 import { getDateStringInTimezone } from '@/lib/timezone'
-import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary } from '@/lib/ai/prompts'
+import { ONBOARDING_SYSTEM_PROMPT, generateKnownInfoSummary, buildUserProfile } from '@/lib/ai/prompts'
 import { MODELS } from '@/lib/ai/models'
 import { logApiUsage } from '@/lib/ai/usage-logger'
 import { computeMissingFields, buildMissingFieldsGuidance } from '@/lib/onboarding/missing-fields'
@@ -122,6 +122,8 @@ export async function POST(request: NextRequest) {
     let discussionId: string
     let existingMessages: StoredMessage[] = []
 
+    const isNewDiscussion = !projectId
+
     if (!projectId) {
       // First message: Create User, Project, Discussion
       const userInDb = await userExists(user.id)
@@ -200,11 +202,17 @@ export async function POST(request: NextRequest) {
     let tomorrowISO: string | undefined
     let knownInfo = 'KNOWN INFORMATION SO FAR:\n(Starting fresh - no information extracted yet)\n'
     let missingFieldsGuidance = 'You have no information yet. Start by understanding their project.'
+    let userProfile = ''
     if (context === 'onboarding' && currentProjectId) {
       const projectWithUser = await prisma.project.findUnique({
         where: { id: currentProjectId },
         include: { user: true },
       })
+      if (projectWithUser?.user != null) {
+        userProfile = buildUserProfile(projectWithUser.user as unknown as Record<string, unknown>)
+      }
+      console.log('[chat/onboarding] userProfile injected:', userProfile ? 'yes (' + userProfile.split('\n').length + ' fields)' : 'empty')
+      console.log('[chat/onboarding] currentConfidence:', currentConfidence)
       if (projectWithUser) {
         userTimezone = (projectWithUser.user as { timezone?: string })?.timezone ?? defaultTimezone
         todayISO = getDateStringInTimezone(now, userTimezone)
@@ -243,6 +251,7 @@ export async function POST(request: NextRequest) {
       todayFormatted,
       knownInfo,
       missingFieldsGuidance,
+      userProfile,
       typeof currentConfidence === 'number' ? Math.min(100, Math.max(0, Math.round(currentConfidence))) : 0,
       todayISO,
       tomorrowISO
@@ -311,7 +320,31 @@ export async function POST(request: NextRequest) {
           content: fullText,
           timestamp: new Date().toISOString(),
         }
-        await appendMessages(discussionId, [userMessage, assistantMessage])
+
+        const messagesToSave: StoredMessage[] = []
+
+        if (isNewDiscussion) {
+          const greetingUiMessage = uiMessages.find(
+            (m) => m.role === 'assistant' && m.id === 'harvey-greeting'
+          )
+          if (greetingUiMessage) {
+            const greetingText = greetingUiMessage.parts
+              ?.find((p: { type: string }) => p.type === 'text')
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ?.text ?? (greetingUiMessage as any).content ?? ''
+            if (greetingText) {
+              messagesToSave.push({
+                role: 'assistant',
+                content: greetingText,
+                timestamp: new Date(Date.now() - 1000).toISOString(),
+              })
+            }
+          }
+        }
+
+        messagesToSave.push(userMessage, assistantMessage)
+
+        await appendMessages(discussionId, messagesToSave)
         // Project title/description and other fields are extracted by POST /api/onboarding/extract
         // (triggered by the client after each Harvey response). No early extraction here.
 
