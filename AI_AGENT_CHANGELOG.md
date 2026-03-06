@@ -2,6 +2,36 @@
 
 ---
 
+### [2026-03-06] Guided Tour — Step 5: Paywall overlay screen
+
+**File changed:** `src/components/dashboard/GuidedTour.tsx` only.
+
+**What was added:**
+
+- `PAYWALL_STEP = TOUR_STEPS.length + 1` constant (= 5). Keeps the paywall step number derived from the array so it auto-updates if steps are added.
+
+- `handleNext` for the last spotlight step (step 4) now crossfades into the paywall instead of calling `onComplete()`:
+  1. `setIsVisible(false)` — tooltip fades out (300ms CSS transition).
+  2. 300ms `setTimeout` → `setCutoutRect(null)` + `setCurrentStep(PAYWALL_STEP)`.
+  3. 50ms inner `setTimeout` → `setIsVisible(true)` — paywall card fades + scales in.
+
+- `handlePaywallAction('pay' | 'skip')` — both actions scroll `main.overflow-y-auto` back to `top: 0` then call `onComplete()`. The `action` parameter is kept for Stripe integration later.
+
+- Early-return paywall branch: when `isPaywall === true`, renders a fixed full-screen overlay (`rgba(0,0,0,0.75)` + `backdrop-filter: blur(4px)`) containing a centred white card with:
+  - Harvey avatar (`/harvey/penguin-hat.png`, 80×80, purple ring)
+  - Headline + subheadline
+  - Price block: `$20 / 3 months`, purple tinted bg, divider, 3 benefit lines
+  - "Unlock Harvey" CTA + "Maybe later" text link
+  - Fade + scale entrance animation via `isVisible`
+
+- `if (!cutoutRect) return null` guard is now placed after the `isPaywall` early-return so the paywall renders without needing a `cutoutRect`.
+
+- Progress dots count and step counter both still use `TOUR_STEPS.length` (= 4). Paywall is not reflected in the dot count.
+
+**Risk:** Low. Paywall is purely visual. All existing spotlight steps (1–4) are unchanged. `onComplete()` is called in exactly one place (handlePaywallAction).
+
+---
+
 ### [2026-03-06] Guided Tour — Fix Step 1 scroll + narrow Step 2 spotlight
 
 **Files changed:** `src/components/dashboard/GuidedTour.tsx`, `src/components/dashboard/timeline/ActiveTaskCard.tsx`.

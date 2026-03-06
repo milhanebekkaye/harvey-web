@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 
 // ============================================
 // Types
@@ -28,7 +29,7 @@ interface GuidedTourProps {
 }
 
 // ============================================
-// Step definitions
+// Step definitions (spotlight steps only)
 // ============================================
 
 const TOUR_STEPS: TourStep[] = [
@@ -61,6 +62,9 @@ const TOUR_STEPS: TourStep[] = [
     scrollBlock: 'center',
   },
 ]
+
+// Step number of the paywall screen (not a spotlight step)
+const PAYWALL_STEP = TOUR_STEPS.length + 1
 
 // Layout constants
 const TOOLTIP_MAX_WIDTH = 360
@@ -132,6 +136,8 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
   const [cutoutRect, setCutoutRect] = useState<CutoutRect | null>(null)
   const [isVisible, setIsVisible] = useState(false)
 
+  const isPaywall = currentStep === PAYWALL_STEP
+
   /**
    * Scroll the target element into view, then after the scroll animation
    * settles measure its bounding rect and set cutoutRect.
@@ -142,6 +148,7 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
   const calculateCutout = useCallback(
     (stepIndex: number, opts?: { scroll?: boolean }): (() => void) => {
       const step = TOUR_STEPS[stepIndex - 1]
+      // No-op for out-of-range steps (e.g. paywall step)
       if (!step) return () => {}
 
       // All timeouts created during this call (retries + scroll settle) are tracked
@@ -226,21 +233,21 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Steps 2+: triggered by step state change
+  // Steps 2+: triggered by step state change (paywall step is a no-op in calculateCutout)
   useEffect(() => {
     if (currentStep === 1) return // handled by mount effect
     const cleanup = calculateCutout(currentStep)
     return cleanup
   }, [currentStep, calculateCutout])
 
-  // Resize: remeasure without scrolling
+  // Resize: remeasure without scrolling (no-op on paywall step)
   useEffect(() => {
     const handleResize = () => calculateCutout(currentStep, { scroll: false })
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [currentStep, calculateCutout])
 
-  // Fade-in animation: trigger whenever cutoutRect goes from null → value
+  // Fade-in animation for spotlight steps: trigger when cutoutRect is set
   useEffect(() => {
     if (!cutoutRect) {
       setIsVisible(false)
@@ -250,15 +257,229 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
     return () => clearTimeout(t)
   }, [cutoutRect])
 
+  /**
+   * Advance to the next spotlight step (steps 1–3), or animate into the
+   * paywall when completing the last spotlight step (step 4).
+   */
   const handleNext = () => {
     if (currentStep < TOUR_STEPS.length) {
+      // Normal step advance
       setCutoutRect(null)
       setCurrentStep((s) => s + 1)
     } else {
-      onComplete()
+      // Last spotlight step → crossfade to paywall
+      setIsVisible(false)
+      setTimeout(() => {
+        setCutoutRect(null)
+        setCurrentStep(PAYWALL_STEP)
+        // Let React commit the paywall render, then fade it in
+        setTimeout(() => setIsVisible(true), 50)
+      }, 300)
     }
   }
 
+  /**
+   * Handle both paywall actions ('pay' and 'skip').
+   * Scrolls the dashboard back to the top, then calls the parent callback.
+   * Stripe integration will differentiate 'pay' from 'skip' in a later step.
+   */
+  const handlePaywallAction = (_action: 'pay' | 'skip') => {
+    const scrollContainer = document.querySelector('main.overflow-y-auto')
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    onComplete()
+  }
+
+  // ============================================================
+  // Paywall screen (step 5) — no spotlight, centered card
+  // ============================================================
+
+  if (isPaywall) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 60,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          padding: '0 16px',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: 24,
+            padding: 40,
+            maxWidth: 440,
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 32px 100px rgba(0,0,0,0.3)',
+            opacity: isVisible ? 1 : 0,
+            transform: isVisible ? 'scale(1)' : 'scale(0.95)',
+            transition: 'opacity 0.35s ease, transform 0.35s ease',
+          }}
+        >
+          {/* Harvey avatar */}
+          <div style={{ marginBottom: 20 }}>
+            <Image
+              src="/harvey/penguin-hat.png"
+              alt="Harvey"
+              width={80}
+              height={80}
+              style={{
+                borderRadius: '50%',
+                display: 'inline-block',
+                outline: '4px solid rgba(137, 90, 246, 0.2)',
+                outlineOffset: 2,
+              }}
+            />
+          </div>
+
+          {/* Headline */}
+          <p
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              color: '#0f172a',
+              marginBottom: 8,
+              lineHeight: 1.3,
+            }}
+          >
+            Harvey is ready to coach you
+          </p>
+
+          {/* Subheadline */}
+          <p
+            style={{
+              fontSize: 14,
+              color: '#94a3b8',
+              marginBottom: 32,
+              lineHeight: 1.6,
+            }}
+          >
+            Get full access to your AI project coach for 3 months.
+          </p>
+
+          {/* Price block */}
+          <div
+            style={{
+              backgroundColor: 'rgba(137, 90, 246, 0.05)',
+              borderRadius: 16,
+              padding: '24px 24px 20px',
+              marginBottom: 32,
+              textAlign: 'center',
+            }}
+          >
+            <p
+              style={{
+                fontSize: 44,
+                fontWeight: 700,
+                color: '#895af6',
+                lineHeight: 1,
+              }}
+            >
+              $20
+            </p>
+            <p
+              style={{
+                fontSize: 13,
+                color: '#94a3b8',
+                marginTop: 4,
+                marginBottom: 16,
+              }}
+            >
+              for 3 months
+            </p>
+            <div
+              style={{
+                borderTop: '1px solid rgba(137, 90, 246, 0.1)',
+                marginBottom: 16,
+              }}
+            />
+            {[
+              '✦ Unlimited AI coaching & scheduling',
+              '✦ Per-task conversations with Harvey',
+              '✦ Smart rescheduling that adapts to you',
+            ].map((line) => (
+              <p
+                key={line}
+                style={{
+                  fontSize: 13,
+                  color: '#475569',
+                  lineHeight: 1.8,
+                  textAlign: 'left',
+                }}
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+
+          {/* CTA button */}
+          <button
+            type="button"
+            onClick={() => handlePaywallAction('pay')}
+            style={{
+              width: '100%',
+              backgroundColor: '#895af6',
+              color: 'white',
+              border: 'none',
+              borderRadius: 12,
+              padding: '14px 24px',
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: 12,
+              transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLButtonElement
+              el.style.backgroundColor = '#7c3aed'
+              el.style.boxShadow = '0 8px 24px rgba(137, 90, 246, 0.35)'
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLButtonElement
+              el.style.backgroundColor = '#895af6'
+              el.style.boxShadow = 'none'
+            }}
+          >
+            Unlock Harvey
+          </button>
+
+          {/* Skip link */}
+          <p
+            onClick={() => handlePaywallAction('skip')}
+            style={{
+              fontSize: 13,
+              color: '#94a3b8',
+              cursor: 'pointer',
+              transition: 'color 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              ;(e.currentTarget as HTMLParagraphElement).style.color = '#64748b'
+            }}
+            onMouseLeave={(e) => {
+              ;(e.currentTarget as HTMLParagraphElement).style.color = '#94a3b8'
+            }}
+          >
+            Maybe later
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ============================================================
+  // Spotlight tour (steps 1–4)
+  // ============================================================
+
+  // Don't render spotlight until we have a measured rect
   if (!cutoutRect) return null
 
   const step = TOUR_STEPS[currentStep - 1]
@@ -422,7 +643,7 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
               justifyContent: 'space-between',
             }}
           >
-            {/* Progress dots */}
+            {/* Progress dots — 4 dots, paywall not counted */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {TOUR_STEPS.map((_, i) => {
                 const active = i + 1 === currentStep
