@@ -124,7 +124,7 @@ export function ActiveTaskCard({
           <div className="h-3.5 w-3.5 rounded-full bg-[#895af6]" />
         </div>
       </div>
-      <div className="bg-white rounded-2xl shadow-xl shadow-[#895af6]/5 border-2 border-[#895af6]/20 overflow-hidden ring-1 ring-[#895af6]/10 shadow-2xl shadow-[#895af6]/10 border-l-[6px] border-l-[#895af6]">
+      <div data-tour="active-task" className="bg-white rounded-2xl shadow-xl shadow-[#895af6]/5 border-2 border-[#895af6]/20 overflow-hidden ring-1 ring-[#895af6]/10 shadow-2xl shadow-[#895af6]/10 border-l-[6px] border-l-[#895af6]">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
           <div className="flex gap-4">
             <div className="bg-[#895af6]/10 p-3 rounded-lg text-[#895af6] h-fit">
@@ -238,6 +238,7 @@ export function ActiveTaskCard({
               View Full Details
             </button>
             <button
+              data-tour="ask-harvey-button"
               type="button"
               onClick={() => onAskHarvey(task.id, task.title, task.label)}
               className="px-4 py-2 bg-[#895af6]/10 text-[#895af6] hover:bg-[#895af6]/20 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"

@@ -104,7 +104,7 @@ export function ChatSidebar({
 
   return (
     <>
-      <aside className="w-[40%] flex glass-sidebar z-10 relative min-w-0">
+      <aside data-tour="chat-sidebar" className="w-[40%] flex glass-sidebar z-10 relative min-w-0">
         {/* Left rail: always visible, icons only. Stylish modern strip. */}
         <div className="w-16 shrink-0 flex flex-col items-center py-5 gap-3 border-r border-slate-100 bg-gradient-to-b from-slate-50/80 to-white/50 rounded-r-2xl mr-0.5 shadow-sm">
           <button

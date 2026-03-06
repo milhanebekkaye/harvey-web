@@ -31,6 +31,7 @@ import {
   ChatSidebar,
   TimelineView,
   ProjectTimelineView,
+  GuidedTour,
 } from '@/components/dashboard'
 import type { ViewMode } from '@/components/dashboard'
 
@@ -173,6 +174,13 @@ export default function DashboardPage() {
    * silently refetches its data without showing a loading spinner.
    */
   const [timelineRefreshTrigger, setTimelineRefreshTrigger] = useState(0)
+
+  /**
+   * Guided tour visibility.
+   * hasCompletedTour defaults true (safe: don't show until confirmed false from API).
+   */
+  const [showTour, setShowTour] = useState(false)
+  const [hasCompletedTour, setHasCompletedTour] = useState(true)
 
   // ===== DATA FETCHING =====
 
@@ -432,6 +440,27 @@ export default function DashboardPage() {
   }, [checkInError])
 
   /**
+   * Check whether the user has already completed the guided tour.
+   * Runs once on mount. Shows tour only if has_completed_tour === false.
+   */
+  useEffect(() => {
+    async function checkTourStatus() {
+      try {
+        const res = await fetch('/api/user/me')
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.has_completed_tour === false) {
+          setHasCompletedTour(false)
+          setShowTour(true)
+        }
+      } catch {
+        // Non-critical; silently skip tour if fetch fails
+      }
+    }
+    void checkTourStatus()
+  }, [])
+
+  /**
    * Close the floating view selector when clicking outside or pressing Escape.
    */
   useEffect(() => {
@@ -459,6 +488,16 @@ export default function DashboardPage() {
   }, [isViewMenuOpen])
 
   // ===== HANDLERS =====
+
+  /**
+   * Called when the guided tour finishes (last step or skip).
+   * Marks tour complete in DB (fire-and-forget) and hides the overlay.
+   */
+  const handleTourComplete = () => {
+    setShowTour(false)
+    setHasCompletedTour(true)
+    void fetch('/api/user/tour-complete', { method: 'PATCH' })
+  }
 
   /**
    * Handle sign out
@@ -1178,6 +1217,11 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
           />
         )}
       </main>
+
+      {/* Guided tour spotlight overlay — shown once after first schedule generation */}
+      {showTour && !hasCompletedTour && (
+        <GuidedTour onComplete={handleTourComplete} />
+      )}
 
       {/* Rebuild Schedule modal (triggered from top-right toolbar) */}
       {showRebuildModal && (

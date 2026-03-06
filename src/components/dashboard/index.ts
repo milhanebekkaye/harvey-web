@@ -106,3 +106,9 @@ export { ProjectTimelineView } from './ProjectTimelineView'
  */
 export { ViewToggle } from './ViewToggle'
 export type { ViewMode } from './ViewToggle'
+
+/**
+ * GuidedTour - Spotlight overlay tour (3 steps) shown once after first schedule generation.
+ * Reads DOM via data-tour attributes. Calls onComplete when the user finishes.
+ */
+export { default as GuidedTour } from './GuidedTour'

@@ -1,5 +1,57 @@
 ## AI Agent Change Log
 
+---
+
+### [2026-03-06] Guided Tour — Step 3: GuidedTour component + dashboard integration
+
+**Motivation:** Implement the spotlight overlay tour that appears once after a user's first schedule generation. The tour shows 3 steps highlighting the active task card, the chat sidebar, and the "Ask Harvey" button, then marks the tour complete in the database.
+
+**New file:**
+
+- `src/components/dashboard/GuidedTour.tsx`
+  - Self-contained client component. No external dependencies beyond React.
+  - Reads DOM elements via `document.querySelector('[data-tour="..."]')`.
+  - Spotlight effect: a fixed `div` with `boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'` creates the cutout without touching any element's own styles.
+  - A full-screen blocker div (`z-index: 59`) prevents interaction with the page during the tour.
+  - Tooltip card (`z-index: 61`) is position-computed based on `TooltipPosition` ('left' | 'right' | 'top') with boundary clamping to keep it on-screen.
+  - 300ms initial delay before first cutout calculation ensures dashboard is fully rendered.
+  - Recalculates on `currentStep` change and on `window resize`.
+  - Progress dots (3 circles), "Next" / "Got it" button (step 3).
+  - If a target element is not found, automatically advances to the next step (safety fallback).
+  - Smooth `transition: all 0.4s ease` on the cutout div animates movement between steps.
+
+**Modified files:**
+
+- `src/components/dashboard/index.ts` — added `GuidedTour` export.
+- `src/app/dashboard/page.tsx`
+  - Added `showTour` (default `false`) and `hasCompletedTour` (default `true`) state.
+  - Added `useEffect` on mount that calls `GET /api/user/me` and sets `showTour = true` if `has_completed_tour === false`.
+  - Added `handleTourComplete` handler: sets `showTour = false`, `hasCompletedTour = true`, and fires `PATCH /api/user/tour-complete` (fire-and-forget).
+  - Renders `<GuidedTour onComplete={handleTourComplete} />` when `showTour && !hasCompletedTour`, placed at the end of the JSX (before the rebuild modal), ensuring it renders above all other content.
+
+**Risk:** Low. Tour state defaults to hidden (`showTour = false`). The overlay only appears after an explicit API confirmation that `has_completed_tour === false`. Tour fetch failure is caught silently and does not show the tour.
+
+---
+
+### [2026-03-06] Guided Tour — Step 2: Add data-tour DOM attributes
+
+**Motivation:** The spotlight tour component (Step 3) needs to locate specific DOM elements via `document.querySelector('[data-tour="..."]')`. These attributes are purely declarative markers with zero visual or behavioral impact.
+
+**Changes:**
+
+- `src/components/dashboard/timeline/ActiveTaskCard.tsx`
+  - Added `data-tour="active-task"` to the inner card `div` with classes `bg-white rounded-2xl shadow-xl ...` (the white card shell, child of `relative mb-6` wrapper).
+  - Added `data-tour="ask-harvey-button"` to the "Ask Harvey" `button` element.
+
+- `src/components/dashboard/ChatSidebar.tsx`
+  - Added `data-tour="chat-sidebar"` to the root `<aside>` element.
+
+**Scope:** 3 attribute additions across 2 files. No logic, styles, classes, or structure altered.
+
+**Risk:** None — `data-*` attributes are inert to browsers and React. No rendering change.
+
+---
+
 **What this file is**
 
 - **Purpose**: This file is a **running log of all non-trivial code changes made by AI agents** working on this repository.
