@@ -68,7 +68,7 @@ export default async function ProjectDetailsPage({
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] overflow-y-auto">
+    <div className="min-h-screen bg-[#FAFAF8] overflow-y-auto">
       <ProjectDetailsForm initialProject={serialized} />
     </div>
   )

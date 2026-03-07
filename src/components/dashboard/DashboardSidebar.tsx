@@ -8,6 +8,7 @@ import {
   LogOut,
   Menu,
   MessageSquareHeart,
+  Pin,
   Settings,
   Star,
   X,
@@ -44,6 +45,8 @@ export interface DashboardSidebarProps {
   openTaskChats: Array<{ id: string; title: string; label: string }>
   activeConversation: 'project' | string
   onSelectConversation: (id: 'project' | string) => void
+  /** Id of the soonest non-completed, non-skipped task. Only this task chat gets a green dot; no dots for Project Chat or other tasks. */
+  currentTaskId?: string | null
   projectId: string | null
   projectTitle: string | null
   userName: string | null
@@ -58,6 +61,7 @@ export function DashboardSidebar({
   openTaskChats,
   activeConversation,
   onSelectConversation,
+  currentTaskId = null,
   projectId,
   userName,
   userPlan,
@@ -138,40 +142,53 @@ export function DashboardSidebar({
             <h3 className="text-xs uppercase text-slate-500 tracking-wider mb-2 font-semibold">
               Recent chats
             </h3>
-            <div className="flex flex-col gap-0.5">
-              <button
-                type="button"
-                onClick={() => onSelectConversation('project')}
-                className={`flex items-center gap-2 rounded-lg py-2 px-3 text-sm text-left cursor-pointer transition-colors ${
-                  activeConversation === 'project'
-                    ? 'bg-violet-50 text-violet-700'
-                    : 'hover:bg-slate-50 text-slate-700'
-                }`}
-              >
-                <span className="size-2 rounded-full shrink-0 bg-green-500" aria-hidden />
-                <span className="truncate">Project Chat</span>
-              </button>
-              {openTaskChats.map((item) => {
-                const isActive = activeConversation === item.id
-                const dotColor = CATEGORY_DOT_COLORS[item.label] ?? CATEGORY_DOT_COLORS.Planning
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onSelectConversation(item.id)}
-                    className={`flex items-center gap-2 rounded-lg py-2 px-3 text-sm text-left cursor-pointer transition-colors ${
-                      isActive ? 'bg-violet-50 text-violet-700' : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span
-                      className="size-2 rounded-full shrink-0"
-                      style={{ backgroundColor: dotColor }}
-                    />
-                    <span className="truncate">{truncateTitle(item.title, 30)}</span>
-                  </button>
-                )
-              })}
-            </div>
+            {/* Pinned: Project Chat always first */}
+            <p className="text-[11px] uppercase text-slate-400 tracking-wider mb-1.5 px-1 font-medium">
+              Pinned
+            </p>
+            <button
+              type="button"
+              onClick={() => onSelectConversation('project')}
+              className={`flex items-center gap-2 rounded-lg py-2 px-3 text-sm text-left cursor-pointer transition-colors ${
+                activeConversation === 'project'
+                  ? 'bg-violet-50 text-violet-700'
+                  : 'hover:bg-slate-50 text-slate-700'
+              }`}
+            >
+              <Pin className="w-3.5 h-3.5 shrink-0 text-slate-500" aria-hidden />
+              <span className="truncate">Project Chat</span>
+            </button>
+            {/* Task chats: only the current task (soonest pending) gets a green dot; no dots for others */}
+            {openTaskChats.length > 0 && (
+              <>
+                <p className="text-[11px] uppercase text-slate-400 tracking-wider mb-1.5 mt-3 px-1 font-medium">
+                  Tasks
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  {openTaskChats.map((item) => {
+                    const isActiveConversation = activeConversation === item.id
+                    const isCurrentTask = currentTaskId === item.id
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onSelectConversation(item.id)}
+                        className={`flex items-center gap-2 rounded-lg py-2 px-3 text-sm text-left cursor-pointer transition-colors ${
+                          isActiveConversation ? 'bg-violet-50 text-violet-700' : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        {isCurrentTask ? (
+                          <span className="size-2 rounded-full shrink-0 bg-green-500" aria-hidden />
+                        ) : (
+                          <span className="size-2 shrink-0" aria-hidden />
+                        )}
+                        <span className="truncate">{truncateTitle(item.title, 30)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           {/* D. Links */}

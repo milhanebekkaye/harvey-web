@@ -29,6 +29,10 @@ export interface EditableFieldProps {
   maxTags?: number
   /** Optional timezone for date display (e.g. "Europe/Paris") */
   timezone?: string
+  /** Optional suffix shown in display mode between value and pencil (e.g. "hrs/week") */
+  suffix?: React.ReactNode
+  /** For type="number": when false, hide the − / + stepper buttons (input only) */
+  showNumberStepper?: boolean
 }
 
 const emptyDisplay = (placeholder: string) => (
@@ -49,6 +53,8 @@ export function EditableField({
   nullable = false,
   maxTags = 10,
   timezone,
+  suffix,
+  showNumberStepper = true,
 }: EditableFieldProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(
@@ -183,6 +189,7 @@ export function EditableField({
           ) : (
             <span className="break-words">{displayValue}</span>
           )}
+          {suffix != null && <span className="shrink-0">{suffix}</span>}
           <Pencil className="w-5 h-5 text-slate-400 shrink-0" />
         </div>
       ) : (
@@ -252,43 +259,64 @@ export function EditableField({
             </select>
           )}
           {type === 'number' && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const current = parseInt(editValue, 10)
-                  const n = Number.isNaN(current) ? min : Math.max(min, current - step)
-                  setEditValue(String(n))
-                  onChange(n)
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
-              >
-                −
-              </button>
-              <input
-                ref={inputRef as React.RefObject<HTMLInputElement>}
-                type="number"
-                min={min}
-                max={max}
-                step={step}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm text-center focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const current = parseInt(editValue, 10)
-                  const n = Number.isNaN(current) ? min : Math.min(max, current + step)
-                  setEditValue(String(n))
-                  onChange(n)
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
-              >
-                +
-              </button>
+            <div onClick={(e) => e.stopPropagation()}>
+              {showNumberStepper ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const current = parseInt(editValue, 10)
+                      const n = Number.isNaN(current) ? min : Math.max(min, current - step)
+                      setEditValue(String(n))
+                      onChange(n)
+                    }}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                  >
+                    −
+                  </button>
+                  <input
+                    ref={inputRef as React.RefObject<HTMLInputElement>}
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={handleBlur}
+                    onKeyDown={handleKeyDown}
+                    className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm text-center focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const current = parseInt(editValue, 10)
+                      const n = Number.isNaN(current) ? min : Math.min(max, current + step)
+                      setEditValue(String(n))
+                      onChange(n)
+                    }}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                <input
+                  ref={inputRef as React.RefObject<HTMLInputElement>}
+                  type="number"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={handleBlur}
+                  onKeyDown={handleKeyDown}
+                  className="w-24 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
+                />
+              )}
             </div>
           )}
           {type === 'tags' && (

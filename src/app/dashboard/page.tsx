@@ -31,7 +31,7 @@ import {
   List,
   SlidersHorizontal,
 } from 'lucide-react'
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
@@ -227,6 +227,9 @@ export default function DashboardPage() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [feedbackExternalOpen, setFeedbackExternalOpen] = useState(false)
+
+  /** Soonest non-completed, non-skipped task (for sidebar "current task" dot). */
+  const currentTaskId = useMemo(() => getCurrentTaskId(tasks), [tasks])
 
   // ===== DATA FETCHING =====
 
@@ -980,6 +983,25 @@ function findTaskById(tasks: TaskGroups | null, taskId: string): DashboardTask |
 }
 
 /**
+ * Id of the soonest task that is not completed and not skipped (chronological order).
+ * Used to show the "current" task dot in the sidebar.
+ */
+function getCurrentTaskId(tasks: TaskGroups | null): string | null {
+  if (!tasks) return null
+  const pending = (t: DashboardTask) => t.status !== 'completed' && t.status !== 'skipped'
+  const sections = [
+    ...tasks.overdue,
+    ...tasks.today,
+    ...tasks.tomorrow,
+    ...tasks.weekDays.flatMap((d) => d.tasks),
+    ...tasks.later,
+    ...tasks.unscheduled,
+  ]
+  const first = sections.find(pending)
+  return first?.id ?? null
+}
+
+/**
  * Helper: Update one task in TaskGroups by ID (returns new TaskGroups).
  */
 function updateTaskInGroups(
@@ -1130,6 +1152,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         openTaskChats={openTaskChats}
         activeConversation={activeConversation}
         onSelectConversation={handleSelectConversation}
+        currentTaskId={currentTaskId}
         projectId={projectId}
         projectTitle={projectTitle}
         userName={userName}

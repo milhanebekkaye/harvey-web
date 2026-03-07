@@ -2,6 +2,23 @@
 
 ---
 
+### [2026-03-07] Project Details page UI redesign
+
+**Goal:** Redesign the Project Details page layout and visuals only; data fetching, save logic, and API calls remain identical.
+
+**Changes:**
+- **`src/components/dashboard/ProjectDetailsForm.tsx`**: Full UI rewrite. (1) **Sticky top bar**: frosted glass (`backdrop-blur-[20px]`, `bg-[rgba(250,250,248,0.72)]`), left = "Dashboard" back button (same navigation + unsaved confirm), right = "All changes saved" when clean, or Discard + "Save Changes" purple pill when dirty; `max-w-6xl mx-auto px-10`. (2) **Hero**: Two-column; left = status pill (emerald/amber/blue), "Last updated [relative time]", editable title (click + pencil on hover), description (EditableField, slate-400), "Created [date]"; right = metadata card (progress ring SVG, then 5 metadata rows: Deadline, Skill level, Stack, Commitment, Type — each with icon box and EditableField). (3) **Phase stepper + tabs card**: Horizontal phase bars (completed = green gradient, active = violet, future = grey) with hover tooltip; tabs = Overview, Phases, Harvey's Notes (with count badge). (4) **Tab content**: Overview = 12-col grid (Goals, Motivation, Stack, Details, Milestones when present); Phases = vertical timeline (dots + title/status/goal/deadline/edit, "+ Add Phase"); Harvey's Notes = info banner, note list (date left, text right, Read more/Show less for long notes, "Key insight" badge when note contains "CRITICAL"), "+ Add Note". All existing state, handlers, PATCH body, toast, beforeunload, and navigation guards preserved. StickyUnsavedBar component no longer used on this page (save/discard moved into top bar).
+- **`src/app/dashboard/project/[projectId]/page.tsx`**: Wrapper background changed from `bg-[#FAF9F6]` to `bg-[#FAFAF8]`.
+- **`src/app/dashboard/project/[projectId]/loading.tsx`**: Background aligned to `bg-[#FAFAF8]`.
+
+**Unchanged:** `EditableField.tsx`, `StickyUnsavedBar.tsx`, all API routes, project data shape, save/discard logic, phases and notes CRUD.
+
+**Docs:** Updated `docs/project-details/README.md` and `ARCHITECTURE.md` (Project Details layout description).
+
+**Risk:** Low. UI/layout only; build passes.
+
+---
+
 ### [2026-03-07] Replace Google Material Symbols with Lucide React icons
 
 **Goal:** Remove dependency on Google Material Symbols font and use Lucide React (already in package.json) for all UI icons across the app.
