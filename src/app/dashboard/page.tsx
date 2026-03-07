@@ -35,6 +35,7 @@ import {
   ProjectTimelineView,
   GuidedTour,
 } from '@/components/dashboard'
+import { FeedbackButton } from '@/components/dashboard/FeedbackButton'
 import type { ViewMode } from '@/components/dashboard'
 
 // Import types
@@ -1342,6 +1343,8 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
           </div>
         </div>
       )}
+
+      <FeedbackButton />
     </div>
   )
 }

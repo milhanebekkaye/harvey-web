@@ -57,6 +57,16 @@ export function ProjectDropdownMenu({
         Project Details
       </Link>
       <Link
+        href="/dashboard/roadmap"
+        onClick={onClose}
+        className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+      >
+        <span className="material-symbols-outlined text-lg text-slate-500">
+          map
+        </span>
+        Roadmap
+      </Link>
+      <Link
         href="/dashboard/settings"
         onClick={onClose}
         className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"

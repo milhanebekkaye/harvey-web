@@ -45,6 +45,8 @@ model User {
   tasks           Task[]
   apiUsageLogs    ApiUsageLog[]
   usageSummaries  UserUsageSummary[]
+  feedbacks       Feedback[]
+  featureVotes    FeatureVote[]
 
   @@map("users")
 }
@@ -200,4 +202,42 @@ model UserUsageSummary {
 
   @@unique([userId, periodStart])
   @@map("user_usage_summaries")
+}
+
+model Feedback {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  userName   String   @map("user_name")
+  label      String   // values: "bug", "improvement", "feature_request", "question", "other"
+  content    String
+  status     String   @default("new") // values: "new", "seen", "resolved"
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("feedbacks")
+}
+
+model Feature {
+  id          String        @id @default(uuid())
+  title       String
+  description String
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  votes       FeatureVote[]
+
+  @@map("features")
+}
+
+model FeatureVote {
+  id         String   @id @default(uuid())
+  featureId  String   @map("feature_id")
+  userId     String   @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  feature    Feature  @relation(fields: [featureId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([featureId, userId])
+  @@map("feature_votes")
 }

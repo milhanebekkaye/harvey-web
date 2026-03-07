@@ -2,6 +2,67 @@
 
 ---
 
+### [2026-03-07] Feedback floating button, modal, and Feature Roadmap page
+
+**Part A — Feedback UI**
+- **POST /api/feedback**: Response changed from created record to `{ success: true }` (201).
+- **FeedbackButton** (`src/components/dashboard/FeedbackButton.tsx`): Floating button (fixed bottom-right, purple pill, "What would make Harvey better?") opens a modal. Modal: title "Share your feedback"; 5 label chips (Bug, Improvement, Feature Request, Question, Other); textarea; Submit disabled until label + content; close on backdrop click and Escape; X in top-right. On submit: POST /api/feedback; success state "Thanks for your feedback! 🎉" for 2s then close and reset. Uses useState (selectedLabel, content, isSubmitting, isSuccess); 401 shows "Please sign in again to send feedback."
+- **Dashboard**: `<FeedbackButton />` rendered at end of page (outside main flex) so it floats independently.
+
+**Part B — Roadmap page**
+- **GET /api/features**: Response wrapped in `{ features: [...] }`; list sorted by voteCount descending.
+- **Roadmap page** (`src/app/dashboard/roadmap/page.tsx`): Title "Feature Roadmap", subtitle "Vote for the features you want to see next." Fetches GET /api/features on mount. Features as white cards (title, description, vote button with count + upvote icon). Vote button: filled purple if hasVoted, outline/grey otherwise; click toggles via POST /api/features/[featureId]/vote with optimistic update. Empty state: "No features on the roadmap yet. Stay tuned!" with map icon. Same layout as settings (min-h-screen bg-[#FAF9F6], max-w-3xl, Back to dashboard link). 401 redirects to /signin.
+- **ProjectDropdownMenu**: New "Roadmap" link to `/dashboard/roadmap` (map icon) between Project Details and User Settings.
+
+**Docs:** Updated `docs/feedback/README.md` (API response, FeedbackButton, dashboard). Updated `docs/feature-voting/README.md` (API response shape, sort, roadmap page). Updated `ARCHITECTURE.md` (dashboard components, routes, menu).
+
+**Risk:** None. Additive UI and one API response shape change; clients that expect the previous GET /api/features array must use `data.features`.
+
+---
+
+### [2026-03-07] API routes for feedback and feature voting
+
+**Files created:** `src/app/api/feedback/route.ts`, `src/app/api/features/route.ts`, `src/app/api/features/[featureId]/vote/route.ts`.
+
+**POST /api/feedback**
+- Auth via Supabase `createClient()` (supabase-server) and `getUser()`; 401 if not authenticated.
+- Body: `{ label: string, content: string }`. Validates `label` in (bug, improvement, feature_request, question, other); validates `content` non-empty.
+- Loads user profile with `getUserById(user.id)`; `userName` = DB name, else email, else "Anonymous".
+- Creates `Feedback` with userId, userName, label, content, status "new". Returns 201 with `{ success: true }`.
+
+**GET /api/features**
+- Auth required. Returns `{ features: [...] }` sorted by voteCount descending.
+- Each item: id, title, description, createdAt, voteCount, hasVoted.
+- Uses Prisma `feature.findMany` with `include: { votes: { select: { userId: true } } }`, then maps and sorts.
+
+**POST /api/features/[featureId]/vote**
+- Auth required. Toggle vote: if user already voted, deletes vote and returns 200 `{ voted: false }`; else creates vote and returns 201 `{ voted: true }`.
+- 404 if featureId does not match any feature. Uses composite unique `featureId_userId` for findUnique/delete/create.
+
+**Docs:** Updated `docs/feedback/README.md` and `docs/feature-voting/README.md` with API sections. Updated `ARCHITECTURE.md` API routes section.
+
+**Risk:** None. New routes only; no existing files modified.
+
+---
+
+### [2026-03-07] Add Feedback and Feature Voting database tables
+
+**Files changed:** `src/prisma/schema.prisma`, `src/prisma/migrations/20260307180000_add_feedback_and_feature_voting/migration.sql` (new).
+
+**Schema:**
+- **User**: Added reverse relations `feedbacks Feedback[]` and `featureVotes FeatureVote[]` (no other User fields changed).
+- **Feedback** (table `feedbacks`): `id`, `user_id`, `user_name`, `label` (bug | improvement | feature_request | question | other), `content`, `status` (default "new"; new | seen | resolved), `created_at`; relation to User.
+- **Feature** (table `features`): `id`, `title`, `description`, `created_at`; relation to FeatureVote[].
+- **FeatureVote** (table `feature_votes`): `id`, `feature_id`, `user_id`, `created_at`; unique on (feature_id, user_id); relations to Feature and User.
+
+**Migration:** Created migration manually (env was non-interactive; `prisma migrate dev` not supported). Ran `prisma migrate deploy` — migration applied successfully. Ran `prisma generate` — client generated successfully.
+
+**Docs:** Updated `ARCHITECTURE.md` (schema and migrations list). Added `docs/feedback/README.md` and `docs/feature-voting/README.md`.
+
+**Risk:** None. Additive only; no existing models or columns modified except User relation arrays.
+
+---
+
 ### [2026-03-07] Dashboard: wrap useSearchParams in Suspense for Vercel build
 
 **File changed:** `src/app/dashboard/page.tsx` only.
