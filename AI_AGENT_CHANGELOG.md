@@ -2,6 +2,79 @@
 
 ---
 
+### [2026-03-07] Integrate DashboardSidebar, remove old nav rail and ProjectDropdownMenu
+
+**Goal:** Integrate the new collapsible DashboardSidebar into the dashboard; remove the ChatSidebar icon rail, ConversationNavPanel overlay, and ProjectDropdownMenu; rewire layout and feedback trigger.
+
+**A. `src/app/dashboard/page.tsx`:**
+- **State:** Added `isSidebarOpen` (default true) and `feedbackExternalOpen` (default false).
+- **Import:** `DashboardSidebar` from `@/components/dashboard/DashboardSidebar`.
+- **Layout:** DashboardSidebar added as first child (after Suspense) with props: isOpen, onToggle, openTaskChats, activeConversation, onSelectConversation, projectId, projectTitle, userName, userPlan, onSignOut, onOpenFeedback.
+- **ChatSidebar:** Removed props: isPanelOpen, onPanelOpen, onPanelClose, onSelectConversation, onSignOut. Kept: onBackToProject (still used by TaskChatView back link), activeConversation, openTaskChats.
+- **Main:** Replaced `w-[60%]` with `flex-[6] min-w-0` so chat and main share space in 4:6 ratio with the sidebar.
+- **FeedbackButton:** Now receives `externalOpen={feedbackExternalOpen}` and `onExternalOpenHandled={() => setFeedbackExternalOpen(false)}` so the sidebar user menu can open the feedback modal.
+
+**B. `src/components/dashboard/ChatSidebar.tsx`:**
+- **Removed:** Left icon rail (w-16 div with Conversations button and Logout button). ConversationNavPanel overlay and backdrop. Purple project pill and ProjectDropdownMenu. Imports: ConversationNavPanel, ProjectDropdownMenu. Local state: showProjectMenu, projectPillRef. Props: isPanelOpen, onPanelOpen, onPanelClose, onSelectConversation, onSignOut (onBackToProject kept for TaskChatView).
+- **Root:** Replaced `w-[40%]` with `flex-[4] min-w-0`; removed wrapping fragment.
+- **Header:** Kept Harvey avatar + "Harvey AI" and discussion label; removed purple pill and ProjectDropdownMenu.
+- **Unchanged:** ProjectChatView / TaskChatView switching, activeConversation and openTaskChats for rendering, onBackToProject passed to TaskChatView, all chat functionality.
+
+**Docs:** Updated `ARCHITECTURE.md` and `docs/dashboard/README.md`.
+
+**Risk:** Low. Layout and navigation moved to DashboardSidebar; ChatSidebar is simplified. Build passes.
+
+---
+
+### [2026-03-07] FeedbackButton: open modal from outside via optional props
+
+**Goal:** Allow the feedback modal to be opened by a parent (e.g. DashboardSidebar user menu) without changing existing behavior when no props are passed.
+
+**Changes in `src/components/dashboard/FeedbackButton.tsx`:**
+- **Props:** Added optional `externalOpen?: boolean` and `onExternalOpenHandled?: () => void` (exported as `FeedbackButtonProps`). Component destructures them with no default values (undefined when omitted).
+- **useEffect:** When `externalOpen` is true, sets `isOpen` to true (opens the modal) and calls `onExternalOpenHandled?.()` so the parent can reset its own state (e.g. set externalOpen back to false) and avoid re-triggers.
+- **Unchanged:** Floating button, modal UI, form fields, submit logic, success state, and internal state (isOpen, selectedLabel, content, etc.) are unchanged. `<FeedbackButton />` with no props behaves exactly as before.
+
+**Docs:** Updated `ARCHITECTURE.md` and `docs/feedback/README.md`.
+
+**Risk:** None. Additive optional props; backward compatible.
+
+---
+
+### [2026-03-07] DashboardSidebar component (collapsible left sidebar)
+
+**Goal:** New collapsible sidebar component (Claude/Notion-style) for the dashboard, to be integrated in a later step. This step only adds the component file.
+
+**Created:** `src/components/dashboard/DashboardSidebar.tsx` (use client).
+
+**Props:** `isOpen`, `onToggle`, `openTaskChats`, `activeConversation`, `onSelectConversation`, `projectId`, `projectTitle`, `userName`, `userPlan`, `onSignOut`, `onOpenFeedback`.
+
+**Behavior when closed (`isOpen = false`):** Thin vertical strip (w-12), hamburger menu icon at top (calls `onToggle`), subtle background and border, `transition-all duration-300`.
+
+**Behavior when open (`isOpen = true`):** Panel (w-64) with: (A) Header: Harvey lobster emoji + "Harvey AI", close button; (B) Nav: "Dashboard" as active pill (non-link); (C) Conversations: "Project Chat" + task list from `openTaskChats` (category dots, truncate 30 chars, active state); (D) Links: Project Details (to `/dashboard/project/[projectId]`, disabled if no projectId), Roadmap (to `/dashboard/roadmap`); (E) User section at bottom: avatar (first letter or "?"), userName, userPlan label ("Pro Plan" if active/pro else "Free Plan"), chevron-up. User row toggles a menu above it (absolute bottom-full): Settings, Roadmap, "What would make Harvey better?" (calls `onOpenFeedback`), divider, Upgrade Plan (greyed if pro/active, else link to settings), Log out (red, calls `onSignOut`). Menu closes on outside click.
+
+**Styling:** h-full, flex flex-col, bg-white, border-r, z-40, width transition w-12 ↔ w-64, overflow-hidden. Uses `material-symbols-outlined` for icons (same as ChatSidebar). No new packages. Next.js `Link` for navigation.
+
+**Docs:** Updated `ARCHITECTURE.md` and `docs/dashboard/README.md` (new component, not yet integrated).
+
+**Risk:** None. New file only; no existing files modified.
+
+---
+
+### [2026-03-07] Dashboard: userName and userPlan state from /api/user/me
+
+**Goal:** Make the user's display name and payment/plan available in dashboard state for a future sidebar component (no UI changes in this step).
+
+**Changes:**
+- **`src/app/dashboard/page.tsx`**: Added two state variables next to existing `userId`: `userName` (`string | null`, default `null`) and `userPlan` (`string`, default `'free'`). The existing `checkTourStatus()` effect already calls `GET /api/user/me` on mount; it now also sets `setUserName(data.name || null)` and `setUserPlan(data.payment_status || 'free')` from the same response. No new fetch, no restructure of `checkTourStatus`.
+- **`GET /api/user/me`**: Already returns `name`, `has_completed_tour`, and `payment_status`; no API changes.
+
+**Docs:** Updated `ARCHITECTURE.md` (dashboard state) and `docs/dashboard/README.md` (user data from checkTourStatus).
+
+**Risk:** None. Additive state only; existing behavior unchanged.
+
+---
+
 ### [2026-03-07] Feedback floating button, modal, and Feature Roadmap page
 
 **Part A — Feedback UI**

@@ -5,9 +5,11 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 
 ## Files involved (and where to find them)
 - `src/app/dashboard/page.tsx`
-  - Dashboard page: fetches tasks and discussions, handles actions, and renders views.
+  - Dashboard page: fetches tasks and discussions, handles actions, and renders views. On mount, `checkTourStatus()` calls `GET /api/user/me` and sets tour visibility; the same response populates `userName` and `userPlan` (from `name` and `payment_status`) for use by the sidebar (e.g. user row). `userId` is resolved separately via Supabase `auth.getUser()` for GuidedTour.
+- `src/components/dashboard/DashboardSidebar.tsx`
+  - Collapsible left sidebar (Claude/Notion-style): closed strip (w-12) with hamburger; open panel (w-64) with header, Dashboard nav pill, Conversations (Project Chat + task list), Project Details/Roadmap links, and user row with menu (Settings, Roadmap, feedback, Upgrade, Log out). Props include isOpen, onToggle, openTaskChats, activeConversation, onSelectConversation, projectId, userName, userPlan, onSignOut, onOpenFeedback. Integrated as the leftmost column; conversation switching and logout live here; feedback modal opened via user menu.
 - `src/components/dashboard/ChatSidebar.tsx`
-  - Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip and reschedule-prompt widgets are not rendered when their stored message has `answered: true`.
+  - Conversation area (ProjectChatView or TaskChatView) with header (Harvey AI + discussion label). No icon rail or ConversationNavPanel; switching via DashboardSidebar. Displays conversation history and includes “Rebuild schedule” action. Merges messages from useChat, dashboard (e.g. after Complete/Skip or check-in), feedback widgets, and optional streaming check-in; sorts by `createdAt` (ISO) so order is always chronological. Supports `messageType: 'check-in'` and `streamingCheckIn` for daily check-in. Auto-scrolls to the latest message. Completion/skip and reschedule-prompt widgets are not rendered when their stored message has `answered: true`.
 - `src/components/dashboard/TimelineView.tsx`
   - Renders tasks grouped by date sections (Overdue, Today, Tomorrow, week days [rolling 7-day], Later, Unscheduled, Past at end). Past is collapsible via “Show past tasks (N)” at the top; past task cards use reduced opacity. Handles expansion; grouping uses user timezone (via task-service). Expanded task detail uses the same task from the list (no extra fetch on click). **Drag-and-drop**: When the dashboard passes `onReorder`, `availableWindows`, and `allTasks`, tasks in Overdue/Today/Tomorrow/weekDays/Later show a GripVertical handle; same-day and cross-day reorder is supported. Dependency violations cancel the drop and show a toast. See “List view reorder” below.
 - `src/components/dashboard/TaskTile.tsx`
@@ -63,6 +65,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 ## Function reference (what each function does)
 
 ### `src/app/dashboard/page.tsx`
+- **User state**: `checkTourStatus()` (runs once on mount) calls `GET /api/user/me` and sets `has_completed_tour` / `showTour`; from the same response it sets `userName` (`data.name` or null) and `userPlan` (`data.payment_status` or `'free'`) for display in the sidebar (e.g. future user row). No separate user-profile fetch.
 - `fetchTasks()`
   - Calls `/api/tasks` and sets grouped task state. Redirects to `/onboarding` on `NO_PROJECT`.
 - `fetchMessages(projectId)`

@@ -10,7 +10,15 @@ const LABELS = [
   { value: 'other', label: 'Other' },
 ] as const
 
-export function FeedbackButton() {
+export interface FeedbackButtonProps {
+  externalOpen?: boolean
+  onExternalOpenHandled?: () => void
+}
+
+export function FeedbackButton({
+  externalOpen,
+  onExternalOpenHandled,
+}: FeedbackButtonProps = {}) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
   const [content, setContent] = useState('')
@@ -34,6 +42,13 @@ export function FeedbackButton() {
       setIsOpen(false)
     }
   }
+
+  useEffect(() => {
+    if (externalOpen) {
+      setIsOpen(true)
+      onExternalOpenHandled?.()
+    }
+  }, [externalOpen, onExternalOpenHandled])
 
   useEffect(() => {
     if (isOpen) {

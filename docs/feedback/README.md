@@ -16,7 +16,7 @@ The feedback system lets users submit structured feedback (bugs, improvements, f
 
 ## Frontend
 
-- **FeedbackButton** (`src/components/dashboard/FeedbackButton.tsx`): Floating button (fixed bottom-right, purple pill) "What would make Harvey better?" Opens a modal with label chips (Bug, Improvement, Feature Request, Question, Other), textarea, and Submit. On success shows "Thanks for your feedback! 🎉" for 2s then closes. Modal closes on backdrop click or Escape. Rendered on the dashboard page (`src/app/dashboard/page.tsx`).
+- **FeedbackButton** (`src/components/dashboard/FeedbackButton.tsx`): Floating button (fixed bottom-right, purple pill) "What would make Harvey better?" Opens a modal with label chips (Bug, Improvement, Feature Request, Question, Other), textarea, and Submit. On success shows "Thanks for your feedback! 🎉" for 2s then closes. Modal closes on backdrop click or Escape. Rendered on the dashboard page (`src/app/dashboard/page.tsx`). Optional props: `externalOpen` (boolean) — when true, the modal opens; `onExternalOpenHandled` (callback) — called when opening via `externalOpen` so the parent can reset its state (e.g. set `externalOpen` back to false). Used by DashboardSidebar user menu to open the feedback modal from "What would make Harvey better?".
 
 ## Files
 

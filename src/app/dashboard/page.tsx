@@ -36,6 +36,7 @@ import {
   GuidedTour,
 } from '@/components/dashboard'
 import { FeedbackButton } from '@/components/dashboard/FeedbackButton'
+import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar'
 import type { ViewMode } from '@/components/dashboard'
 
 // Import types
@@ -207,10 +208,16 @@ export default function DashboardPage() {
    */
   const [userId, setUserId] = useState<string | null>(null)
 
+  const [userName, setUserName] = useState<string | null>(null)
+  const [userPlan, setUserPlan] = useState<string>('free')
+
   /**
    * Payment success: set when redirect from Stripe has ?payment=success. Shows toast and auto-clears.
    */
   const [paymentSuccess, setPaymentSuccess] = useState(false)
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [feedbackExternalOpen, setFeedbackExternalOpen] = useState(false)
 
   // ===== DATA FETCHING =====
 
@@ -495,6 +502,8 @@ export default function DashboardPage() {
         const res = await fetch('/api/user/me')
         if (!res.ok) return
         const data = await res.json()
+        setUserName(data.name || null)
+        setUserPlan(data.payment_status || 'free')
         if (data.has_completed_tour === false) {
           setHasCompletedTour(false)
           setShowTour(true)
@@ -1108,14 +1117,26 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
           }}
         />
       </Suspense>
-      {/* ========== LEFT SIDEBAR - Interactive Chat (40%) ========== */}
+      <DashboardSidebar
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen((prev) => !prev)}
+        openTaskChats={openTaskChats}
+        activeConversation={activeConversation}
+        onSelectConversation={handleSelectConversation}
+        projectId={projectId}
+        projectTitle={projectTitle}
+        userName={userName}
+        userPlan={userPlan}
+        onSignOut={handleSignOut}
+        onOpenFeedback={() => setFeedbackExternalOpen(true)}
+      />
+      {/* ========== CHAT - Project / Task conversations ========== */}
       <ChatSidebar
         key={`chat-${projectId ?? ''}-${isLoadingMessages ? 'loading' : 'ready'}`}
         initialMessages={messages}
         projectTitle={projectTitle}
         projectId={projectId}
         isLoading={isLoadingMessages}
-        onSignOut={handleSignOut}
         onTasksChanged={fetchTasks}
         onAppendMessage={appendMessageToDiscussion}
         appendedByParent={appendedByDashboard}
@@ -1124,15 +1145,11 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         onTestCheckIn={runCheckIn}
         activeConversation={activeConversation}
         openTaskChats={openTaskChats}
-        isPanelOpen={isPanelOpen}
-        onPanelOpen={() => setIsPanelOpen(true)}
-        onPanelClose={() => setIsPanelOpen(false)}
-        onSelectConversation={handleSelectConversation}
         onBackToProject={() => setActiveConversation('project')}
       />
 
-      {/* ========== RIGHT AREA - List OR Timeline (60%) ========== */}
-      <main className="w-[60%] h-full overflow-y-auto flex flex-col bg-[#FAF9F6]">
+      {/* ========== RIGHT AREA - List OR Timeline ========== */}
+      <main className="flex-[6] min-w-0 h-full overflow-y-auto flex flex-col bg-[#FAF9F6]">
         {/* Payment success toast — fixed top of right panel, slide down + fade in */}
         {paymentSuccess && (
           <div
@@ -1344,7 +1361,10 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
         </div>
       )}
 
-      <FeedbackButton />
+      <FeedbackButton
+        externalOpen={feedbackExternalOpen}
+        onExternalOpenHandled={() => setFeedbackExternalOpen(false)}
+      />
     </div>
   )
 }
