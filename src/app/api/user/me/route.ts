@@ -24,12 +24,16 @@ export async function GET() {
 
     const dbUser = await getUserById(user.id)
     if (!dbUser) {
-      return NextResponse.json({ name: null, has_completed_tour: false }, { status: 200 })
+      return NextResponse.json(
+        { name: null, has_completed_tour: false, payment_status: 'free' },
+        { status: 200 }
+      )
     }
 
     return NextResponse.json({
       name: dbUser.name ?? null,
       has_completed_tour: dbUser.has_completed_tour ?? false,
+      payment_status: dbUser.payment_status ?? 'free',
     })
   } catch (error) {
     console.error('[UserMeAPI] GET error:', error)

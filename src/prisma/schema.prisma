@@ -37,6 +37,7 @@ model User {
 
   // Billing / cost tracking
   subscription_start_date DateTime?
+  payment_status         String   @default("free") // "free" | "paid"
 
   // Relations
   projects         Project[]

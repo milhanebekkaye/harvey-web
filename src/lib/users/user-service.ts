@@ -94,6 +94,7 @@ export async function createUser(data: CreateUserData): Promise<UserServiceRespo
       workSchedule: row.workSchedule ?? {},
       commute: row.commute ?? {},
       has_completed_tour: false,
+      payment_status: 'free',
     }
 
     console.log('[UserService] ✅ User created successfully!')
@@ -165,13 +166,14 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       coaching_style: string | null
       experience_level: string | null
       has_completed_tour: boolean
+      payment_status: string
     }>
   >(
     `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
             "availabilityWindows", "workSchedule", "commute",
             "preferred_session_length", "communication_style", "userNotes", "energy_peak",
             "onboarding_reason", "current_work", "work_style", "biggest_challenge",
-            "coaching_style", "experience_level", "has_completed_tour"
+            "coaching_style", "experience_level", "has_completed_tour", "payment_status"
      FROM "users" WHERE "id" = $1`,
     userId
   )
@@ -206,6 +208,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     coaching_style: row.coaching_style ?? undefined,
     experience_level: row.experience_level ?? undefined,
     has_completed_tour: row.has_completed_tour,
+    payment_status: row.payment_status ?? 'free',
   }
 }
 
@@ -269,13 +272,14 @@ export async function getUserByEmail(email: string): Promise<User | null> {
         coaching_style: string | null
         experience_level: string | null
         has_completed_tour: boolean
+        payment_status: string
       }>
     >(
       `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
               "availabilityWindows", "workSchedule", "commute",
               "preferred_session_length", "communication_style", "userNotes", "energy_peak",
               "onboarding_reason", "current_work", "work_style", "biggest_challenge",
-              "coaching_style", "experience_level", "has_completed_tour"
+              "coaching_style", "experience_level", "has_completed_tour", "payment_status"
        FROM "users" WHERE "email" = $1`,
       email
     )
@@ -312,6 +316,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       coaching_style: row.coaching_style ?? undefined,
       experience_level: row.experience_level ?? undefined,
       has_completed_tour: row.has_completed_tour,
+      payment_status: row.payment_status ?? 'free',
     }
   } catch (error) {
     console.error('[UserService] Error fetching user by email:', error)
@@ -421,6 +426,11 @@ export async function updateUser(
     if (data.has_completed_tour !== undefined) {
       updates.push(`"has_completed_tour" = $${paramIndex}`)
       values.push(data.has_completed_tour)
+      paramIndex++
+    }
+    if (data.payment_status !== undefined) {
+      updates.push(`"payment_status" = $${paramIndex}`)
+      values.push(data.payment_status)
       paramIndex++
     }
 

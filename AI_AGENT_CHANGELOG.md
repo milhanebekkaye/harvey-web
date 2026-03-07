@@ -2,6 +2,25 @@
 
 ---
 
+### [2026-03-07] Stripe integration — Step 5a: payment_status + Stripe package
+
+**Scope:** Backend only; no new API routes for Stripe yet.
+
+**Files changed:**
+
+- **`package.json`** — Added dependency `stripe` (via `npm install stripe`).
+- **`src/prisma/schema.prisma`** — On `User` model, added `payment_status String @default("free")` in the Billing section. Valid values: `"free"` | `"paid"`.
+- **`src/prisma/migrations/20260307120000_add_payment_status/migration.sql`** — New migration: `ALTER TABLE "users" ADD COLUMN "payment_status" TEXT NOT NULL DEFAULT 'free';` (run `npx prisma migrate dev --name add_payment_status` or `npx prisma migrate deploy` locally to apply).
+- **`src/types/user.types.ts`** — Added `payment_status?: string` to `User` and `UpdateUserData`.
+- **`src/lib/users/user-service.ts`** — Included `payment_status` in raw SQL SELECT and return objects in `getUserByIdRaw` and `getUserByEmail`; added `payment_status: 'free'` in `createUser` return object; added `payment_status` to `updateUser` for future webhook use.
+- **`src/app/api/user/me/route.ts`** — GET response now includes `payment_status` (same pattern as `has_completed_tour`). When `dbUser` is null, returns `payment_status: 'free'`.
+
+**Not done (per constraints):** No Stripe API routes; no component changes. No `env.d.ts` (none exists) for `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`.
+
+**Risk:** Low. Additive only. Apply the migration before using the app against the DB.
+
+---
+
 ### [2026-03-06] Guided Tour — Step 5: Paywall overlay screen
 
 **File changed:** `src/components/dashboard/GuidedTour.tsx` only.

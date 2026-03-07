@@ -46,6 +46,9 @@ export interface User {
   coaching_style?: string | null
   experience_level?: string | null
   has_completed_tour?: boolean
+
+  // Billing
+  payment_status?: string // "free" | "paid"
 }
 
 /**
@@ -103,6 +106,7 @@ export interface UpdateUserData {
   coaching_style?: string | null
   experience_level?: string | null
   has_completed_tour?: boolean
+  payment_status?: string // "free" | "paid"
 }
 
 /**
