@@ -2,6 +2,49 @@
 
 ---
 
+### [2026-03-07] Grid selection pre-fills form (save via Add)
+
+**Goal:** When the user selects a time range on the grid (two clicks), pre-fill the add form with that range so they can confirm, change type (Project/Personal), and save by clicking Add.
+
+**Changes:**
+- **`src/components/settings/AvailabilitySection.tsx`**: On second click (same day, completing the range), instead of showing the type popover: (1) Pre-fill the form with the selected day, start time (`HH:00`), and end time (`HH:00`), keeping the current type (default `work`). (2) Clear selection state so the grid highlight is removed. (3) Form stays visible; user can adjust type or times and click **Add** to save. Removed the type popover and `addBlockFromRange`; click-outside handler no longer references `popoverRef`.
+
+**Unchanged:** Add mode, form Add/Cancel, block shape, `onChange`, save flow.
+
+**Risk:** Low. Build passes.
+
+---
+
+### [2026-03-07] Availability grid add mode (gate click-to-select)
+
+**Goal:** Make the availability grid click-to-select only active when the user explicitly enters "add mode", to avoid accidental selection when clicking the grid.
+
+**Changes:**
+- **`src/components/settings/AvailabilitySection.tsx`**: (1) **`gridAddMode` state**: New local state; grid clicks and hover preview run only when `gridAddMode` is true. (2) **"+ Add block"** and empty-state "Add your first availability block" now set both `gridAddMode` and `adding` to true so the form and grid are both available. (3) **`exitAddMode()` helper**: Sets `gridAddMode` false, `adding` false, and resets selection; used when a block is added (form or grid), form Cancel, banner Cancel, and Escape. (4) **`handleCellClick`**: Returns immediately if `!gridAddMode`. (5) **Cell `onMouseEnter`**: Sets `hoverCell` only when `gridAddMode && selectionStart`. (6) **Cursor**: Empty cells use `cursor-pointer` only when `gridAddMode`, otherwise `cursor-default`. (7) **Banner** when `gridAddMode`: "Click on the grid to select a time range, or use the form below" with a Cancel link calling `exitAddMode`. (8) **Grid visual**: When `gridAddMode`, grid wrapper gets `ring-2 ring-violet-200/60 rounded-xl`. (9) Type popover Cancel still only resets selection (user stays in add mode).
+
+**Unchanged:** Block data shape, `onChange`, save flow, grid rendering (colors, segments), settings page and API.
+
+**Docs:** Updated `docs/settings/README.md` and `ARCHITECTURE.md` (grid add mode).
+
+**Risk:** Low. UX gating only; build passes.
+
+---
+
+### [2026-03-07] Availability grid click-to-select
+
+**Goal:** Add click-to-select interaction on the availability weekly grid so users can create blocks by clicking cells instead of only using the add-block form.
+
+**Changes:**
+- **`src/components/settings/AvailabilitySection.tsx`**: (1) **State**: `selectionStart` (first-click cell), `hoverCell`, `pendingRange` (after second click, before type choice). (2) **First click** on an empty cell (not occupied by an existing availability block) sets selection start and highlights the cell (bg-violet-200, border/ring). (3) **Hover** on the same day column shows a light purple preview range between start and hover. (4) **Second click** in the same column finalizes the range (startHour = min, endHour = max + 1, end exclusive) and shows a type popover; second click in a different column resets and sets the new cell as start. (5) **Type popover**: anchored below the grid, white card with “Project” (emerald) and “Personal” (blue) buttons and a Cancel link; choosing a type calls the existing add flow (`onChange([...availableTime, next])`) with HH:00-formatted times and resets selection state. (6) **Hint**: “Click another slot to complete the selection” when selection start is set. (7) **Escape** key and **click outside** the grid/popover reset selection. (8) **Cursor**: `cursor-pointer` on non-occupied cells. Form-based “+ Add block” and all edit/remove/list behavior unchanged.
+
+**Unchanged:** Grid rendering structure, `availableTime` / `onChange` contract, settings page and API. Overlapping blocks still allowed (no extra validation).
+
+**Docs:** Updated `docs/settings/README.md` (grid interaction) and `ARCHITECTURE.md` (AvailabilitySection description).
+
+**Risk:** Low. Additive UI only; build passes.
+
+---
+
 ### [2026-03-07] Settings page UI redesign
 
 **Goal:** Redesign the Settings page layout and visuals to match the Project Details design language; data fetching, save logic, API calls, and all handlers remain identical.

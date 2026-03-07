@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Calendar, X } from 'lucide-react'
 import type {
   AvailabilityBlock,
@@ -90,6 +90,11 @@ export function AvailabilitySection({
     end: '20:00',
     type: 'work',
   })
+  const [gridAddMode, setGridAddMode] = useState(false)
+  const [selectionStart, setSelectionStart] = useState<{ day: string; hour: number } | null>(null)
+  const [hoverCell, setHoverCell] = useState<{ day: string; hour: number } | null>(null)
+  const [pendingRange, setPendingRange] = useState<{ day: string; startHour: number; endHour: number } | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
 
   const totalHoursPerWeek = useMemo(() => totalMinutes(availableTime) / 60, [availableTime])
 
@@ -148,6 +153,74 @@ export function AvailabilitySection({
     return out
   }, [availableTime])
 
+  const isCellOccupiedByBlock = useCallback(
+    (day: string, hour: number) =>
+      displaySegments.some((s) => s.day === day && hour >= s.start && hour < s.end),
+    [displaySegments]
+  )
+
+  const resetSelection = useCallback(() => {
+    setSelectionStart(null)
+    setHoverCell(null)
+    setPendingRange(null)
+  }, [])
+
+  const exitAddMode = useCallback(() => {
+    setGridAddMode(false)
+    setAdding(false)
+    resetSelection()
+  }, [resetSelection])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitAddMode()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [exitAddMode])
+
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (!selectionStart && !pendingRange) return
+      if (gridRef.current?.contains(target)) return
+      resetSelection()
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [selectionStart, pendingRange, resetSelection])
+
+  const handleCellClick = useCallback(
+    (day: string, hour: number) => {
+      if (!gridAddMode) return
+      if (isCellOccupiedByBlock(day, hour)) return
+      if (pendingRange) {
+        setPendingRange(null)
+        setSelectionStart({ day, hour })
+        setHoverCell(null)
+        return
+      }
+      if (!selectionStart) {
+        setSelectionStart({ day, hour })
+        return
+      }
+      if (selectionStart.day !== day) {
+        setSelectionStart({ day, hour })
+        setHoverCell(null)
+        return
+      }
+      const startHour = Math.min(selectionStart.hour, hour)
+      const endHour = Math.max(selectionStart.hour, hour) + 1
+      const startStr = `${String(startHour).padStart(2, '0')}:00`
+      const endStr = `${String(endHour).padStart(2, '0')}:00`
+      setNewBlock((prev) => ({ ...prev, day, start: startStr, end: endStr, type: prev?.type ?? 'work' }))
+      setPendingRange({ day, startHour, endHour })
+      setSelectionStart(null)
+      setHoverCell(null)
+    },
+    [gridAddMode, selectionStart, pendingRange, isCellOccupiedByBlock]
+  )
+
   const addBlock = () => {
     const b = newBlock
     if (!b.day || !b.start || !b.end) return
@@ -166,7 +239,7 @@ export function AvailabilitySection({
     }
     onChange([...availableTime, next])
     setNewBlock({ day: 'monday', start: '18:00', end: '20:00', type: 'work' })
-    setAdding(false)
+    exitAddMode()
   }
 
   const updateBlock = (index: number, updates: Partial<AvailabilityBlock>) => {
@@ -204,10 +277,13 @@ export function AvailabilitySection({
             </p>
           </div>
         </div>
-        {!adding && (
+        {!gridAddMode && (
           <button
             type="button"
-            onClick={() => setAdding(true)}
+            onClick={() => {
+              setGridAddMode(true)
+              setAdding(true)
+            }}
             className={`shrink-0 text-sm font-medium ${isCard ? 'px-4 py-2 rounded-full bg-gradient-to-r from-[#895af6] to-[#7849d9] text-white hover:opacity-95' : 'text-[#895af6] hover:text-[#7849d9]'}`}
           >
             + Add block
@@ -255,7 +331,7 @@ export function AvailabilitySection({
           </button>
           <button
             type="button"
-            onClick={() => setAdding(false)}
+            onClick={exitAddMode}
             className="px-3 py-1.5 text-slate-600 text-sm"
           >
             Cancel
@@ -283,7 +359,32 @@ export function AvailabilitySection({
         </span>
       </div>
 
-      <div className={`overflow-x-auto mb-6 ${gridWrapperClass}`}>
+      {gridAddMode && (
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-xs text-violet-500 font-medium">
+            Click on the grid to select a time range, or use the form below
+          </p>
+          <button
+            type="button"
+            onClick={exitAddMode}
+            className="text-xs text-slate-400 hover:text-slate-600 underline shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {selectionStart && !pendingRange && gridAddMode && (
+        <p className="text-xs text-violet-500 font-medium mb-2">
+          Click another slot to complete the selection
+        </p>
+      )}
+
+      <div
+        className={`overflow-x-auto mb-6 relative ${gridWrapperClass} ${gridAddMode ? 'ring-2 ring-violet-200/60 rounded-xl' : ''}`}
+        ref={gridRef}
+        onMouseLeave={() => setHoverCell(null)}
+      >
         <div className={gridClass}>
           <div className="bg-slate-50 p-2 text-xs font-medium text-slate-500" />
           {DAYS.map((day) => (
@@ -303,16 +404,38 @@ export function AvailabilitySection({
                   (s) => s.day === day && hour >= s.start && hour < s.end
                 )
                 const type = (avail.find(s => s.block?.type === 'personal') ?? avail[0])?.block?.type
+                const occupiedByBlock = isCellOccupiedByBlock(day, hour)
+                const isSelectionStart = selectionStart?.day === day && selectionStart?.hour === hour
+                const isPending =
+                  pendingRange?.day === day && hour >= pendingRange.startHour && hour < pendingRange.endHour
+                const isHoverPreview =
+                  !pendingRange &&
+                  selectionStart &&
+                  hoverCell?.day === selectionStart.day &&
+                  day === selectionStart.day &&
+                  hour >= Math.min(selectionStart.hour, hoverCell.hour) &&
+                  hour <= Math.max(selectionStart.hour, hoverCell.hour)
                 let bg = 'bg-white'
-                if (work) bg = 'bg-slate-300'
+                if (isPending) bg = 'bg-violet-200/80'
+                else if (isSelectionStart) bg = 'bg-violet-200'
+                else if (isHoverPreview) bg = 'bg-violet-100/60'
+                else if (work) bg = 'bg-slate-300'
                 else if (comm) bg = 'bg-slate-200'
                 else if (avail.length) bg = type === 'personal' ? 'bg-sky-400/40' : 'bg-emerald-400/40'
                 const hasOverlap = work && avail.some(s => s.block?.type === 'work')
                 return (
                   <div
                     key={`${day}-${hour}`}
-                    className={`${bg} min-h-[20px]`}
-                    style={hasOverlap ? {
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleCellClick(day, hour)}
+                    onMouseEnter={() => {
+                      if (!gridAddMode || !selectionStart) return
+                      setHoverCell({ day, hour })
+                    }}
+                    onMouseLeave={() => setHoverCell(null)}
+                    className={`${bg} min-h-[20px] ${!occupiedByBlock && gridAddMode ? 'cursor-pointer' : 'cursor-default'} ${isSelectionStart ? 'border border-violet-300 ring-1 ring-violet-300/50' : ''}`}
+                    style={hasOverlap && !isPending && !isSelectionStart && !isHoverPreview ? {
                       backgroundImage: 'repeating-linear-gradient(45deg, rgba(52,211,153,0.45) 0px, rgba(52,211,153,0.45) 3px, transparent 3px, transparent 8px)'
                     } : undefined}
                   />
@@ -330,12 +453,15 @@ export function AvailabilitySection({
         </span>
       </div>
 
-      {availableTime.length === 0 && !adding && (
+      {availableTime.length === 0 && !gridAddMode && (
         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center mb-4">
           <p className="text-slate-500 text-sm mb-3">No availability blocks yet.</p>
           <button
             type="button"
-            onClick={() => setAdding(true)}
+            onClick={() => {
+              setGridAddMode(true)
+              setAdding(true)
+            }}
             className="text-sm font-medium text-[#895af6] hover:text-[#7849d9]"
           >
             Add your first availability block

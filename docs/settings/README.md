@@ -19,7 +19,8 @@ The Settings page lets users view and edit all constraints and preferences that 
 
 2. **Availability Windows** – Project allocations (stored on **Project.contextData**)
    - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type). When overlapping blocks share a cell, personal is preferred for the displayed color. Cells where both work schedule and a project block overlap show a diagonal stripe overlay (sky-blue).
-   - List of blocks: day, start, end, type (work | personal); add / edit / delete; displayed newest first
+   - **Click-to-select** (only in add mode): Click "+ Add block" (or "Add your first availability block") to enter add mode; then click an empty cell to set start, another cell in the same day to set end; type popover (Project / Personal) adds the block. Cancel link on the hint banner or Escape exits add mode. Single-cell click creates a 1-hour block. Form-based add remains available in add mode.
+   - List of blocks: day, start, end, type (work | personal); add / edit / delete; displayed newest first. Form-based “+ Add block” remains available.
    - Total hours per week
    - Empty state when no blocks
 

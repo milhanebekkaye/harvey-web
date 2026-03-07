@@ -229,8 +229,8 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAF8] overflow-y-auto">
-      {/* 1. Sticky top bar */}
-      <header className="sticky top-0 z-20 backdrop-blur-[20px] bg-[rgba(250,250,248,0.72)] border-b border-black/[0.06]">
+      {/* 1. Fixed top bar — stays at top when scrolling */}
+      <header className="fixed top-0 left-0 right-0 z-20 backdrop-blur-[20px] bg-[rgba(250,250,248,0.92)] border-b border-black/[0.06]">
         <div className="max-w-5xl mx-auto px-10 h-14 flex items-center justify-between">
           <button
             type="button"
@@ -267,7 +267,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-10 pt-8 pb-24">
+      <div className="max-w-5xl mx-auto px-10 pt-14 pb-24">
         {/* 2. Header */}
         <section className="flex flex-wrap items-start justify-between gap-6 mb-8">
           <div>
@@ -306,7 +306,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* 3. Tab bar */}
+        {/* 3. Tab bar — sticks below fixed header */}
         <div className="sticky top-14 z-10 bg-[#FAFAF8] border-b border-slate-200/80 -mx-10 px-10 pb-0">
           <div className="flex gap-8">
             <button

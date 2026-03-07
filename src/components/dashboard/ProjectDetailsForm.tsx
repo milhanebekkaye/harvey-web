@@ -339,8 +339,8 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
         </div>
       )}
 
-      {/* 1. Sticky top bar */}
-      <header className="sticky top-0 z-20 backdrop-blur-[20px] bg-[rgba(250,250,248,0.72)] border-b border-black/[0.06]">
+      {/* 1. Fixed top bar — stays at top when scrolling */}
+      <header className="fixed top-0 left-0 right-0 z-20 backdrop-blur-[20px] bg-[rgba(250,250,248,0.92)] border-b border-black/[0.06]">
         <div className="max-w-6xl mx-auto px-10 h-14 flex items-center justify-between">
           <button
             type="button"

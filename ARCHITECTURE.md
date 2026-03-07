@@ -312,7 +312,7 @@ See `docs/timeline-view.md` for feature-level behavior and API contracts.
 Settings page sections (Feature B):
 
 - **`WorkScheduleSection.tsx`**: Work days (Mon–Sun), work start/end time, optional commute (morning/evening duration + start). Reads/writes User only. Optional `variant="card"` for Settings redesign (pill day selector, icon box, commute with "min" suffix).
-- **`AvailabilitySection.tsx`**: Week-view grid (work grey, commute lighter, availability blocks colored by type), list of blocks (displayed newest first) with add/edit/delete, total hours per week, empty state. Reads/writes Project.contextData.available_time; displays User work/commute for grid.
+- **`AvailabilitySection.tsx`**: Week-view grid (work grey, commute lighter, availability blocks colored by type) with click-to-select (only in add mode): first click on an empty cell sets selection start, hover previews range on same day, second click (same column) opens type popover (Project/Personal); Add mode is gated: enter via "+ Add block"; exit on add, Cancel, or Escape. List of blocks (displayed newest first) with add/edit/delete; form-based “+ Add block” still available. Total hours per week, empty state. Reads/writes Project.contextData.available_time; displays User work/commute for grid.
 - **`PreferencesSection.tsx`**: Energy pattern, rest days, preferred session length (presets + custom), communication style. User and Project preferences.
 
 ### `src/components/onboarding/`
