@@ -20,7 +20,7 @@ Harvey uses **Stripe** for payments. This doc covers the backend and API surface
 
 - **Env:** `NEXT_PUBLIC_STRIPE_PAYMENT_LINK` — Stripe Payment Link URL (test or live). Used client-side so the paywall "Unlock Harvey" button can open the link with `?client_reference_id=<userId>`.
 - **GuidedTour:** Accepts `userId`. "Unlock Harvey" opens the Payment Link in a new tab with `client_reference_id` set, scrolls the dashboard to top, and dismisses the tour. "Maybe later" only scrolls and dismisses.
-- **Dashboard:** Resolves `userId` from Supabase `auth.getUser()` and passes it to `GuidedTour`. On load, if the URL has `?payment=success`, shows a success toast ("Payment successful! Harvey is fully unlocked."), cleans the URL to `/dashboard`, and auto-dismisses the toast after 5 seconds.
+- **Dashboard:** Resolves `userId` from Supabase `auth.getUser()` and passes it to `GuidedTour`. Payment success is detected by a small `PaymentSuccessHandler` component wrapped in `<Suspense>` (required by Next.js for `useSearchParams()`). When the URL has `?payment=success`, it shows a success toast ("Payment successful! Harvey is fully unlocked."), cleans the URL to `/dashboard`, and auto-dismisses the toast after 5 seconds.
 - **Stripe Dashboard:** Set the Payment Link’s **success URL** to your app’s dashboard with a query param, e.g. `https://your-domain.com/dashboard?payment=success`, so Stripe redirects there after payment.
 
 ## Environment

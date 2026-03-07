@@ -22,7 +22,7 @@
 
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
@@ -68,12 +68,28 @@ interface DiscussionApiResponse {
 }
 
 // ============================================
+// Payment success handler (uses useSearchParams — must be in Suspense)
+// ============================================
+
+function PaymentSuccessHandler({ onSuccess }: { onSuccess: () => void }) {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('payment') === 'success') {
+      onSuccess()
+      window.history.replaceState({}, '', '/dashboard')
+    }
+  }, [searchParams, onSuccess])
+
+  return null
+}
+
+// ============================================
 // Dashboard Page Component
 // ============================================
 
 export default function DashboardPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   // ===== STATE =====
 
@@ -488,18 +504,6 @@ export default function DashboardPage() {
     }
     void checkTourStatus()
   }, [])
-
-  /**
-   * Handle redirect from Stripe with ?payment=success: show toast, clean URL, auto-dismiss.
-   */
-  useEffect(() => {
-    if (searchParams.get('payment') === 'success') {
-      setPaymentSuccess(true)
-      window.history.replaceState({}, '', '/dashboard')
-      const t = setTimeout(() => setPaymentSuccess(false), 5000)
-      return () => clearTimeout(t)
-    }
-  }, [searchParams])
 
   /**
    * Close the floating view selector when clicking outside or pressing Escape.
@@ -1095,6 +1099,14 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAF9F6]">
+      <Suspense fallback={null}>
+        <PaymentSuccessHandler
+          onSuccess={() => {
+            setPaymentSuccess(true)
+            setTimeout(() => setPaymentSuccess(false), 5000)
+          }}
+        />
+      </Suspense>
       {/* ========== LEFT SIDEBAR - Interactive Chat (40%) ========== */}
       <ChatSidebar
         key={`chat-${projectId ?? ''}-${isLoadingMessages ? 'loading' : 'ready'}`}

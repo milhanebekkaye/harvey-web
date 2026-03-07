@@ -2,6 +2,18 @@
 
 ---
 
+### [2026-03-07] Dashboard: wrap useSearchParams in Suspense for Vercel build
+
+**File changed:** `src/app/dashboard/page.tsx` only.
+
+**Issue:** Vercel production build failed with "useSearchParams() should be wrapped in a suspense boundary at page /dashboard". Next.js App Router requires `useSearchParams()` to be used inside a component that is wrapped in `<Suspense>`.
+
+**Fix:** Extracted payment-success detection into a small client component `PaymentSuccessHandler` in the same file. It uses `useSearchParams()`, calls `onSuccess()` when `?payment=success` is present, and cleans the URL with `replaceState`; it returns `null`. The main `DashboardPage` no longer calls `useSearchParams()`. Where the dashboard’s main return starts, added `<Suspense fallback={null}><PaymentSuccessHandler onSuccess={() => { setPaymentSuccess(true); setTimeout(() => setPaymentSuccess(false), 5000) }} /></Suspense>`. `paymentSuccess` state and the success toast remain in `DashboardPage`; only the source of the trigger moved into the Suspense-wrapped child.
+
+**Risk:** None. Behavior unchanged; build passes.
+
+---
+
 ### [2026-03-07] Stripe integration — Step 5c: Payment Link from tour + success redirect
 
 **Files changed:** `.env.local`, `src/components/dashboard/GuidedTour.tsx`, `src/app/dashboard/page.tsx`.
