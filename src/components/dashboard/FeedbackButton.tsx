@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
 const LABELS = [
-  { value: 'bug', label: 'Bug' },
-  { value: 'improvement', label: 'Improvement' },
-  { value: 'feature_request', label: 'Feature Request' },
-  { value: 'question', label: 'Question' },
-  { value: 'other', label: 'Other' },
+  { value: 'bug', label: 'Bug', icon: 'bug_report' as const },
+  { value: 'improvement', label: 'Improvement', icon: 'trending_up' as const },
+  { value: 'feature_request', label: 'Feature Request', icon: 'lightbulb' as const },
+  { value: 'question', label: 'Question', icon: 'help_outline' as const },
+  { value: 'other', label: 'Other', icon: 'more_horiz' as const },
 ] as const
 
 export interface FeedbackButtonProps {
@@ -146,17 +146,18 @@ export function FeedbackButton({
                 <>
                   <p className="text-sm text-slate-500 mb-3">Category</p>
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {LABELS.map(({ value, label }) => (
+                    {LABELS.map(({ value, label, icon }) => (
                       <button
                         key={value}
                         type="button"
                         onClick={() => setSelectedLabel(value)}
-                        className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                           selectedLabel === value
                             ? 'bg-[#8B5CF6] text-white'
                             : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
+                        <span className="material-symbols-outlined text-base">{icon}</span>
                         {label}
                       </button>
                     ))}
