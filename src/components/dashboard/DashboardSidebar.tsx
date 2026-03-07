@@ -22,7 +22,7 @@ function truncateTitle(title: string, maxLen: number): string {
 }
 
 function displayPlanLabel(plan: string): string {
-  if (plan === 'active' || plan === 'pro') return 'Pro Plan'
+  if (['active', 'pro', 'paid'].includes(plan)) return 'Pro Plan'
   return 'Free Plan'
 }
 
@@ -67,7 +67,7 @@ export function DashboardSidebar({
   }, [isUserMenuOpen])
 
   const avatarLetter = userName ? userName.trim().charAt(0).toUpperCase() : '?'
-  const isProOrActive = userPlan === 'active' || userPlan === 'pro'
+  const hasProPlan = ['active', 'pro', 'paid'].includes(userPlan)
 
   return (
     <aside
@@ -85,7 +85,7 @@ export function DashboardSidebar({
             className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:text-violet-600 hover:bg-violet-50 transition-colors"
             aria-label="Open sidebar"
           >
-            <span className="material-symbols-outlined text-2xl">menu</span>
+            <span className="material-symbols-outlined text-xl text-slate-700">menu</span>
           </button>
         </div>
       ) : (
@@ -94,7 +94,11 @@ export function DashboardSidebar({
           {/* A. Header */}
           <div className="shrink-0 flex items-center justify-between p-4 border-b border-slate-200">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xl shrink-0" aria-hidden>🦞</span>
+              <img
+                src="/harvey/penguin-hat.png"
+                alt="Harvey"
+                className="w-8 h-8 rounded-full object-cover shrink-0"
+              />
               <span className="font-semibold text-lg text-slate-900 truncate">
                 Harvey AI
               </span>
@@ -102,25 +106,25 @@ export function DashboardSidebar({
             <button
               type="button"
               onClick={onToggle}
-              className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              className="shrink-0 p-1.5 rounded-lg text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               aria-label="Close sidebar"
             >
-              <span className="material-symbols-outlined text-xl">close</span>
+              <span className="material-symbols-outlined text-base">close</span>
             </button>
           </div>
 
           {/* B. Navigation — Dashboard (active) */}
           <div className="shrink-0 p-3 border-b border-slate-100">
-            <div className="rounded-lg py-2 px-3 bg-violet-100 text-violet-700 font-medium text-sm cursor-default">
-              <span className="material-symbols-outlined text-lg align-middle mr-2">dashboard</span>
+            <div className="rounded-lg py-2 px-3 bg-violet-100 text-violet-700 font-medium text-sm cursor-default flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">dashboard</span>
               Dashboard
             </div>
           </div>
 
-          {/* C. Conversations */}
+          {/* C. Recent chats */}
           <div className="flex-1 overflow-y-auto p-3 min-h-0">
-            <h3 className="text-xs uppercase text-slate-400 tracking-wider mb-2 font-semibold">
-              Conversations
+            <h3 className="text-xs uppercase text-slate-500 tracking-wider mb-2 font-semibold">
+              Recent chats
             </h3>
             <div className="flex flex-col gap-0.5">
               <button
@@ -132,7 +136,7 @@ export function DashboardSidebar({
                     : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
-                <span className="material-symbols-outlined text-lg text-slate-500 shrink-0">forum</span>
+                <span className="size-2 rounded-full shrink-0 bg-green-500" aria-hidden />
                 <span className="truncate">Project Chat</span>
               </button>
               {openTaskChats.map((item) => {
@@ -164,23 +168,23 @@ export function DashboardSidebar({
               {projectId ? (
                 <Link
                   href={`/dashboard/project/${projectId}`}
-                  className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-lg text-slate-500">folder</span>
+                  <span className="material-symbols-outlined text-base text-slate-600">folder_open</span>
                   Project Details
                 </Link>
               ) : (
-                <span className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-300 cursor-not-allowed">
-                  <span className="material-symbols-outlined text-lg">folder</span>
+                <span className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-400 cursor-not-allowed">
+                  <span className="material-symbols-outlined text-base">folder_open</span>
                   Project Details
                 </span>
               )}
               <Link
                 href="/dashboard/roadmap"
-                className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+                className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
               >
-                <span className="material-symbols-outlined text-lg text-slate-500">map</span>
-                Roadmap
+                <span className="material-symbols-outlined text-base text-slate-600">rate_review</span>
+                Vote for next features
               </Link>
             </div>
           </div>
@@ -199,7 +203,7 @@ export function DashboardSidebar({
                   className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-lg text-slate-500">settings</span>
+                  <span className="material-symbols-outlined text-base text-slate-600">settings</span>
                   Settings
                 </Link>
                 <Link
@@ -208,8 +212,8 @@ export function DashboardSidebar({
                   className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-lg text-slate-500">map</span>
-                  Roadmap
+                  <span className="material-symbols-outlined text-base text-slate-600">rate_review</span>
+                  Vote for next features
                 </Link>
                 <button
                   type="button"
@@ -220,23 +224,25 @@ export function DashboardSidebar({
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer text-left"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-lg text-slate-500">chat_bubble</span>
+                  <span className="material-symbols-outlined text-base text-slate-600">feedback</span>
                   What would make Harvey better?
                 </button>
                 <div className="border-t border-slate-100 my-1" />
-                {isProOrActive ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 cursor-default rounded-lg mx-1">
-                    <span className="material-symbols-outlined text-lg">auto_awesome</span>
+                {hasProPlan ? (
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-slate-400 cursor-default rounded-lg mx-1">
+                    <span className="material-symbols-outlined text-base">workspace_premium</span>
                     Upgrade Plan
                   </div>
                 ) : (
                   <Link
-                    href="/dashboard/settings"
+                    href={process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK ?? '/dashboard/settings'}
                     onClick={() => setIsUserMenuOpen(false)}
+                    target={process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK ? '_blank' : undefined}
+                    rel={process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK ? 'noopener noreferrer' : undefined}
                     className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                     role="menuitem"
                   >
-                    <span className="material-symbols-outlined text-lg text-slate-500">auto_awesome</span>
+                    <span className="material-symbols-outlined text-base text-slate-600">workspace_premium</span>
                     Upgrade Plan
                   </Link>
                 )}
@@ -246,10 +252,10 @@ export function DashboardSidebar({
                     onSignOut()
                     setIsUserMenuOpen(false)
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg mx-1 cursor-pointer text-left"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg mx-1 cursor-pointer text-left"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-lg">logout</span>
+                  <span className="material-symbols-outlined text-base">logout</span>
                   Log out
                 </button>
               </div>
@@ -273,7 +279,7 @@ export function DashboardSidebar({
                 <p className="text-xs text-slate-400">{displayPlanLabel(userPlan)}</p>
               </div>
               <span
-                className={`material-symbols-outlined text-lg text-slate-400 shrink-0 transition-transform ${isUserMenuOpen ? 'rotate-0' : ''}`}
+                className={`material-symbols-outlined text-base text-slate-600 shrink-0 transition-transform ${isUserMenuOpen ? 'rotate-0' : ''}`}
               >
                 expand_less
               </span>

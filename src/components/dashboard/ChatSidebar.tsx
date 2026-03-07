@@ -77,27 +77,16 @@ export function ChatSidebar({
     ? openTaskChats.find((t) => t.id === activeConversation)
     : null
 
+  const projectLabel = projectTitle || 'Project'
   const discussionLabel = isProject
-    ? 'Project Chat'
-    : `${activeTask?.title ?? 'Task'} chat`
+    ? `${projectLabel} / Project Chat`
+    : `${projectLabel} / ${activeTask?.title ?? 'Task'} chat`
 
   return (
     <aside data-tour="chat-sidebar" className="flex-[4] min-w-0 flex flex-col glass-sidebar z-10 relative">
-      {/* Header: Harvey AI + discussion label */}
-      <div className="p-6 pb-4 shrink-0 border-b border-slate-100">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="size-12 rounded-full bg-[rgba(255,255,255,0.45)] flex items-center justify-center overflow-hidden shrink-0 p-0.5">
-            <img
-              src="/harvey/penguin-hat.png"
-              alt="Harvey"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            Harvey AI
-          </h1>
-        </div>
-        <p className="text-xs text-slate-500 font-medium">
+      {/* Header: project title + discussion (branding is in DashboardSidebar) */}
+      <div className="p-4 shrink-0 border-b border-slate-100">
+        <p className="text-sm text-slate-700 font-medium">
           {discussionLabel}
         </p>
       </div>

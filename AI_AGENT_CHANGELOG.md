@@ -2,6 +2,25 @@
 
 ---
 
+### [2026-03-07] DashboardSidebar and ChatSidebar UI adjustments
+
+**DashboardSidebar.tsx:**
+- **Header:** Replaced lobster emoji (🦞) with Harvey penguin image (`/harvey/penguin-hat.png`), sized w-8 h-8 rounded-full object-cover.
+- **Section label:** "Conversations" renamed to "Recent chats".
+- **Project Chat:** Replaced forum icon with pin icon (`push_pin` from material-symbols-outlined).
+- **Roadmap labels:** Both instances (links section and user menu) renamed to "Vote for next features"; href and icons unchanged.
+- **Pro Plan detection:** Plan label and Upgrade disabled state now treat `'active'`, `'pro'`, and `'paid'` as Pro (using `['active', 'pro', 'paid'].includes(userPlan)`).
+- **Upgrade Plan link:** When user is on free plan, link uses `process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK` (same as GuidedTour); opens in new tab when set; fallback `/dashboard/settings` when env not set.
+
+**ChatSidebar.tsx:**
+- **Header:** Removed Harvey avatar image and "Harvey AI" title; kept only the discussion label (e.g. "Project Chat" or task name). Reduced header padding (p-4).
+
+**Docs:** Updated `ARCHITECTURE.md` and `docs/dashboard/README.md`.
+
+**Risk:** None. UI-only; no API or chat logic changes.
+
+---
+
 ### [2026-03-07] Integrate DashboardSidebar, remove old nav rail and ProjectDropdownMenu
 
 **Goal:** Integrate the new collapsible DashboardSidebar into the dashboard; remove the ChatSidebar icon rail, ConversationNavPanel overlay, and ProjectDropdownMenu; rewire layout and feedback trigger.
