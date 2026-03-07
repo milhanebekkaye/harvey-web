@@ -1,14 +1,16 @@
 'use client'
 
+import type { LucideIcon } from 'lucide-react'
+import { Bug, HelpCircle, Lightbulb, MessageSquare, MoreHorizontal, TrendingUp, X } from 'lucide-react'
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const LABELS = [
-  { value: 'bug', label: 'Bug', icon: 'bug_report' as const },
-  { value: 'improvement', label: 'Improvement', icon: 'trending_up' as const },
-  { value: 'feature_request', label: 'Feature Request', icon: 'lightbulb' as const },
-  { value: 'question', label: 'Question', icon: 'help_outline' as const },
-  { value: 'other', label: 'Other', icon: 'more_horiz' as const },
-] as const
+const LABELS: { value: string; label: string; Icon: LucideIcon }[] = [
+  { value: 'bug', label: 'Bug', Icon: Bug },
+  { value: 'improvement', label: 'Improvement', Icon: TrendingUp },
+  { value: 'feature_request', label: 'Feature Request', Icon: Lightbulb },
+  { value: 'question', label: 'Question', Icon: HelpCircle },
+  { value: 'other', label: 'Other', Icon: MoreHorizontal },
+]
 
 export interface FeedbackButtonProps {
   externalOpen?: boolean
@@ -106,7 +108,7 @@ export function FeedbackButton({
         className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-[#8B5CF6] px-4 py-3 text-white shadow-lg hover:bg-[#7849d9] transition-colors"
         aria-label="Share feedback"
       >
-        <span className="material-symbols-outlined text-xl">chat_bubble</span>
+        <MessageSquare className="w-5 h-5" />
         <span className="text-sm font-medium">What would make Harvey better?</span>
       </button>
 
@@ -134,7 +136,7 @@ export function FeedbackButton({
                   className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                   aria-label="Close"
                 >
-                  <span className="material-symbols-outlined text-xl">close</span>
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
@@ -146,7 +148,7 @@ export function FeedbackButton({
                 <>
                   <p className="text-sm text-slate-500 mb-3">Category</p>
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {LABELS.map(({ value, label, icon }) => (
+                    {LABELS.map(({ value, label, Icon }) => (
                       <button
                         key={value}
                         type="button"
@@ -157,7 +159,7 @@ export function FeedbackButton({
                             : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-base">{icon}</span>
+                        <Icon className="w-4 h-4" />
                         {label}
                       </button>
                     ))}

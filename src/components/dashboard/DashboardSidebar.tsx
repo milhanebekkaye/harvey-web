@@ -1,5 +1,17 @@
 'use client'
 
+import {
+  ChevronUp,
+  Crown,
+  LayoutDashboard,
+  FolderOpen,
+  LogOut,
+  Menu,
+  MessageSquareHeart,
+  Settings,
+  Star,
+  X,
+} from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 
@@ -85,7 +97,7 @@ export function DashboardSidebar({
             className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:text-violet-600 hover:bg-violet-50 transition-colors"
             aria-label="Open sidebar"
           >
-            <span className="material-symbols-outlined text-xl text-slate-700">menu</span>
+            <Menu className="w-5 h-5 text-slate-700" />
           </button>
         </div>
       ) : (
@@ -109,14 +121,14 @@ export function DashboardSidebar({
               className="shrink-0 p-1.5 rounded-lg text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors"
               aria-label="Close sidebar"
             >
-              <span className="material-symbols-outlined text-base">close</span>
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* B. Navigation — Dashboard (active) */}
           <div className="shrink-0 p-3 border-b border-slate-100">
             <div className="rounded-lg py-2 px-3 bg-violet-100 text-violet-700 font-medium text-sm cursor-default flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">dashboard</span>
+              <LayoutDashboard className="w-4 h-4" />
               Dashboard
             </div>
           </div>
@@ -170,12 +182,12 @@ export function DashboardSidebar({
                   href={`/dashboard/project/${projectId}`}
                   className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-base text-slate-600">folder_open</span>
+                  <FolderOpen className="w-4 h-4 text-slate-600" />
                   Project Details
                 </Link>
               ) : (
                 <span className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-400 cursor-not-allowed">
-                  <span className="material-symbols-outlined text-base">folder_open</span>
+                  <FolderOpen className="w-4 h-4" />
                   Project Details
                 </span>
               )}
@@ -183,7 +195,7 @@ export function DashboardSidebar({
                 href="/dashboard/roadmap"
                 className="flex items-center gap-2 py-2 px-3 rounded-lg text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors"
               >
-                <span className="material-symbols-outlined text-base text-slate-600">rate_review</span>
+                <Star className="w-4 h-4 text-slate-600" />
                 Vote for next features
               </Link>
             </div>
@@ -203,7 +215,7 @@ export function DashboardSidebar({
                   className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-base text-slate-600">settings</span>
+                  <Settings className="w-4 h-4 text-slate-600" />
                   Settings
                 </Link>
                 <Link
@@ -212,7 +224,7 @@ export function DashboardSidebar({
                   className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-base text-slate-600">rate_review</span>
+                  <Star className="w-4 h-4 text-slate-600" />
                   Vote for next features
                 </Link>
                 <button
@@ -224,13 +236,13 @@ export function DashboardSidebar({
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer text-left"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-base text-slate-600">feedback</span>
+                  <MessageSquareHeart className="w-4 h-4 text-slate-600" />
                   What would make Harvey better?
                 </button>
                 <div className="border-t border-slate-100 my-1" />
                 {hasProPlan ? (
                   <div className="flex items-center gap-2 px-3 py-2 text-sm text-slate-400 cursor-default rounded-lg mx-1">
-                    <span className="material-symbols-outlined text-base">workspace_premium</span>
+                    <Crown className="w-4 h-4" />
                     Upgrade Plan
                   </div>
                 ) : (
@@ -242,7 +254,7 @@ export function DashboardSidebar({
                     className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg mx-1 cursor-pointer"
                     role="menuitem"
                   >
-                    <span className="material-symbols-outlined text-base text-slate-600">workspace_premium</span>
+                    <Crown className="w-4 h-4 text-slate-600" />
                     Upgrade Plan
                   </Link>
                 )}
@@ -255,7 +267,7 @@ export function DashboardSidebar({
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg mx-1 cursor-pointer text-left"
                   role="menuitem"
                 >
-                  <span className="material-symbols-outlined text-base">logout</span>
+                  <LogOut className="w-4 h-4" />
                   Log out
                 </button>
               </div>
@@ -278,11 +290,9 @@ export function DashboardSidebar({
                 </p>
                 <p className="text-xs text-slate-400">{displayPlanLabel(userPlan)}</p>
               </div>
-              <span
-                className={`material-symbols-outlined text-base text-slate-600 shrink-0 transition-transform ${isUserMenuOpen ? 'rotate-0' : ''}`}
-              >
-                expand_less
-              </span>
+              <ChevronUp
+                className={`w-4 h-4 text-slate-600 shrink-0 transition-transform ${isUserMenuOpen ? 'rotate-0' : ''}`}
+              />
             </button>
           </div>
         </>

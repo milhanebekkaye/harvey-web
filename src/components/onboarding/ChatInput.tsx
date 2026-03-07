@@ -17,6 +17,7 @@
 
 'use client'
 
+import { Loader2, Send } from 'lucide-react'
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react'
 
 interface ChatInputProps {
@@ -149,14 +150,10 @@ export function ChatInput({
           >
             {isLoading ? (
               // Loading spinner
-              <span className="animate-spin">
-                <span className="material-symbols-outlined text-2xl">
-                  progress_activity
-                </span>
-              </span>
+              <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
               // Send icon
-              <span className="material-symbols-outlined text-2xl">send</span>
+              <Send className="w-6 h-6" />
             )}
           </button>
         </div>

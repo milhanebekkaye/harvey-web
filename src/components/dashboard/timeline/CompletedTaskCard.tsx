@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react'
 import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
 interface CompletedTaskCardProps {
@@ -23,9 +24,7 @@ export function CompletedTaskCard({ title, completedAt, timezone }: CompletedTas
       <div className="absolute left-[-36px] top-6 -translate-x-1/2 z-10">
         <div className="h-8 w-8 rounded-full bg-white border-2 border-emerald-100 shadow-sm flex items-center justify-center">
           <div className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-            <span className="material-symbols-outlined text-[12px] font-bold leading-none">
-              check
-            </span>
+            <Check className="w-3 h-3 font-bold" />
           </div>
         </div>
       </div>

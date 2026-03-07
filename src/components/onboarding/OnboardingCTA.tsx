@@ -12,6 +12,9 @@
 
 'use client'
 
+import type { LucideIcon } from 'lucide-react'
+import { Loader2, Rocket } from 'lucide-react'
+
 interface OnboardingCTAProps {
   /**
    * Callback when user clicks the CTA button
@@ -53,10 +56,10 @@ interface OnboardingCTAProps {
   helperText?: string
 
   /**
-   * Icon to display in the button
-   * Default: "rocket_launch"
+   * Icon to display in the button (Lucide component)
+   * Default: Rocket
    */
-  icon?: string
+  icon?: LucideIcon
 }
 
 export function OnboardingCTA({
@@ -67,7 +70,7 @@ export function OnboardingCTA({
   labelText = 'Final Step',
   subtitleText = 'Harvey is ready to transform your goals into a step-by-step plan.',
   helperText = 'Takes about 30 seconds to generate your roadmap',
-  icon = 'rocket_launch',
+  icon: Icon = Rocket,
 }: OnboardingCTAProps) {
   const isDisabled = disabled || isLoading
 
@@ -96,9 +99,7 @@ export function OnboardingCTA({
               {isLoading ? (
                 // Loading state
                 <>
-                  <span className="material-symbols-outlined text-[28px] animate-spin">
-                    progress_activity
-                  </span>
+                  <Loader2 className="w-7 h-7 animate-spin" />
                   <span className="text-xl font-bold tracking-tight">
                     Building...
                   </span>
@@ -106,9 +107,7 @@ export function OnboardingCTA({
               ) : (
                 // Normal state
                 <>
-                  <span className="material-symbols-outlined text-[28px] group-hover:rotate-12 transition-transform">
-                    {icon}
-                  </span>
+                  <Icon className="w-7 h-7 group-hover:rotate-12 transition-transform" />
                   <span className="text-xl font-bold tracking-tight">
                     {buttonText}
                   </span>

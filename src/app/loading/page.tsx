@@ -15,6 +15,13 @@
 
 'use client'
 
+import {
+  ArrowLeft,
+  CheckCircle,
+  RefreshCw,
+  Shield,
+  Zap,
+} from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, Suspense, useRef } from 'react'
 import type { GenerateScheduleResponse } from '@/types/api.types'
@@ -355,7 +362,7 @@ function LoadingContent() {
                 <div className="h-full bg-[#895af6] rounded-full absolute indeterminate-bar" />
               </div>
               <div className="flex items-center justify-center gap-2 mt-1">
-                <span className="material-symbols-outlined text-[#895af6] text-sm">bolt</span>
+                <Zap className="w-4 h-4 text-[#895af6]" />
                 <p className="text-[#110d1c]/60 text-xs font-medium italic">
                   Optimizing for deep work phases
                 </p>
@@ -376,9 +383,7 @@ function LoadingContent() {
                 <div className="h-full bg-green-500 rounded-full w-full transition-all duration-500" />
               </div>
               <div className="flex items-center justify-center gap-2 mt-1">
-                <span className="material-symbols-outlined text-green-500 text-sm">
-                  check_circle
-                </span>
+                <CheckCircle className="w-4 h-4 text-green-500" />
                 <p className="text-[#110d1c]/60 text-xs font-medium italic">
                   {taskCount} tasks created
                 </p>
@@ -394,14 +399,14 @@ function LoadingContent() {
                   onClick={handleRetry}
                   className="flex items-center justify-center gap-2 px-6 py-3 bg-[#895af6] text-white font-semibold rounded-xl hover:bg-[#7c4ee0] transition-colors"
                 >
-                  <span className="material-symbols-outlined text-lg">refresh</span>
+                  <RefreshCw className="w-5 h-5" />
                   Try again
                 </button>
                 <button
                   onClick={handleGoBack}
                   className="flex items-center justify-center gap-2 px-6 py-3 bg-transparent text-[#110d1c]/60 font-medium rounded-xl hover:bg-black/5 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-lg">arrow_back</span>
+                  <ArrowLeft className="w-5 h-5" />
                   Go back to onboarding
                 </button>
               </div>
@@ -413,7 +418,7 @@ function LoadingContent() {
       {/* Footer */}
       <footer className="py-4 px-6 flex justify-center">
         <div className="flex items-center gap-2 opacity-30 select-none">
-          <span className="material-symbols-outlined text-sm">security</span>
+          <Shield className="w-4 h-4" />
           <p className="text-[10px] uppercase tracking-[0.2em] font-bold">
             End-to-End Encrypted Data Analysis
           </p>

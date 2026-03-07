@@ -15,7 +15,7 @@
 
 import type { DashboardTask, TaskStatus } from '@/types/task.types'
 import { STATUS_COLORS } from '@/types/task.types'
-import { GripVertical } from 'lucide-react'
+import { ChevronDown, GripVertical } from 'lucide-react'
 import { TaskLabelBadge } from './TaskCategoryBadge'
 
 /**
@@ -282,15 +282,11 @@ export function TaskTile({
           </span>
           {/* Expand Indicator */}
           {variant === 'default' && (
-            <span
-              className={`
-                material-symbols-outlined text-slate-400 text-base
-                transition-transform duration-200
-                ${isExpanded ? 'rotate-180' : ''}
-              `}
-            >
-              expand_more
-            </span>
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                isExpanded ? 'rotate-180' : ''
+              }`}
+            />
           )}
         </div>
       </div>

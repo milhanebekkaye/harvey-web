@@ -18,6 +18,7 @@
 
 'use client'
 
+import { MailCheck, Send } from 'lucide-react'
 import { useState } from 'react'
 import { signInWithMagicLink } from '@/lib/auth/auth-service'
 
@@ -106,9 +107,7 @@ export function EmailLoginForm({ onBack, onError }: EmailLoginFormProps) {
         {/* Success Icon */}
         <div className="flex justify-center">
           <div className="size-16 bg-green-100 rounded-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-4xl text-green-600">
-              mark_email_read
-            </span>
+            <MailCheck className="w-10 h-10 text-green-600" />
           </div>
         </div>
 
@@ -204,7 +203,7 @@ export function EmailLoginForm({ onBack, onError }: EmailLoginFormProps) {
           </>
         ) : (
           <>
-            <span className="material-symbols-outlined text-xl">send</span>
+            <Send className="w-5 h-5" />
             Send Login Link
           </>
         )}

@@ -16,6 +16,8 @@
 
 'use client'
 
+import type { LucideIcon } from 'lucide-react'
+import { Calendar, Code, FlaskConical, Megaphone, MessagesSquare, Palette, User } from 'lucide-react'
 import type { TaskLabel } from '@/types/task.types'
 import { TASK_LABEL_COLORS } from '@/types/task.types'
 
@@ -79,21 +81,21 @@ export function TaskCategoryBadge({
 /**
  * Label Icon Component
  *
- * Returns a Material Symbol icon name for each label.
+ * Returns a Lucide icon component for each label.
  * Useful when you need icons alongside or instead of text.
  *
  * @param label - Task label
- * @returns Material Symbol icon name
+ * @returns Lucide icon component
  */
-export function getCategoryIcon(label: TaskLabel): string {
-  const icons: Record<TaskLabel, string> = {
-    Coding: 'code',
-    Research: 'science',
-    Design: 'palette',
-    Marketing: 'campaign',
-    Communication: 'forum',
-    Personal: 'person',
-    Planning: 'calendar_today',
+export function getCategoryIcon(label: TaskLabel): LucideIcon {
+  const icons: Record<TaskLabel, LucideIcon> = {
+    Coding: Code,
+    Research: FlaskConical,
+    Design: Palette,
+    Marketing: Megaphone,
+    Communication: MessagesSquare,
+    Personal: User,
+    Planning: Calendar,
   }
   return icons[label]
 }
@@ -119,16 +121,17 @@ export function CategoryBadgeWithIcon({
     md: 'text-xs px-2 py-0.5',
   }
 
+  const Icon = icon
   const iconSizeClasses = {
-    sm: 'text-[10px]',
-    md: 'text-xs',
+    sm: 'w-3 h-3',
+    md: 'w-4 h-4',
   }
 
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full font-medium ${colors.bg} ${colors.text} ${sizeClasses[size]} ${className}`}
     >
-      <span className={`material-symbols-outlined ${iconSizeClasses[size]}`}>{icon}</span>
+      <Icon className={iconSizeClasses[size]} />
       {label}
     </span>
   )

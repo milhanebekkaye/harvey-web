@@ -14,6 +14,7 @@
 
 'use client'
 
+import { Calendar, Clock, X } from 'lucide-react'
 import { useEffect, useRef, useCallback } from 'react'
 import type { DashboardTask } from '@/types/task.types'
 import { TaskDetails } from './TaskDetails'
@@ -196,7 +197,7 @@ export function TaskModal({
               `}
               aria-label="Close modal"
             >
-              <span className="material-symbols-outlined text-xl">close</span>
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -217,15 +218,11 @@ export function TaskModal({
         <div className="sticky bottom-0 bg-slate-50 border-t border-slate-100 px-6 py-3">
           <div className="flex items-center justify-between text-sm text-slate-500">
             <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-base">
-                calendar_today
-              </span>
+              <Calendar className="w-4 h-4" />
               <span>{task.day}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-base">
-                schedule
-              </span>
+              <Clock className="w-4 h-4" />
               <span>
                 {task.isFlexible
                   ? `${getFlexibleWindowLabel(task.windowStart, task.windowEnd)} · ${task.duration}`

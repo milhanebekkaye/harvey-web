@@ -12,6 +12,13 @@
 
 'use client'
 
+import {
+  AlertTriangle,
+  CheckCircle,
+  Lightbulb,
+  MessageCircle,
+  SkipForward,
+} from 'lucide-react'
 import type { DashboardTask } from '@/types/task.types'
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
 import { stripWrappingBold } from '@/lib/utils'
@@ -159,9 +166,7 @@ export function TaskDetails({
           <div className="flex items-start gap-2">
             {/* Harvey Icon */}
             <div className="flex-shrink-0 w-5 h-5 bg-[#895af6] rounded-full flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-xs">
-                tips_and_updates
-              </span>
+              <Lightbulb className="w-3 h-3 text-white" />
             </div>
             {/* Tip Content */}
             <div className="flex-1 min-w-0">
@@ -184,9 +189,7 @@ export function TaskDetails({
               key={dep.id}
               className="text-sm text-red-500 flex items-center gap-2"
             >
-              <span className="material-symbols-outlined text-base shrink-0">
-                warning
-              </span>
+              <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>
                 Heads up — this task depends on &quot;{dep.title}&quot; which was
                 skipped. Make sure you&apos;ve completed it before starting.
@@ -214,9 +217,7 @@ export function TaskDetails({
               transition-all duration-150
             `}
           >
-            <span className="material-symbols-outlined text-base">
-              check_circle
-            </span>
+            <CheckCircle className="w-4 h-4" />
             Complete
           </button>
 
@@ -235,9 +236,7 @@ export function TaskDetails({
               transition-all duration-150
             `}
           >
-            <span className="material-symbols-outlined text-base">
-              skip_next
-            </span>
+            <SkipForward className="w-4 h-4" />
             Skip
           </button>
 
@@ -255,7 +254,7 @@ export function TaskDetails({
                 transition-all duration-150
               "
             >
-              <span className="material-symbols-outlined text-base">chat</span>
+              <MessageCircle className="w-4 h-4" />
               Ask Harvey
             </button>
           )}
@@ -266,7 +265,7 @@ export function TaskDetails({
       {task.status === 'completed' && (
         <div className="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
-            <span className="material-symbols-outlined text-base">check_circle</span>
+            <CheckCircle className="w-4 h-4" />
             <span className="text-sm font-medium">Task completed</span>
           </div>
           {onAskHarvey && (
@@ -275,7 +274,7 @@ export function TaskDetails({
               onClick={() => onAskHarvey(task.id, task.title, task.label)}
               className="flex items-center gap-1.5 px-3 py-2 border border-[#8B5CF6] text-[#8B5CF6] text-sm font-medium rounded-lg bg-transparent hover:bg-[#8B5CF6]/10 transition-all"
             >
-              <span className="material-symbols-outlined text-base">chat</span>
+              <MessageCircle className="w-4 h-4" />
               Ask Harvey
             </button>
           )}
@@ -287,7 +286,7 @@ export function TaskDetails({
         <div className="pt-3 mt-2 border-t border-slate-100 space-y-3">
           <div className="flex flex-col gap-1 py-3 px-3 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">skip_next</span>
+              <SkipForward className="w-4 h-4" />
               <span className="text-sm font-semibold">This task was skipped</span>
             </div>
             <p className="text-xs text-amber-700 pl-7">
@@ -301,7 +300,7 @@ export function TaskDetails({
                 onClick={() => onAskHarvey(task.id, task.title, task.label)}
                 className="flex items-center gap-1.5 px-3 py-2 border border-[#8B5CF6] text-[#8B5CF6] text-sm font-medium rounded-lg bg-transparent hover:bg-[#8B5CF6]/10 transition-all"
               >
-                <span className="material-symbols-outlined text-base">chat</span>
+                <MessageCircle className="w-4 h-4" />
                 Ask Harvey
               </button>
             )}
@@ -320,7 +319,7 @@ export function TaskDetails({
                 transition-all duration-150
               `}
             >
-              <span className="material-symbols-outlined text-base">check_circle</span>
+              <CheckCircle className="w-4 h-4" />
               Complete
             </button>
           </div>

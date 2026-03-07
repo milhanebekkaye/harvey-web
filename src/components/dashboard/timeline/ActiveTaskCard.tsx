@@ -1,3 +1,13 @@
+import type { LucideIcon } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowDownCircle,
+  Bot,
+  CheckCircle,
+  Circle,
+  MoreHorizontal,
+  PlayCircle,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCategoryIcon } from '@/components/dashboard/TaskCategoryBadge'
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
@@ -30,20 +40,20 @@ function formatDueDate(scheduledDate: string | Date, timezone?: string): string 
   return full.replace(/,?\s*\d{4}$/, '').trim()
 }
 
-function getDependencyIcon(status: TimelineDependencyTask['status']): string {
+function getDependencyIcon(status: TimelineDependencyTask['status']): LucideIcon {
   if (status === 'completed') {
-    return 'check_circle'
+    return CheckCircle
   }
 
   if (status === 'skipped') {
-    return 'warning'
+    return AlertTriangle
   }
 
   if (status === 'in_progress') {
-    return 'play_circle'
+    return PlayCircle
   }
 
-  return 'radio_button_unchecked'
+  return Circle
 }
 
 function normalizeLabel(label: string): TaskLabel {
@@ -128,7 +138,10 @@ export function ActiveTaskCard({
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
           <div className="flex gap-4">
             <div className="bg-[#895af6]/10 p-3 rounded-lg text-[#895af6] h-fit">
-              <span className="material-symbols-outlined text-2xl">{icon}</span>
+              {(() => {
+                const Icon = icon
+                return <Icon className="w-6 h-6" />
+              })()}
             </div>
             <div>
               <div className="flex items-center gap-3">
@@ -147,7 +160,7 @@ export function ActiveTaskCard({
             </div>
           </div>
           <button type="button" className="text-slate-400 hover:text-[#895af6] transition-colors">
-            <span className="material-symbols-outlined">more_horiz</span>
+            <MoreHorizontal className="w-5 h-5" />
           </button>
         </div>
 
@@ -186,11 +199,14 @@ export function ActiveTaskCard({
                       {dependencies.map((dependency) => (
                         <li key={dependency.id} className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-2 text-sm text-slate-700">
-                            <span
-                              className={`material-symbols-outlined text-[15px] ${dependency.status === 'skipped' ? 'text-red-500' : 'text-slate-400'}`}
-                            >
-                              {getDependencyIcon(dependency.status)}
-                            </span>
+                            {(() => {
+                              const DepIcon = getDependencyIcon(dependency.status)
+                              return (
+                                <DepIcon
+                                  className={`w-4 h-4 ${dependency.status === 'skipped' ? 'text-red-500' : 'text-slate-400'}`}
+                                />
+                              )
+                            })()}
                             <span>{dependency.title}</span>
                           </div>
                           {dependency.status === 'skipped' && (
@@ -214,9 +230,7 @@ export function ActiveTaskCard({
                     <ul className="space-y-1.5">
                       {dependentTasks.map((dependent) => (
                         <li key={dependent.id} className="flex items-center gap-2 text-sm text-slate-700">
-                          <span className="material-symbols-outlined text-[15px] text-slate-400">
-                            arrow_circle_down
-                          </span>
+                          <ArrowDownCircle className="w-4 h-4 text-slate-400" />
                           <span>{dependent.title}</span>
                         </li>
                       ))}
@@ -243,7 +257,7 @@ export function ActiveTaskCard({
               onClick={() => onAskHarvey(task.id, task.title, task.label)}
               className="px-4 py-2 bg-[#895af6]/10 text-[#895af6] hover:bg-[#895af6]/20 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
             >
-              <span className="material-symbols-outlined text-lg">smart_toy</span>
+              <Bot className="w-5 h-5" />
               Ask Harvey
             </button>
             <div data-tour="task-actions" className="flex items-center gap-3">

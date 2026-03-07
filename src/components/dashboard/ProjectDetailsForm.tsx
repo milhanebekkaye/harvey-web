@@ -1,5 +1,16 @@
 'use client'
 
+import {
+  ArrowLeft,
+  Flag,
+  Folder,
+  Lightbulb,
+  Plus,
+  Quote,
+  Target,
+  User,
+  X,
+} from 'lucide-react'
 import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { StickyUnsavedBar } from '@/components/ui/StickyUnsavedBar'
@@ -262,7 +273,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           onClick={() => handleNavigate('/dashboard')}
           className="text-sm text-[#62499c] hover:text-[#895af6] font-medium inline-flex items-center gap-1"
         >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <ArrowLeft className="w-5 h-5" />
           Back to Dashboard
         </button>
       </div>
@@ -321,7 +332,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 hover:shadow-md transition-shadow">
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-slate-500">folder</span>
+            <Folder className="w-5 h-5 text-slate-500" />
             Project Info
           </h2>
           <div className="space-y-4">
@@ -361,7 +372,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
         </section>
         <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 hover:shadow-md transition-shadow">
           <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-slate-500">person</span>
+            <User className="w-5 h-5 text-slate-500" />
             Your Context
           </h2>
           <div className="space-y-4">
@@ -411,7 +422,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
       {/* Phases & Milestones — editable, saved with Save Changes */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 mb-6 hover:shadow-md transition-shadow">
         <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
-          <span className="material-symbols-outlined text-slate-500">flag</span>
+          <Flag className="w-5 h-5 text-slate-500" />
           Phases & Milestones
         </h2>
         <p className="text-slate-500 text-sm mb-5">
@@ -486,7 +497,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
                         className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50"
                         title="Remove phase"
                       >
-                        <span className="material-symbols-outlined text-lg">close</span>
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                     <input
@@ -529,7 +540,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           }}
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
         >
-          <span className="material-symbols-outlined text-lg">add</span>
+          <Plus className="w-5 h-5" />
           Add phase
         </button>
         {!(project.phases?.phases?.length ?? 0) && (
@@ -554,7 +565,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
         return (
           <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 mb-6 hover:shadow-md transition-shadow">
             <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
-              <span className="material-symbols-outlined text-slate-500">track_changes</span>
+              <Target className="w-5 h-5 text-slate-500" />
               Milestones
             </h2>
             <p className="text-slate-500 text-sm mb-4">
@@ -578,7 +589,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
       {/* Harvey's Notes — editable, saved with Save Changes */}
       <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 mb-8 hover:shadow-md transition-shadow">
         <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
-          <span className="material-symbols-outlined text-slate-500">lightbulb</span>
+          <Lightbulb className="w-5 h-5 text-slate-500" />
           Harvey&apos;s Notes
         </h2>
         <p className="text-slate-500 text-sm mb-5">
@@ -602,9 +613,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
                   key={realIndex}
                   className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left"
                 >
-                  <span className="material-symbols-outlined text-[#895af6]/70 shrink-0 mt-1 text-xl">
-                    format_quote
-                  </span>
+                  <Quote className="w-5 h-5 text-[#895af6]/70 shrink-0 mt-1" />
                   <div className="min-w-0 flex-1">
                     <textarea
                       value={entry.note}
@@ -625,7 +634,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 transition-colors"
                     title="Remove note"
                   >
-                    <span className="material-symbols-outlined text-xl">close</span>
+                    <X className="w-5 h-5" />
                   </button>
                 </li>
               )
@@ -641,7 +650,7 @@ export function ProjectDetailsForm({ initialProject }: ProjectDetailsFormProps) 
           }}
           className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-base font-medium text-slate-600 hover:border-[#895af6]/50 hover:bg-[#895af6]/5 hover:text-[#895af6] transition-colors"
         >
-          <span className="material-symbols-outlined text-xl">add</span>
+          <Plus className="w-5 h-5" />
           Add note
         </button>
         {!(project.projectNotes?.length ?? 0) && (

@@ -22,6 +22,15 @@
 
 'use client'
 
+import {
+  AlertCircle,
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  GanttChart,
+  List,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
@@ -1091,9 +1100,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
     return (
       <div className="flex h-screen items-center justify-center bg-[#FAF9F6]">
         <div className="text-center max-w-md">
-          <span className="material-symbols-outlined text-5xl text-red-400 mb-4">
-            error
-          </span>
+          <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
           <h2 className="text-xl font-bold text-slate-800 mb-2">Something went wrong</h2>
           <p className="text-slate-500 mb-4">{error}</p>
           <button
@@ -1183,7 +1190,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
                 className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
                 aria-label="Filter tasks"
               >
-                <span className="material-symbols-outlined text-[18px]">filter_list</span>
+                <SlidersHorizontal className="w-5 h-5" />
                 Filter
               </button>
 
@@ -1196,13 +1203,13 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
                   aria-expanded={isViewMenuOpen}
                   aria-label="Open view selector"
                 >
-                  <span className="material-symbols-outlined text-[18px]">
-                    {view === 'timeline' ? 'view_timeline' : 'view_list'}
-                  </span>
+                  {view === 'timeline' ? (
+                    <GanttChart className="w-5 h-5" />
+                  ) : (
+                    <List className="w-5 h-5" />
+                  )}
                   View
-                  <span className="material-symbols-outlined text-[16px] text-slate-400">
-                    expand_more
-                  </span>
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
                 </button>
 
                 {isViewMenuOpen && (
@@ -1225,11 +1232,11 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
                       role="menuitem"
                     >
                       <span className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">view_list</span>
+                        <List className="w-5 h-5" />
                         List View
                       </span>
                       {view === 'list' && (
-                        <span className="material-symbols-outlined text-[18px]">check</span>
+                        <Check className="w-5 h-5" />
                       )}
                     </button>
 
@@ -1247,11 +1254,11 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
                       role="menuitem"
                     >
                       <span className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">view_timeline</span>
+                        <GanttChart className="w-5 h-5" />
                         Timeline View
                       </span>
                       {view === 'timeline' && (
-                        <span className="material-symbols-outlined text-[18px]">check</span>
+                        <Check className="w-5 h-5" />
                       )}
                     </button>
                   </div>
@@ -1316,9 +1323,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm border border-slate-100 scale-100 animate-in zoom-in-95 duration-200">
             <div className="flex flex-col items-center text-center">
               <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-6">
-                <span className="material-symbols-outlined text-amber-600 text-3xl">
-                  warning
-                </span>
+                <AlertTriangle className="w-8 h-8 text-amber-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">
                 Rebuild Schedule?

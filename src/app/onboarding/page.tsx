@@ -16,6 +16,7 @@
 
 'use client'
 
+import { Loader2, MoreHorizontal } from 'lucide-react'
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useChat } from '@ai-sdk/react'
@@ -701,9 +702,7 @@ function OnboardingChatView({
 
               {(isTyping || showGreetingLoading) && (
                 <div className="flex items-center gap-2 text-[#8B5CF6]/60 text-sm">
-                  <span className="material-symbols-outlined text-lg animate-pulse">
-                    more_horiz
-                  </span>
+                  <MoreHorizontal className="w-5 h-5 animate-pulse" />
                   <span>Harvey is typing...</span>
                 </div>
               )}
@@ -867,7 +866,7 @@ function OnboardingPageInner() {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#FAF9F6]">
         <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined animate-spin text-4xl text-[#8B5CF6]">progress_activity</span>
+          <Loader2 className="w-10 h-10 animate-spin text-[#8B5CF6]" />
           <p className="text-sm text-gray-600">Loading your conversation...</p>
         </div>
       </div>
@@ -892,7 +891,7 @@ export default function OnboardingPage() {
     <Suspense fallback={
       <div className="flex h-screen w-full items-center justify-center bg-[#FAF9F6]">
         <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined animate-spin text-4xl text-[#8B5CF6]">progress_activity</span>
+          <Loader2 className="w-10 h-10 animate-spin text-[#8B5CF6]" />
           <p className="text-sm text-gray-600">Loading your conversation...</p>
         </div>
       </div>

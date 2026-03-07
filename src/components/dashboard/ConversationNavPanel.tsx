@@ -8,6 +8,8 @@
 
 'use client'
 
+import { MessagesSquare, X } from 'lucide-react'
+
 /**
  * Category dot hex colors for nav task items (spec: Coding, Research, Design, etc.)
  */
@@ -70,7 +72,7 @@ export function ConversationNavPanel({
           className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg p-1 transition-colors"
           aria-label="Close"
         >
-          <span className="material-symbols-outlined text-lg">close</span>
+          <X className="w-5 h-5" />
         </button>
       </div>
 
@@ -93,7 +95,7 @@ export function ConversationNavPanel({
             }`}
           >
             <div className="size-7 rounded-md bg-[#8B5CF6]/10 flex items-center justify-center text-[#8B5CF6]">
-              <span className="material-symbols-outlined text-[18px]">forum</span>
+              <MessagesSquare className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">

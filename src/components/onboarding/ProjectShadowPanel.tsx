@@ -7,6 +7,7 @@
 
 'use client'
 
+import { CheckCircle, Loader2 } from 'lucide-react'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { formatDateForDisplay } from '@/lib/utils/date-utils'
 
@@ -317,7 +318,7 @@ export function ProjectShadowPanel({
         className={`mb-4 animate-in fade-in duration-300 ${isDisabled ? 'opacity-50 pointer-events-none' : ''}`}
       >
         <div className="flex items-start gap-2">
-          <span className="material-symbols-outlined mt-0.5 text-green-600 text-lg shrink-0">check_circle</span>
+          <CheckCircle className="mt-0.5 w-5 h-5 text-green-600 shrink-0" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="text-sm font-medium text-gray-700">{label}</span>
@@ -388,7 +389,7 @@ export function ProjectShadowPanel({
         </div>
         {isLoading && (
           <div className="mt-2 flex items-center gap-2 text-sm text-[#8B5CF6]">
-            <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+            <Loader2 className="w-5 h-5 animate-spin" />
             <span>Extracting...</span>
           </div>
         )}
@@ -797,7 +798,7 @@ export function ProjectShadowPanel({
         )}
         {user.commute != null && typeof user.commute === 'object' && (
           <div className="mb-4 flex items-start gap-2 animate-in fade-in duration-300">
-            <span className="material-symbols-outlined text-green-600 text-lg shrink-0">check_circle</span>
+            <CheckCircle className="w-5 h-5 text-green-600 shrink-0" />
             <div>
               <div className="text-sm font-medium text-gray-700">Commute</div>
               <div className="space-y-1 text-sm text-gray-900">

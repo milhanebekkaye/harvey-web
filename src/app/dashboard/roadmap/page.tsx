@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowUp, Map } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -116,9 +117,7 @@ export default function RoadmapPage() {
           </div>
         ) : features.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-12 text-center">
-            <span className="material-symbols-outlined text-5xl text-slate-300 mb-4">
-              map
-            </span>
+            <Map className="w-12 h-12 text-slate-300 mb-4" />
             <p className="text-slate-600 font-medium">No features on the roadmap yet.</p>
             <p className="text-slate-500 text-sm mt-1">Stay tuned!</p>
           </div>
@@ -142,7 +141,7 @@ export default function RoadmapPage() {
                       : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-lg">arrow_upward</span>
+                  <ArrowUp className="w-5 h-5" />
                   <span>{f.voteCount}</span>
                 </button>
               </li>

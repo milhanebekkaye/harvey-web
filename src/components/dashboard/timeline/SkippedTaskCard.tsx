@@ -71,7 +71,10 @@ export function SkippedTaskCard({ task, timezone }: SkippedTaskCardProps) {
         <div className="flex justify-between items-center gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <div className="bg-slate-100 p-2 rounded-lg text-slate-500 shrink-0">
-              <span className="material-symbols-outlined text-lg">{icon}</span>
+              {(() => {
+                const Icon = icon
+                return <Icon className="w-5 h-5" />
+              })()}
             </div>
             <div className="min-w-0">
               <h3 className="text-slate-700 font-medium truncate">{task.title}</h3>

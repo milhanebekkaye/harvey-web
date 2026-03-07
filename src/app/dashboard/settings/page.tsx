@@ -1,5 +1,6 @@
 'use client'
 
+import { Lightbulb, Plus, Quote, X } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -237,7 +238,7 @@ export default function SettingsPage() {
             {/* Harvey's Notes — same as project details, for user-level notes */}
             <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 hover:shadow-md transition-shadow">
               <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
-                <span className="material-symbols-outlined text-slate-500">lightbulb</span>
+                <Lightbulb className="w-5 h-5 text-slate-500" />
                 Harvey&apos;s Notes
               </h2>
               <p className="text-slate-500 text-sm mb-5">
@@ -262,9 +263,7 @@ export default function SettingsPage() {
                         key={realIndex}
                         className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left"
                       >
-                        <span className="material-symbols-outlined text-[#895af6]/70 shrink-0 mt-1 text-xl">
-                          format_quote
-                        </span>
+                        <Quote className="w-5 h-5 text-[#895af6]/70 shrink-0 mt-1" />
                         <div className="min-w-0 flex-1">
                           <textarea
                             value={entry.note}
@@ -285,7 +284,7 @@ export default function SettingsPage() {
                           className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 transition-colors"
                           title="Remove note"
                         >
-                          <span className="material-symbols-outlined text-xl">close</span>
+                          <X className="w-5 h-5" />
                         </button>
                       </li>
                     )
@@ -301,7 +300,7 @@ export default function SettingsPage() {
                 }}
                 className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-base font-medium text-slate-600 hover:border-[#895af6]/50 hover:bg-[#895af6]/5 hover:text-[#895af6] transition-colors"
               >
-                <span className="material-symbols-outlined text-xl">add</span>
+                <Plus className="w-5 h-5" />
                 Add note
               </button>
               {!(data.user.userNotes?.length ?? 0) && (

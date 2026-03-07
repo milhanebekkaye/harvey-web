@@ -27,7 +27,7 @@ Root of the repository:
 - **`public/`**: Static assets served directly by Next.js (images, SVGs, etc.).
 - **`docs/`**: Documentation of the project (how work files, features, etc.).
 - **`README.md`**: Generic Next.js README from `create-next-app`. For detailed internals, prefer this `ARCHITECTURE.md`.
-- **`src/`**: All application source code (Next.js app, components, domain logic, types).
+- **`src/`**: All application source code (Next.js app, components, domain logic, types). **UI icons** use **Lucide React** (`lucide-react`); no Google Material Symbols.
 - **`src/prisma/`**: Prisma schema and migrations (see `schema.prisma`). Core models: User, Project, Discussion, Task. **Feedback / feature voting**: Feedback, Feature, FeatureVote (see `docs/feedback/README.md`, `docs/feature-voting/README.md`). **API cost tracking**: User has optional `subscription_start_date`; `ApiUsageLog` stores per-call token/cost; `UserUsageSummary` stores per-user, per–billing-period aggregates (unique on userId + periodStart). See `docs/cost-audit.md`. **Payments**: User has `payment_status` ("free" | "paid") for Stripe; see `docs/payments/README.md`. **When adding a new Anthropic API call**, you must log usage via `logApiUsage` — see `docs/cost-tracking/README.md` for the pattern.
 - **`tailwind.config.ts`**: Tailwind CSS configuration (design tokens, theme extensions, plugins).
 - **`tsconfig.json`**: TypeScript compiler configuration for the project.

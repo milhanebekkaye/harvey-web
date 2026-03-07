@@ -8,6 +8,7 @@
 
 'use client'
 
+import { CheckCircle, Loader2, MessageCircle, Send } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -246,9 +247,7 @@ export function ProjectChatView({
         {isLoading && (
           <div className="flex justify-center py-8">
             <div className="flex items-center gap-2 text-slate-400">
-              <span className="material-symbols-outlined animate-spin">
-                progress_activity
-              </span>
+              <Loader2 className="w-5 h-5 animate-spin" />
               <span className="text-sm">Loading conversation...</span>
             </div>
           </div>
@@ -256,9 +255,7 @@ export function ProjectChatView({
 
         {!isLoading && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">
-              chat
-            </span>
+            <MessageCircle className="w-10 h-10 text-slate-300 mb-2" />
             <p className="text-sm text-slate-400">
               Start a conversation with Harvey!
             </p>
@@ -312,9 +309,7 @@ export function ProjectChatView({
                     </div>
                     {showToolCall && (
                       <div className="flex items-center gap-1 ml-1 text-[10px] text-emerald-600 font-medium">
-                        <span className="material-symbols-outlined text-xs">
-                          check_circle
-                        </span>
+                        <CheckCircle className="w-3 h-3" />
                         Action completed
                       </div>
                     )}
@@ -429,7 +424,7 @@ export function ProjectChatView({
             disabled={!inputValue.trim() || isTyping || !projectId}
             className="bg-[#895af6] hover:bg-[#7849d9] text-white p-3 rounded-xl transition-colors shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
-            <span className="material-symbols-outlined text-lg">send</span>
+            <Send className="w-5 h-5" />
           </button>
         </form>
       </div>

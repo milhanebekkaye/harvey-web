@@ -9,6 +9,7 @@
  * - 'user': Gradient background with user's initial
  */
 
+import { Bot } from 'lucide-react'
 import type { MessageRole } from '@/types/chat.types'
 
 interface ChatAvatarProps {
@@ -38,7 +39,7 @@ export function ChatAvatar({
 }: ChatAvatarProps) {
   // Size classes based on variant
   const sizeClasses = size === 'small' ? 'w-9 h-9' : 'w-12 h-12'
-  const iconSize = size === 'small' ? 'text-2xl' : 'text-3xl'
+  const iconSizeClasses = size === 'small' ? 'w-6 h-6' : 'w-8 h-8'
   const textSize = size === 'small' ? 'text-sm' : 'text-lg'
 
   // ===== HARVEY (AI) AVATAR =====
@@ -48,9 +49,7 @@ export function ChatAvatar({
         className={`bg-[#8B5CF6] aspect-square rounded-xl ${sizeClasses} shrink-0 flex items-center justify-center shadow-lg shadow-[#8B5CF6]/20`}
       >
         {/* Robot icon for Harvey */}
-        <span className={`material-symbols-outlined text-white ${iconSize}`}>
-          smart_toy
-        </span>
+        <Bot className={`${iconSizeClasses} text-white`} />
       </div>
     )
   }

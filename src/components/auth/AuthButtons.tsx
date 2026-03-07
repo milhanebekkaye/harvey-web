@@ -11,6 +11,7 @@
 
 'use client'
 
+import { Mail } from 'lucide-react'
 import { useState } from 'react'
 import { signInWithGoogle } from '@/lib/auth/auth-service'
 
@@ -99,7 +100,7 @@ export function AuthButtons({ onEmailClick, onLoginClick, onError }: AuthButtons
         disabled={loadingGoogle}
         className="flex items-center justify-center gap-3 w-full h-12 px-5 bg-[#425ff0] hover:bg-[#425ff0]/90 text-white rounded-lg transition-all duration-200 font-bold text-base shadow-lg shadow-[#425ff0]/20 disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <span className="material-symbols-outlined text-xl">mail</span>
+        <Mail className="w-5 h-5" />
         Continue with Email
       </button>
 

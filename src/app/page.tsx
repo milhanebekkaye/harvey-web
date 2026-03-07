@@ -18,6 +18,7 @@
 
 'use client'
 
+import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/auth/auth-service'
@@ -63,7 +64,7 @@ export default function RootPage() {
       <div className="flex flex-col items-center gap-6">
         {/* Harvey Logo */}
         <div className="size-16 bg-[#425ff0] rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#425ff0]/20 animate-pulse">
-          <span className="material-symbols-outlined text-4xl">auto_awesome</span>
+          <Sparkles className="w-10 h-10" />
         </div>
         
         {/* Loading Text */}

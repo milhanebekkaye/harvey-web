@@ -21,6 +21,12 @@
 
 'use client'
 
+import {
+  CheckSquare,
+  Loader2,
+  MessageCircle,
+  PartyPopper,
+} from 'lucide-react'
 import React, { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
@@ -264,7 +270,7 @@ function SortableTaskItem(props: SortableTaskItemProps) {
           className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
           title="Task chat open"
         >
-          <span className="material-symbols-outlined text-sm">chat</span>
+          <MessageCircle className="w-4 h-4" />
         </div>
       )}
       <TaskTile
@@ -675,9 +681,7 @@ export function TimelineView({
                       className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center"
                       title="Task chat open"
                     >
-                      <span className="material-symbols-outlined text-sm">
-                        chat
-                      </span>
+                      <MessageCircle className="w-4 h-4" />
                     </div>
                   )}
                   <TaskTile
@@ -719,9 +723,7 @@ export function TimelineView({
     return (
       <div className="px-8 pb-12">
         <div className="flex flex-col items-center justify-center py-16">
-          <span className="material-symbols-outlined text-4xl text-[#895af6] animate-spin mb-4">
-            progress_activity
-          </span>
+          <Loader2 className="w-10 h-10 text-[#895af6] animate-spin mb-4" />
           <p className="text-slate-500">Loading your tasks...</p>
         </div>
       </div>
@@ -733,9 +735,7 @@ export function TimelineView({
     return (
       <div className="px-8 pb-12">
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <span className="material-symbols-outlined text-5xl text-slate-300 mb-4">
-            task_alt
-          </span>
+          <CheckSquare className="w-12 h-12 text-slate-300 mb-4" />
           <h3 className="text-lg font-semibold text-slate-600 mb-2">No tasks yet</h3>
           <p className="text-sm text-slate-400 max-w-sm">
             Complete the onboarding to generate your personalized task schedule.
@@ -758,9 +758,7 @@ export function TimelineView({
     return (
       <div className="px-8 pb-12">
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <span className="material-symbols-outlined text-5xl text-green-400 mb-4">
-            celebration
-          </span>
+          <PartyPopper className="w-12 h-12 text-green-400 mb-4" />
           <h3 className="text-lg font-semibold text-slate-600 mb-2">All caught up!</h3>
           <p className="text-sm text-slate-400 max-w-sm">
             You&apos;ve completed all your tasks. Great work!

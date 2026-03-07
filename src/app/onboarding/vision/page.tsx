@@ -8,6 +8,7 @@
 
 'use client'
 
+import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSession } from '@/lib/auth/auth-service'
@@ -95,7 +96,7 @@ export default function OnboardingVisionPage() {
           className="size-12 rounded-xl flex items-center justify-center text-white shadow-lg"
           style={{ backgroundColor: PURPLE, boxShadow: `0 10px 15px -3px ${PURPLE}33` }}
         >
-          <span className="material-symbols-outlined text-3xl">auto_awesome</span>
+          <Sparkles className="w-8 h-8" />
         </div>
         <span className="text-xl font-bold tracking-tight text-slate-900 mt-2">
           Harvey

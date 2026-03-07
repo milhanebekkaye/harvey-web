@@ -1,5 +1,6 @@
 'use client'
 
+import { Pencil, X } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { formatDateForDisplay } from '@/lib/utils/date-utils'
@@ -182,9 +183,7 @@ export function EditableField({
           ) : (
             <span className="break-words">{displayValue}</span>
           )}
-          <span className="material-symbols-outlined text-slate-400 text-lg shrink-0">
-            edit
-          </span>
+          <Pencil className="w-5 h-5 text-slate-400 shrink-0" />
         </div>
       ) : (
         <div className="space-y-1">
@@ -307,7 +306,7 @@ export function EditableField({
                       className="hover:bg-[#895af6]/30 rounded-full p-0.5"
                       aria-label={`Remove ${t}`}
                     >
-                      <span className="material-symbols-outlined text-sm">close</span>
+                      <X className="w-4 h-4" />
                     </button>
                   </span>
                 ))}

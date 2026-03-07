@@ -13,6 +13,8 @@
  * - Steps will update as AI gathers information
  */
 
+import { CheckCircle, Clock } from 'lucide-react'
+
 interface OnboardingProgressProps {
   /**
    * Progress percentage (0-100)
@@ -32,9 +34,6 @@ export function OnboardingProgress({
   // Clamp percentage between 0 and 100
   const clampedPercentage = Math.min(100, Math.max(0, percentage))
 
-  // Determine the icon based on completion state
-  const icon = isComplete ? 'check_circle' : 'pending'
-
   // Label text
   const labelText = isComplete ? 'Onboarding Complete' : 'Setting up your project'
 
@@ -43,13 +42,11 @@ export function OnboardingProgress({
       <div className="w-full max-w-[700px] flex flex-col gap-3">
         {/* Progress Title */}
         <div className="flex items-center gap-2">
-          <span
-            className={`material-symbols-outlined text-[#8B5CF6] text-xl ${
-              !isComplete ? 'animate-pulse' : ''
-            }`}
-          >
-            {icon}
-          </span>
+          {isComplete ? (
+            <CheckCircle className={`w-5 h-5 text-[#8B5CF6]`} />
+          ) : (
+            <Clock className={`w-5 h-5 text-[#8B5CF6] animate-pulse`} />
+          )}
           <p className="text-[#110d1c] text-base font-semibold leading-normal">
             {labelText}
           </p>

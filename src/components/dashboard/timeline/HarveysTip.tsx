@@ -1,3 +1,5 @@
+import { RefreshCw } from 'lucide-react'
+
 interface HarveysTipProps {
   tip: string
   isLoading: boolean
@@ -21,7 +23,7 @@ export function HarveysTip({ tip, isLoading, onRefresh }: HarveysTipProps) {
             className="text-[10px] text-slate-400 hover:text-slate-600 disabled:text-slate-300 disabled:cursor-not-allowed flex items-center gap-0.5 transition-colors"
             disabled={isLoading}
           >
-            <span className="material-symbols-outlined text-[12px]">refresh</span>
+            <RefreshCw className="w-3 h-3" />
             Refresh
           </button>
         </div>

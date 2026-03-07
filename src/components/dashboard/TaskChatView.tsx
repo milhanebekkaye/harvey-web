@@ -9,6 +9,7 @@
 
 'use client'
 
+import { ArrowLeft, Send } from 'lucide-react'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
@@ -349,7 +350,7 @@ export function TaskChatView({
           onClick={onBackToProject}
           className="text-sm text-[#895af6] hover:text-[#7849d9] font-medium flex items-center gap-1"
         >
-          <span className="material-symbols-outlined text-lg">arrow_back</span>
+          <ArrowLeft className="w-5 h-5" />
           Back to project chat
         </button>
       </div>
@@ -439,7 +440,7 @@ export function TaskChatView({
             {isTyping ? (
               <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <span className="material-symbols-outlined text-lg">send</span>
+              <Send className="w-5 h-5" />
             )}
           </button>
         </form>

@@ -9,6 +9,7 @@
  * Used inside AuthPageLayout on the signin page.
  */
 
+import { Sparkles } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 export interface SigninCardHeader {
@@ -34,7 +35,7 @@ export function SigninCard({
       {/* Logo Section — small Harvey logo (signin only) */}
       <div className="flex flex-col items-center mb-8">
         <div className="size-12 bg-[#425ff0] rounded-xl flex items-center justify-center text-white mb-6 shadow-lg shadow-[#425ff0]/20">
-          <span className="material-symbols-outlined text-3xl">auto_awesome</span>
+          <Sparkles className="w-8 h-8" />
         </div>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl font-bold tracking-tight text-slate-900">Harvey</span>

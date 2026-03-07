@@ -1,5 +1,6 @@
 'use client'
 
+import { CheckSquare, ChevronDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActiveTaskCard } from './ActiveTaskCard'
 import { CompletedTaskCard } from './CompletedTaskCard'
@@ -180,16 +181,12 @@ export function TimelineView({
       <div className="relative max-w-5xl mx-auto pt-8">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <span className="material-symbols-outlined text-4xl text-[#895af6] animate-spin mb-4">
-              progress_activity
-            </span>
+            <Loader2 className="w-10 h-10 text-[#895af6] animate-spin mb-4" />
             <p className="text-slate-500">Loading your timeline...</p>
           </div>
         ) : !timelineData?.activeTask ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <span className="material-symbols-outlined text-5xl text-slate-300 mb-4">
-              task_alt
-            </span>
+            <CheckSquare className="w-12 h-12 text-slate-300 mb-4" />
             <p className="text-slate-500 text-base font-medium">
               No tasks scheduled. Ask Harvey to build your schedule.
             </p>
@@ -259,11 +256,9 @@ export function TimelineView({
                   className="flex items-center gap-2 w-full text-left py-2 px-0 rounded-lg hover:bg-slate-100/80 transition-colors"
                   aria-expanded={!skippedSectionCollapsed}
                 >
-                  <span
-                    className={`material-symbols-outlined text-slate-500 transition-transform ${skippedSectionCollapsed ? '' : 'rotate-90'}`}
-                  >
-                    expand_more
-                  </span>
+                  <ChevronDown
+                    className={`w-5 h-5 text-slate-500 transition-transform ${skippedSectionCollapsed ? '' : 'rotate-90'}`}
+                  />
                   <span className="text-sm font-semibold text-slate-600">
                     Skipped ({timelineData.skippedTasks.length})
                   </span>

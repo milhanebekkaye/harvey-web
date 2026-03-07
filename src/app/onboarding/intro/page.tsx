@@ -7,6 +7,7 @@
 
 'use client'
 
+import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -171,7 +172,7 @@ export default function OnboardingIntroPage() {
       {/* Top: Harvey logo (same as auth page) */}
       <div className="relative z-20 flex-shrink-0 pt-6 flex flex-col items-center">
         <div className="size-12 bg-[#425ff0] rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#425ff0]/20">
-          <span className="material-symbols-outlined text-3xl">auto_awesome</span>
+          <Sparkles className="w-8 h-8" />
         </div>
         <span className="text-xl font-bold tracking-tight text-slate-900 mt-2">
           Harvey

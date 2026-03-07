@@ -14,6 +14,7 @@
 
 'use client'
 
+import { ArrowRight, MailCheck } from 'lucide-react'
 import { useState } from 'react'
 import { signUpWithEmail } from '@/lib/auth/auth-service'
 
@@ -78,9 +79,7 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
       <div className="space-y-6 text-center">
         <div className="flex justify-center">
           <div className="size-16 bg-green-100 rounded-full flex items-center justify-center">
-            <span className="material-symbols-outlined text-4xl text-green-600">
-              mark_email_read
-            </span>
+            <MailCheck className="w-10 h-10 text-green-600" />
           </div>
         </div>
 
@@ -163,7 +162,7 @@ export function EmailSignupForm({ onBack, onError }: EmailSignupFormProps) {
           </>
         ) : (
           <>
-            <span className="material-symbols-outlined text-xl">arrow_forward</span>
+            <ArrowRight className="w-5 h-5" />
             Create Account
           </>
         )}

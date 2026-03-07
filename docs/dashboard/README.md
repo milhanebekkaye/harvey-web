@@ -1,5 +1,7 @@
 # Dashboard (Tasks, Timeline, Chat Sidebar)
 
+**Icons:** Dashboard UI uses **Lucide React** (`lucide-react`) for all icons (sidebar, views, task cards, modals, etc.). No Google Material Symbols.
+
 ## What this feature is about
 The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by date), a chat sidebar with onboarding conversation history, and controls for task status and checklist updates. Tasks added via chat (Harvey's add_task tool) now receive 2–4 AI-generated success criteria, shown in the task detail view as checklist items—same format as onboarding-generated tasks.
 

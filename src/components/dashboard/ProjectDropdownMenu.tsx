@@ -1,5 +1,6 @@
 'use client'
 
+import { Archive, ArrowLeftRight, Folder, Map, Settings } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 
@@ -51,9 +52,7 @@ export function ProjectDropdownMenu({
         onClick={onClose}
         className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
       >
-        <span className="material-symbols-outlined text-lg text-slate-500">
-          folder
-        </span>
+        <Folder className="w-5 h-5 text-slate-500" />
         Project Details
       </Link>
       <Link
@@ -61,9 +60,7 @@ export function ProjectDropdownMenu({
         onClick={onClose}
         className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
       >
-        <span className="material-symbols-outlined text-lg text-slate-500">
-          map
-        </span>
+        <Map className="w-5 h-5 text-slate-500" />
         Roadmap
       </Link>
       <Link
@@ -71,9 +68,7 @@ export function ProjectDropdownMenu({
         onClick={onClose}
         className="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
       >
-        <span className="material-symbols-outlined text-lg text-slate-500">
-          settings
-        </span>
+        <Settings className="w-5 h-5 text-slate-500" />
         User Settings
       </Link>
       <div className="my-1 border-t border-slate-100" />
@@ -82,7 +77,7 @@ export function ProjectDropdownMenu({
         disabled
         className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-400"
       >
-        <span className="material-symbols-outlined text-lg">archive</span>
+        <Archive className="w-5 h-5" />
         Archive Project
       </button>
       <button
@@ -90,7 +85,7 @@ export function ProjectDropdownMenu({
         disabled
         className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-400"
       >
-        <span className="material-symbols-outlined text-lg">swap_horiz</span>
+        <ArrowLeftRight className="w-5 h-5" />
         Switch Project
       </button>
     </div>

@@ -2,6 +2,28 @@
 
 ---
 
+### [2026-03-07] Replace Google Material Symbols with Lucide React icons
+
+**Goal:** Remove dependency on Google Material Symbols font and use Lucide React (already in package.json) for all UI icons across the app.
+
+**Changes:**
+- **`src/app/layout.tsx`:** Removed the Google Fonts `<link>` that loaded Material Symbols Outlined. No other layout or font changes.
+- **Icon replacement:** Every `<span className="material-symbols-outlined">…</span>` across 40 files was replaced with the corresponding Lucide React component (e.g. `<Search className="w-4 h-4" />`). Sizing and colors were preserved via `className` (e.g. `w-4 h-4`, `text-slate-500`, `animate-spin` for loaders).
+- **Dynamic icons:**  
+  - **`TaskCategoryBadge.tsx`:** `getCategoryIcon(label)` now returns a `LucideIcon` component (Code, FlaskConical, Palette, Megaphone, MessagesSquare, User, Calendar) instead of a string. `CategoryBadgeWithIcon` renders `<Icon className={…} />`.  
+  - **`ActiveTaskCard.tsx`:** `getDependencyIcon(status)` now returns a Lucide component (CheckCircle, AlertTriangle, PlayCircle, Circle). Category icon and dependency icons are rendered as components.  
+  - **`FeedbackButton.tsx`:** Category labels use Lucide icons (Bug, TrendingUp, Lightbulb, HelpCircle, MoreHorizontal) instead of Material Symbol names.  
+  - **`OnboardingCTA.tsx`:** `icon` prop type changed from `string` to `LucideIcon`; default is `Rocket`. Loading state uses `<Loader2 className="… animate-spin" />`.  
+  - **`OnboardingProgress.tsx`:** Icon is now `CheckCircle` or `Clock` (Lucide) based on `isComplete`.
+- **Spinners:** All `progress_activity` usages were replaced with `<Loader2 className="… animate-spin" />`.
+- **Files touched (40):** layout.tsx; ViewToggle, TaskModal, ChatAvatar, TaskChatView, SigninCard, EditableField, HarveysTip; onboarding/page, FeedbackButton, EmailSignupForm, ChatInput, closer/page, dashboard/page, OnboardingCTA, OnboardingProgress, ConversationNavPanel, ProjectChatView, dashboard/settings, ActiveTaskCard, SuccessCriteriaList, CompletedTaskCard, ProjectDropdownMenu, page.tsx (root), TaskTile, onboarding/intro, TaskDetails, ProjectShadowPanel, TimelineView (dashboard + timeline), ProjectDetailsForm, TaskCategoryBadge, EmailLoginForm, project/[projectId]/loading, DashboardSidebar, loading/page, dashboard/roadmap, onboarding/vision, AuthButtons.
+
+**Docs:** Updated `ARCHITECTURE.md` (icons stack) and `docs/dashboard/README.md` (icon library).
+
+**Risk:** None. Icon-only swap; no logic, state, or API changes. Build passes.
+
+---
+
 ### [2026-03-07] DashboardSidebar and ChatSidebar UI adjustments
 
 **DashboardSidebar.tsx:**

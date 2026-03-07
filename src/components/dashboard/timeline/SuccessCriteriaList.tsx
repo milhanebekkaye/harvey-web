@@ -1,3 +1,4 @@
+import { CheckCircle, Circle } from 'lucide-react'
 import type { ChecklistItem } from '@/types/task.types'
 
 interface SuccessCriteriaListProps {
@@ -31,9 +32,11 @@ export function SuccessCriteriaList({ criteria, onChange }: SuccessCriteriaListP
             onClick={() => handleToggle(criterion.id)}
             className="w-full flex items-start gap-2 text-left text-sm text-slate-600"
           >
-            <span className="material-symbols-outlined text-[18px] text-slate-300">
-              {criterion.done ? 'check_circle' : 'radio_button_unchecked'}
-            </span>
+            {criterion.done ? (
+              <CheckCircle className="w-5 h-5 text-slate-300" />
+            ) : (
+              <Circle className="w-5 h-5 text-slate-300" />
+            )}
             <span className={criterion.done ? 'line-through text-slate-400' : ''}>
               {criterion.text}
             </span>
