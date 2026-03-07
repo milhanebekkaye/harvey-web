@@ -26,6 +26,7 @@ interface TourStep {
 
 interface GuidedTourProps {
   onComplete: () => void
+  userId: string
 }
 
 // ============================================
@@ -131,7 +132,7 @@ function entryTranslate(position: TooltipPosition, visible: boolean): string {
 // Component
 // ============================================
 
-export default function GuidedTour({ onComplete }: GuidedTourProps) {
+export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
   const [currentStep, setCurrentStep] = useState(1)
   const [cutoutRect, setCutoutRect] = useState<CutoutRect | null>(null)
   const [isVisible, setIsVisible] = useState(false)
@@ -279,9 +280,30 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
   }
 
   /**
-   * Handle both paywall actions ('pay' and 'skip').
-   * Scrolls the dashboard back to the top, then calls the parent callback.
-   * Stripe integration will differentiate 'pay' from 'skip' in a later step.
+   * Unlock Harvey: open Stripe Payment Link with user ID, scroll to top, dismiss tour.
+   */
+  const handleUnlockClick = () => {
+    const baseUrl = process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK
+    if (!baseUrl) {
+      console.error('Stripe payment link not configured')
+      return
+    }
+    if (!userId) {
+      console.error('User ID not available for payment link')
+      return
+    }
+    const paymentUrl = `${baseUrl}?client_reference_id=${encodeURIComponent(userId)}`
+    window.open(paymentUrl, '_blank')
+
+    const scrollContainer = document.querySelector('main.overflow-y-auto')
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    onComplete()
+  }
+
+  /**
+   * Maybe later: scroll to top and dismiss tour.
    */
   const handlePaywallAction = (_action: 'pay' | 'skip') => {
     const scrollContainer = document.querySelector('main.overflow-y-auto')
@@ -424,7 +446,7 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
           {/* CTA button */}
           <button
             type="button"
-            onClick={() => handlePaywallAction('pay')}
+            onClick={handleUnlockClick}
             style={{
               width: '100%',
               backgroundColor: '#895af6',

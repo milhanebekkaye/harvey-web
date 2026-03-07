@@ -2,6 +2,48 @@
 
 ---
 
+### [2026-03-07] Stripe integration — Step 5c: Payment Link from tour + success redirect
+
+**Files changed:** `.env.local`, `src/components/dashboard/GuidedTour.tsx`, `src/app/dashboard/page.tsx`.
+
+**PART A — Env**
+- Added `NEXT_PUBLIC_STRIPE_PAYMENT_LINK` to `.env.local` (test link). Production uses `NEXT_PUBLIC_STRIPE_PAYMENT_LINK` on Vercel for the live link.
+
+**PART B — GuidedTour**
+- New prop: `userId: string`. "Unlock Harvey" button now calls `handleUnlockClick`: builds `paymentUrl = baseUrl + ?client_reference_id=<userId>`, opens in new tab, scrolls `main.overflow-y-auto` to top, then `onComplete()`. If payment link env or userId is missing, logs and returns. "Maybe later" unchanged (scroll to top + `onComplete()`).
+
+**PART C — Dashboard**
+- Resolves `userId` from Supabase: `createClient().auth.getUser()` in a `useEffect`, stores in state. Passes `userId` to `GuidedTour`; tour only mounts when `userId` is set (and tour not completed and tasks loaded).
+
+**PART D — Payment success**
+- Dashboard uses `useSearchParams()`. On mount, `useEffect` checks `searchParams.get('payment') === 'success'`: sets `paymentSuccess` true, `window.history.replaceState` to `/dashboard`, and `setTimeout` 5s to clear. Renders a fixed success toast (top of right panel, z-50): green banner with checkmark and "Payment successful! Harvey is fully unlocked.", `animate-in slide-in-from-top-4 fade-in`. Configure Stripe Payment Link success URL to e.g. `https://your-app/dashboard?payment=success`.
+
+**Risk:** Low. No API or webhook changes. Stripe Payment Link success URL must be set in Stripe Dashboard to include `?payment=success` (or equivalent) so the dashboard can show the toast.
+
+---
+
+### [2026-03-07] Stripe webhook — fix apiVersion for TypeScript build
+
+**File changed:** `src/app/api/webhooks/stripe/route.ts` only.
+
+**Fix:** Updated Stripe client `apiVersion` from `'2024-12-18.acacia'` to `'2026-02-25.clover'` to match the type expected by the installed `stripe` package (resolves TypeScript build error).
+
+---
+
+### [2026-03-07] Stripe integration — Step 5b: webhook endpoint
+
+**File created:** `src/app/api/webhooks/stripe/route.ts` only.
+
+**What was added:**
+
+- **POST /api/webhooks/stripe** — Stripe webhook handler. Uses `runtime = 'nodejs'`. Reads raw body with `request.text()`, requires `stripe-signature` header (400 if missing). Initializes Stripe with `STRIPE_SECRET_KEY` and `apiVersion: '2026-02-25.clover'`. Verifies payload with `stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET)`; returns 400 on invalid signature. On **checkout.session.completed**, reads `client_reference_id` (user ID from Payment Link); if missing returns 400. Updates `User.payment_status` to `'paid'` via project Prisma client (`@/lib/db/prisma`); on DB error returns 500. Always returns 200 with `{ received: true }` to acknowledge receipt.
+
+**Constraint:** No other files modified; no UI. Payment Link must pass user ID as `client_reference_id` in the URL so the webhook can attribute the payment.
+
+**Risk:** Low. Webhook is unauthenticated by design (Stripe signs the request). Ensure `STRIPE_WEBHOOK_SECRET` is set in production and the endpoint URL is registered in Stripe Dashboard.
+
+---
+
 ### [2026-03-07] Stripe integration — Step 5a: payment_status + Stripe package
 
 **Scope:** Backend only; no new API routes for Stripe yet.

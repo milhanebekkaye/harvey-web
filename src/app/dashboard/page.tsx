@@ -24,7 +24,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { signOut } from '@/lib/auth/auth-service'
+import { createClient } from '@/lib/auth/supabase'
 
 // Import reusable dashboard components
 import {
@@ -71,6 +73,7 @@ interface DiscussionApiResponse {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   // ===== STATE =====
 
@@ -181,6 +184,16 @@ export default function DashboardPage() {
    */
   const [showTour, setShowTour] = useState(false)
   const [hasCompletedTour, setHasCompletedTour] = useState(true)
+
+  /**
+   * Authenticated user ID (from Supabase session). Passed to GuidedTour for Stripe Payment Link.
+   */
+  const [userId, setUserId] = useState<string | null>(null)
+
+  /**
+   * Payment success: set when redirect from Stripe has ?payment=success. Shows toast and auto-clears.
+   */
+  const [paymentSuccess, setPaymentSuccess] = useState(false)
 
   // ===== DATA FETCHING =====
 
@@ -440,6 +453,22 @@ export default function DashboardPage() {
   }, [checkInError])
 
   /**
+   * Resolve authenticated user ID from Supabase (for GuidedTour Stripe link).
+   */
+  useEffect(() => {
+    async function resolveUserId() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user?.id) setUserId(user.id)
+      } catch {
+        // Non-critical
+      }
+    }
+    void resolveUserId()
+  }, [])
+
+  /**
    * Check whether the user has already completed the guided tour.
    * Runs once on mount. Shows tour only if has_completed_tour === false.
    */
@@ -459,6 +488,18 @@ export default function DashboardPage() {
     }
     void checkTourStatus()
   }, [])
+
+  /**
+   * Handle redirect from Stripe with ?payment=success: show toast, clean URL, auto-dismiss.
+   */
+  useEffect(() => {
+    if (searchParams.get('payment') === 'success') {
+      setPaymentSuccess(true)
+      window.history.replaceState({}, '', '/dashboard')
+      const t = setTimeout(() => setPaymentSuccess(false), 5000)
+      return () => clearTimeout(t)
+    }
+  }, [searchParams])
 
   /**
    * Close the floating view selector when clicking outside or pressing Escape.
@@ -1079,6 +1120,21 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
       {/* ========== RIGHT AREA - List OR Timeline (60%) ========== */}
       <main className="w-[60%] h-full overflow-y-auto flex flex-col bg-[#FAF9F6]">
+        {/* Payment success toast — fixed top of right panel, slide down + fade in */}
+        {paymentSuccess && (
+          <div
+            className="fixed top-4 left-[calc(40%+1rem)] right-4 z-50 mx-auto max-w-md animate-in slide-in-from-top-4 fade-in duration-300"
+            style={{ zIndex: 50 }}
+          >
+            <div className="bg-green-50 border border-green-200 rounded-xl shadow-lg p-4 flex items-center gap-3">
+              <span className="text-green-600 text-xl font-bold" aria-hidden>✓</span>
+              <p className="text-green-800 font-medium text-sm">
+                Payment successful! Harvey is fully unlocked.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Unified right-header: project title + filter/view actions */}
         <div className="sticky top-0 z-20 bg-[#FAF9F6]/95 backdrop-blur-md px-8 py-6 border-b border-black/5">
           <div className="flex items-center justify-between gap-4">
@@ -1220,8 +1276,8 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
 
       {/* Guided tour spotlight overlay — shown once after first schedule generation.
           Gate on tasks !== null so ActiveTaskCard is already in the DOM before the tour mounts. */}
-      {showTour && !hasCompletedTour && tasks !== null && (
-        <GuidedTour onComplete={handleTourComplete} />
+      {showTour && !hasCompletedTour && tasks !== null && userId && (
+        <GuidedTour onComplete={handleTourComplete} userId={userId} />
       )}
 
       {/* Rebuild Schedule modal (triggered from top-right toolbar) */}
