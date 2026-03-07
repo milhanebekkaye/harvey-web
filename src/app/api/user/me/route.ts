@@ -32,6 +32,7 @@ export async function GET() {
 
     return NextResponse.json({
       name: dbUser.name ?? null,
+      email: dbUser.email ?? null,
       has_completed_tour: dbUser.has_completed_tour ?? false,
       payment_status: dbUser.payment_status ?? 'free',
     })

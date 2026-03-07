@@ -2,6 +2,25 @@
 
 ---
 
+### [2026-03-07] Settings page UI redesign
+
+**Goal:** Redesign the Settings page layout and visuals to match the Project Details design language; data fetching, save logic, API calls, and all handlers remain identical.
+
+**Changes:**
+- **`src/app/dashboard/settings/page.tsx`**: Full UI rewrite. (1) **Sticky frosted top bar** (same pattern as Project Details): back link "Dashboard" with ArrowLeft, right = "All changes saved" when clean, or Discard + "Save Changes" purple gradient pill when dirty; unsaved-changes confirm on navigation and beforeunload. (2) **Header**: title "Settings", subtitle, and user profile card (avatar with first letter, name, email, vertical divider, Pro/Free Plan badge). User profile fetched via GET `/api/user/me` (email added to that endpoint). (3) **Tab bar** (sticky below top bar): Schedule, Preferences, Harvey's Notes (with count badge); active tab has violet underline. (4) **Tab content**: Schedule = Work Schedule section + Availability Windows (or onboarding CTA when no project); Preferences = editorial grid (energy pill selector, rest-day circular pills, session-length pills + custom input, communication-style selectable cards); Harvey's Notes = Project Details–style notes (info banner, date left / note right, Read more/Show less, "Key insight" badge for CRITICAL/struggles, Add Note). **StickyUnsavedBar removed** from this page; save/discard live in the top bar. Page width `max-w-5xl`, background `bg-[#FAFAF8]`.
+- **`src/components/settings/WorkScheduleSection.tsx`**: Added optional `variant="card"`. Card variant: Briefcase icon box, "DAYS" label, circular pill day buttons (selected = purple gradient), time inputs with focus ring, "+ Add another work block" link, "COMMUTE (OPTIONAL)" with morning/evening time + duration (min suffix). Default variant unchanged.
+- **`src/components/settings/AvailabilitySection.tsx`**: Added optional `variant="card"`. Card variant: Calendar icon box, "+ Add block" as violet pill, softer grid (rounded-xl, rgba borders), block list rows with day/time/type badge and Edit/Remove on hover. Default variant unchanged.
+- **`src/components/settings/PreferencesSection.tsx`**: Added optional `variant="grid"`. Grid variant: 12-col editorial layout; Energy = pill selector (🌅 Morning, ☀️ Afternoon, 🌙 Evening); Rest days = circular day pills; Session length = pills (15m, 30m, 1h, 1.5h, 2h, Custom + number input); Communication style = three selectable cards (title + description). Default variant unchanged.
+- **`src/app/api/user/me/route.ts`**: Response now includes `email` (from dbUser) so the Settings profile card can display it.
+
+**Unchanged:** All state (data, savedSnapshot, loading, saving, saveStatus, error), fetchSettings, handleSave, handleDiscard, updateUser, updateProjectContext, hasChanges logic, POST `/api/settings/update` payload, GET `/api/settings` usage. WorkScheduleSection, AvailabilitySection, and PreferencesSection logic (blocks, commute, availability CRUD, preferences) unchanged; only JSX/styling added via variants.
+
+**Docs:** Updated `docs/settings/README.md` and `ARCHITECTURE.md` (Settings layout description). StickyUnsavedBar no longer used on Settings (still used elsewhere if applicable).
+
+**Risk:** Low. UI/layout only; build passes.
+
+---
+
 ### [2026-03-07] Project Details page UI redesign
 
 **Goal:** Redesign the Project Details page layout and visuals only; data fetching, save logic, and API calls remain identical.

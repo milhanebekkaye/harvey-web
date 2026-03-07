@@ -1,10 +1,12 @@
 'use client'
 
-import { Lightbulb, Plus, Quote, X } from 'lucide-react'
+import { ArrowLeft, Calendar, Plus, X } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import type { SettingsGetResponse, SettingsUpdateBody, AvailabilityBlock, UserNoteEntry } from '@/types/settings.types'
+import { WorkScheduleSection } from '@/components/settings/WorkScheduleSection'
+import { AvailabilitySection } from '@/components/settings/AvailabilitySection'
+import { PreferencesSection } from '@/components/settings/PreferencesSection'
 
 function formatNoteDate(iso: string | undefined): string {
   if (!iso) return ''
@@ -24,10 +26,12 @@ function formatNoteDate(iso: string | undefined): string {
     return ''
   }
 }
-import { StickyUnsavedBar } from '@/components/ui/StickyUnsavedBar'
-import { WorkScheduleSection } from '@/components/settings/WorkScheduleSection'
-import { AvailabilitySection } from '@/components/settings/AvailabilitySection'
-import { PreferencesSection } from '@/components/settings/PreferencesSection'
+
+interface UserProfile {
+  name: string | null
+  payment_status: string
+  email?: string | null
+}
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -37,6 +41,9 @@ export default function SettingsPage() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [savedSnapshot, setSavedSnapshot] = useState<SettingsGetResponse | null>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [activeSection, setActiveSection] = useState<'schedule' | 'preferences' | 'notes'>('schedule')
+  const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set())
 
   const fetchSettings = useCallback(async () => {
     setLoading(true)
@@ -61,9 +68,29 @@ export default function SettingsPage() {
     }
   }, [router])
 
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const res = await fetch('/api/user/me')
+      if (res.ok) {
+        const json = await res.json()
+        setUserProfile({
+          name: json.name ?? null,
+          payment_status: json.payment_status ?? 'free',
+          email: json.email ?? null,
+        })
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchSettings()
   }, [fetchSettings])
+
+  useEffect(() => {
+    if (!loading) fetchUserProfile()
+  }, [loading, fetchUserProfile])
 
   const handleSave = async () => {
     if (!data) return
@@ -71,7 +98,6 @@ export default function SettingsPage() {
     setSaveStatus('saving')
     setError(null)
     try {
-      // Build payload: include projectId when we have a project so availability is stored in Project.contextData.available_time
       const availableTime = data.project?.contextData?.available_time ?? []
       const body: SettingsUpdateBody = {
         workSchedule: data.user.workSchedule,
@@ -101,7 +127,6 @@ export default function SettingsPage() {
       }
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
-      // Refetch in background so UI shows what was persisted (same source as GET /api/settings)
       fetch('/api/settings')
         .then((r) => (r.ok ? r.json() : null))
         .then((json) => {
@@ -146,14 +171,41 @@ export default function SettingsPage() {
     []
   )
 
-  const hasChanges = savedSnapshot !== null && data !== null && JSON.stringify(data) !== JSON.stringify(savedSnapshot)
+  const hasChanges =
+    savedSnapshot !== null &&
+    data !== null &&
+    JSON.stringify(data) !== JSON.stringify(savedSnapshot)
+
   const handleDiscard = () => {
     if (savedSnapshot) setData(savedSnapshot)
   }
 
+  const handleNavigate = useCallback(
+    (href: string) => {
+      if (hasChanges && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        return
+      }
+      router.push(href)
+    },
+    [hasChanges, router]
+  )
+
+  useEffect(() => {
+    if (!hasChanges) return
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasChanges])
+
+  const isPro = userProfile?.payment_status && ['active', 'pro', 'paid'].includes(userProfile.payment_status)
+  const displayName = userProfile?.name?.trim() || userProfile?.email || 'Signed in'
+  const notesCount = data?.user?.userNotes?.length ?? 0
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
         <div className="text-slate-500">Loading settings...</div>
       </div>
     )
@@ -161,7 +213,7 @@ export default function SettingsPage() {
 
   if (error && !data) {
     return (
-      <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center">
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
         <div className="text-center max-w-md">
           <p className="text-slate-600 mb-4">{error}</p>
           <button
@@ -176,22 +228,77 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10 pb-24">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <Link
-              href="/dashboard"
-              className="text-sm text-[#62499c] hover:text-[#895af6] font-medium"
-            >
-              ← Back to dashboard
-            </Link>
-            <h1 className="text-2xl font-bold text-slate-800 mt-2">Settings</h1>
-            <p className="text-slate-500 text-sm mt-1">
-              Manage your work schedule, availability, and preferences.
-            </p>
+    <div className="min-h-screen bg-[#FAFAF8] overflow-y-auto">
+      {/* 1. Sticky top bar */}
+      <header className="sticky top-0 z-20 backdrop-blur-[20px] bg-[rgba(250,250,248,0.72)] border-b border-black/[0.06]">
+        <div className="max-w-5xl mx-auto px-10 h-14 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => handleNavigate('/dashboard')}
+            className="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-900"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Dashboard
+          </button>
+          <div className="flex items-center gap-3">
+            {!hasChanges ? (
+              <span className="text-xs text-slate-300">All changes saved</span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleDiscard}
+                  disabled={saving}
+                  className="text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-50"
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-5 py-2 rounded-full text-sm font-medium text-white bg-gradient-to-r from-[#895af6] to-[#7849d9] hover:opacity-95 disabled:opacity-60"
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </>
+            )}
           </div>
         </div>
+      </header>
+
+      <div className="max-w-5xl mx-auto px-10 pt-8 pb-24">
+        {/* 2. Header */}
+        <section className="flex flex-wrap items-start justify-between gap-6 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Settings</h1>
+            <p className="text-sm text-slate-400 mt-1">
+              Manage your schedule, preferences, and how Harvey works with you.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex items-center gap-4">
+            <div
+              className="w-10 h-10 rounded-full bg-gradient-to-r from-[#895af6] to-[#7849d9] flex items-center justify-center text-white font-semibold text-sm shrink-0"
+              aria-hidden
+            >
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-800 truncate">{displayName}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {userProfile?.email ?? '—'}
+              </p>
+            </div>
+            <div className="w-px h-10 bg-slate-100 shrink-0" />
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                isPro ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {isPro ? 'Pro Plan' : 'Free Plan'}
+            </span>
+          </div>
+        </section>
 
         {error && saveStatus === 'error' && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
@@ -199,56 +306,121 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* 3. Tab bar */}
+        <div className="sticky top-14 z-10 bg-[#FAFAF8] border-b border-slate-200/80 -mx-10 px-10 pb-0">
+          <div className="flex gap-8">
+            <button
+              type="button"
+              onClick={() => setActiveSection('schedule')}
+              className={`text-sm font-medium pb-3 border-b-2 transition-colors ${
+                activeSection === 'schedule'
+                  ? 'text-slate-900 border-violet-500'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}
+            >
+              Schedule
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('preferences')}
+              className={`text-sm font-medium pb-3 border-b-2 transition-colors ${
+                activeSection === 'preferences'
+                  ? 'text-slate-900 border-violet-500'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}
+            >
+              Preferences
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('notes')}
+              className={`text-sm font-medium pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeSection === 'notes'
+                  ? 'text-slate-900 border-violet-500'
+                  : 'text-slate-400 border-transparent hover:text-slate-600'
+              }`}
+            >
+              Harvey&apos;s Notes
+              {notesCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-violet-100 text-violet-700 text-xs font-semibold">
+                  {notesCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Tab content */}
         {data && (
-          <div className="space-y-8">
-            <WorkScheduleSection
-              workSchedule={data.user.workSchedule}
-              commute={data.user.commute}
-              onChange={(workSchedule, commute) => {
-                updateUser({ workSchedule, commute })
-              }}
-            />
-            {data.project ? (
-              <AvailabilitySection
-                availableTime={data.project.contextData.available_time ?? []}
-                workSchedule={data.user.workSchedule}
-                commute={data.user.commute}
-                onChange={(available_time) => updateProjectContext({ available_time })}
-              />
-            ) : (
-              <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-                <h2 className="text-lg font-semibold text-slate-800 mb-2">Availability Windows</h2>
-                <p className="text-slate-500 text-sm">Complete onboarding to add availability blocks for your project.</p>
-              </section>
+          <div className="mt-6">
+            {activeSection === 'schedule' && (
+              <div className="space-y-8">
+                <WorkScheduleSection
+                  workSchedule={data.user.workSchedule}
+                  commute={data.user.commute}
+                  onChange={(workSchedule, commute) => {
+                    updateUser({ workSchedule, commute })
+                  }}
+                  variant="card"
+                />
+                {data.project ? (
+                  <AvailabilitySection
+                    availableTime={data.project.contextData.available_time ?? []}
+                    workSchedule={data.user.workSchedule}
+                    commute={data.user.commute}
+                    onChange={(available_time) => updateProjectContext({ available_time })}
+                    variant="card"
+                  />
+                ) : (
+                  <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl bg-[rgba(137,91,245,0.06)] flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5 text-[#895bf5]" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-800">Availability Windows</h2>
+                        <p className="text-sm text-slate-500">Complete onboarding to add availability blocks for your project.</p>
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
             )}
-            <PreferencesSection
-              energyPeak={data.project?.contextData.preferences?.energy_peak}
-              restDays={data.project?.contextData.preferences?.rest_days ?? []}
-              preferredSessionLength={data.user.preferred_session_length}
-              communicationStyle={data.user.communication_style}
-              onChangeUser={(preferred_session_length, communication_style) =>
-                updateUser({ preferred_session_length, communication_style })
-              }
-              onChangePreferences={(preferences) =>
-                updateProjectContext({
-                  preferences: { ...(data.project?.contextData.preferences ?? {}), ...preferences },
-                })
-              }
-            />
-            {/* Harvey's Notes — same as project details, for user-level notes */}
-            <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 hover:shadow-md transition-shadow">
-              <h2 className="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2">
-                <Lightbulb className="w-5 h-5 text-slate-500" />
-                Harvey&apos;s Notes
-              </h2>
-              <p className="text-slate-500 text-sm mb-5">
-                Observations about you (working style, preferences). Add or edit notes below, then click &quot;Save&quot; at the top to store them.
-              </p>
-              {(data.user.userNotes?.length ?? 0) > 0 ? (
+
+            {activeSection === 'preferences' && (
+              <PreferencesSection
+                energyPeak={data.project?.contextData.preferences?.energy_peak}
+                restDays={data.project?.contextData.preferences?.rest_days ?? []}
+                preferredSessionLength={data.user.preferred_session_length}
+                communicationStyle={data.user.communication_style}
+                onChangeUser={(preferred_session_length, communication_style) =>
+                  updateUser({ preferred_session_length, communication_style })
+                }
+                onChangePreferences={(preferences) =>
+                  updateProjectContext({
+                    preferences: { ...(data.project?.contextData.preferences ?? {}), ...preferences },
+                  })
+                }
+                variant="grid"
+              />
+            )}
+
+            {activeSection === 'notes' && (
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                <div className="rounded-xl bg-violet-500/10 border border-violet-200/50 px-4 py-3 mb-6 flex items-start gap-3">
+                  <span className="text-lg" aria-hidden>🧠</span>
+                  <p className="text-sm text-slate-700">
+                    Observations Harvey has made about your working style and preferences.
+                  </p>
+                </div>
                 <ul className="space-y-4">
                   {[...(data.user.userNotes ?? [])].reverse().map((entry: UserNoteEntry, displayIndex: number) => {
                     const notes = data.user.userNotes ?? []
                     const realIndex = notes.length - 1 - displayIndex
+                    const isExpanded = expandedNotes.has(realIndex)
+                    const isLong = entry.note.length > 200
+                    const showTruncated = isLong && !isExpanded
+                    const hasKeyInsight = /CRITICAL|struggles/i.test(entry.note)
                     const updateNote = (note: string) => {
                       const next = [...notes]
                       next[realIndex] = { ...entry, note }
@@ -259,80 +431,71 @@ export default function SettingsPage() {
                       updateUser({ userNotes: next.length ? next : null })
                     }
                     return (
-                      <li
-                        key={realIndex}
-                        className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left"
-                      >
-                        <Quote className="w-5 h-5 text-[#895af6]/70 shrink-0 mt-1" />
+                      <li key={realIndex} className="flex gap-4">
+                        <div className="w-20 shrink-0 text-xs text-slate-400 pt-2">
+                          {entry.extracted_at ? formatNoteDate(entry.extracted_at) : '—'}
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <textarea
-                            value={entry.note}
-                            onChange={(e) => updateNote(e.target.value)}
-                            placeholder="Add or edit this note..."
-                            rows={5}
-                            className="w-full min-h-[120px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-700 placeholder:text-slate-400 focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
-                          />
-                          {entry.extracted_at && (
-                            <p className="text-xs text-slate-400 mt-2">
-                              {formatNoteDate(entry.extracted_at)}
-                            </p>
+                          {hasKeyInsight && (
+                            <span className="inline-block mb-2 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+                              Key insight
+                            </span>
+                          )}
+                          <div className="group flex items-start gap-2">
+                            <textarea
+                              value={entry.note}
+                              onChange={(e) => updateNote(e.target.value)}
+                              placeholder="Add or edit this note..."
+                              rows={showTruncated ? 3 : 5}
+                              className="w-full min-h-[80px] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#895af6] focus:outline-none focus:ring-2 focus:ring-[#895af6]/20"
+                            />
+                            <button
+                              type="button"
+                              onClick={removeNote}
+                              className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Remove note"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                          {isLong && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedNotes((prev) => {
+                                  const next = new Set(prev)
+                                  if (next.has(realIndex)) next.delete(realIndex)
+                                  else next.add(realIndex)
+                                  return next
+                                })
+                              }
+                              className="mt-2 text-xs font-medium text-violet-600 hover:text-violet-700"
+                            >
+                              {isExpanded ? 'Show less' : 'Read more'}
+                            </button>
                           )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={removeNote}
-                          className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 shrink-0 transition-colors"
-                          title="Remove note"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
                       </li>
                     )
                   })}
                 </ul>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  const notes = [...(data.user.userNotes ?? [])]
-                  notes.push({ note: '', extracted_at: new Date().toISOString() })
-                  updateUser({ userNotes: notes })
-                }}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-base font-medium text-slate-600 hover:border-[#895af6]/50 hover:bg-[#895af6]/5 hover:text-[#895af6] transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-                Add note
-              </button>
-              {!(data.user.userNotes?.length ?? 0) && (
-                <p className="text-sm text-slate-400 mt-3">Click &quot;Add note&quot; to create one, or let Harvey add observations as you chat. Remember to click &quot;Save&quot; to store them.</p>
-              )}
-            </section>
-            <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-slate-800 mb-2">Project</h2>
-              <p className="text-slate-500 text-sm mb-4">
-                View and edit what Harvey knows about your project (goals, deadline, tools).
-              </p>
-              {data.project ? (
-                <Link
-                  href={`/dashboard/project/${data.project.id}`}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50"
+                <button
+                  type="button"
+                  onClick={() => {
+                    const notes = [...(data.user.userNotes ?? [])]
+                    notes.push({ note: '', extracted_at: new Date().toISOString() })
+                    updateUser({ userNotes: notes })
+                  }}
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-violet-500/50 hover:bg-violet-500/5 hover:text-violet-700 transition-colors"
                 >
-                  View Project Details
-                </Link>
-              ) : (
-                <p className="text-sm text-slate-500">Complete onboarding to add a project.</p>
-              )}
-            </section>
+                  <Plus className="w-5 h-5" />
+                  Add Note
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
-
-      <StickyUnsavedBar
-        hasChanges={hasChanges}
-        saving={saving}
-        onSave={handleSave}
-        onDiscard={handleDiscard}
-      />
     </div>
   )
 }

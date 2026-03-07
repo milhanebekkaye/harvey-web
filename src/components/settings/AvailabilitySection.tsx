@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { Calendar, X } from 'lucide-react'
 import type {
   AvailabilityBlock,
   WorkScheduleShape,
@@ -71,6 +72,7 @@ interface AvailabilitySectionProps {
   workSchedule: WorkScheduleShape | null
   commute: CommuteShape | null
   onChange: (available_time: AvailabilityBlock[]) => void
+  variant?: 'default' | 'card'
 }
 
 export function AvailabilitySection({
@@ -78,6 +80,7 @@ export function AvailabilitySection({
   workSchedule,
   commute,
   onChange,
+  variant = 'default',
 }: AvailabilitySectionProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -179,30 +182,45 @@ export function AvailabilitySection({
     setEditingId(null)
   }
 
+  const isCard = variant === 'card'
+  const gridWrapperClass = isCard
+    ? 'min-w-[600px] rounded-xl overflow-hidden border border-slate-200/60'
+    : ''
+  const gridClass = 'min-w-[600px] grid grid-cols-8 gap-px overflow-hidden ' + (isCard ? 'bg-[rgba(0,0,0,0.06)]' : 'bg-slate-200 rounded-lg')
+
   return (
-    <section className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+    <section className={isCard ? 'rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm' : 'bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6'}>
       <div className="flex items-center justify-between gap-4 mb-2">
-        <h2 className="text-lg font-semibold text-slate-800">Availability Windows</h2>
+        <div className={isCard ? 'flex items-center gap-3' : ''}>
+          {isCard && (
+            <div className="w-10 h-10 rounded-xl bg-[rgba(137,91,245,0.06)] flex items-center justify-center shrink-0">
+              <Calendar className="w-5 h-5 text-[#895bf5]" />
+            </div>
+          )}
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Availability Windows</h2>
+            <p className="text-slate-500 text-sm mt-0.5">
+              {isCard ? 'When you can work on your project' : 'When you can work on this project. Shown below: work hours (grey), commute (lighter), your availability blocks (green/blue).'}
+            </p>
+          </div>
+        </div>
         {!adding && (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="shrink-0 text-sm font-medium text-[#895af6] hover:text-[#7849d9]"
+            className={`shrink-0 text-sm font-medium ${isCard ? 'px-4 py-2 rounded-full bg-gradient-to-r from-[#895af6] to-[#7849d9] text-white hover:opacity-95' : 'text-[#895af6] hover:text-[#7849d9]'}`}
           >
             + Add block
           </button>
         )}
       </div>
-      <p className="text-slate-500 text-sm mb-4">
-        When you can work on this project. Shown below: work hours (grey), commute (lighter), your availability blocks (green/blue).
-      </p>
 
       {adding && (
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
+        <div className={`flex flex-wrap items-center gap-2 p-3 mb-4 ${isCard ? 'rounded-xl bg-slate-50/80 border border-slate-200/80' : 'rounded-lg bg-slate-50 border border-slate-200'}`}>
           <select
             value={newBlock.day}
             onChange={(e) => setNewBlock((b) => ({ ...b, day: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+            className={`rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 ${isCard ? 'bg-white' : ''}`}
           >
             {DAYS.map((d) => (
               <option key={d} value={d}>{d}</option>
@@ -212,18 +230,18 @@ export function AvailabilitySection({
             type="time"
             value={newBlock.start ?? ''}
             onChange={(e) => setNewBlock((b) => ({ ...b, start: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
+            className={`rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm w-28 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 ${isCard ? 'bg-white' : ''}`}
           />
           <input
             type="time"
             value={newBlock.end ?? ''}
             onChange={(e) => setNewBlock((b) => ({ ...b, end: e.target.value }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm w-28"
+            className={`rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm w-28 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 ${isCard ? 'bg-white' : ''}`}
           />
           <select
             value={newBlock.type ?? 'work'}
             onChange={(e) => setNewBlock((b) => ({ ...b, type: e.target.value as 'work' | 'personal' }))}
-            className="rounded border border-slate-200 px-2 py-1.5 text-sm"
+            className={`rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 ${isCard ? 'bg-white' : ''}`}
           >
             <option value="work">Project</option>
             <option value="personal">Personal</option>
@@ -265,8 +283,8 @@ export function AvailabilitySection({
         </span>
       </div>
 
-      <div className="overflow-x-auto mb-6">
-        <div className="min-w-[600px] grid grid-cols-8 gap-px bg-slate-200 rounded-lg overflow-hidden">
+      <div className={`overflow-x-auto mb-6 ${gridWrapperClass}`}>
+        <div className={gridClass}>
           <div className="bg-slate-50 p-2 text-xs font-medium text-slate-500" />
           {DAYS.map((day) => (
             <div key={day} className="bg-slate-50 p-2 text-xs font-medium text-slate-600 capitalize">
@@ -332,14 +350,14 @@ export function AvailabilitySection({
             return (
             <li
               key={`${block.day}-${block.start}-${index}`}
-              className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100"
+              className={`group flex items-center gap-3 p-3 rounded-lg border ${isCard ? 'bg-slate-50/60 border-slate-100 hover:border-slate-200' : 'bg-slate-50 border-slate-100'}`}
             >
               {editingId === `edit-${index}` ? (
                 <>
                   <select
                     value={block.day}
                     onChange={(e) => updateBlock(index, { day: e.target.value })}
-                    className="rounded border border-slate-200 px-2 py-1 text-sm"
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                   >
                     {DAYS.map((d) => (
                       <option key={d} value={d}>{d.slice(0, 3)}</option>
@@ -349,18 +367,18 @@ export function AvailabilitySection({
                     type="time"
                     value={block.start}
                     onChange={(e) => updateBlock(index, { start: e.target.value })}
-                    className="rounded border border-slate-200 px-2 py-1 text-sm w-24"
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-sm w-24 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                   />
                   <input
                     type="time"
                     value={block.end}
                     onChange={(e) => updateBlock(index, { end: e.target.value })}
-                    className="rounded border border-slate-200 px-2 py-1 text-sm w-24"
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-sm w-24 focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                   />
                   <select
                     value={block.type ?? 'work'}
                     onChange={(e) => updateBlock(index, { type: e.target.value as 'work' | 'personal' })}
-                    className="rounded border border-slate-200 px-2 py-1 text-sm"
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                   >
                     <option value="work">Project</option>
                     <option value="personal">Personal</option>
@@ -375,30 +393,32 @@ export function AvailabilitySection({
                 </>
               ) : (
                 <>
-                  <span className="capitalize text-sm font-medium text-slate-700">{block.day}</span>
+                  <span className="capitalize text-sm font-semibold text-slate-700 w-24">{block.day}</span>
                   <span className="text-sm text-slate-500">
                     {parseTime(block.end) <= parseTime(block.start) && parseTime(block.start) !== parseTime(block.end)
                       ? `${block.start} – ${nextDay(block.day).charAt(0).toUpperCase() + nextDay(block.day).slice(1, 3)} ${block.end} (overnight)`
                       : `${block.start}–${block.end}`}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded ${(block.type ?? 'work') === 'personal' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${(block.type ?? 'work') === 'personal' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
                     {(block.type ?? 'work') === 'personal' ? 'Personal' : 'Project'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setEditingId(`edit-${index}`)}
-                    className="ml-auto text-slate-400 hover:text-slate-600 text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeBlock(index)}
-                    className="text-red-400 hover:text-red-600"
-                    aria-label="Remove"
-                  >
-                    ×
-                  </button>
+                  <div className={`ml-auto flex items-center gap-1 ${isCard ? 'opacity-0 group-hover:opacity-100 transition-opacity' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(`edit-${index}`)}
+                      className="text-slate-400 hover:text-slate-600 text-sm px-2 py-1"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeBlock(index)}
+                      className="text-red-400 hover:text-red-600 p-1"
+                      aria-label="Remove"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </>
               )}
             </li>

@@ -9,7 +9,7 @@ The Settings page lets users view and edit all constraints and preferences that 
 
 ## Page structure
 
-- **Save UX**: When there are unsaved changes, a **sticky unsaved bar** (fixed at bottom) shows “You have unsaved changes” with **Discard** and **Save Changes** buttons. The header Save button was removed; save/discard are only in the bar. Main content has bottom padding so it is not hidden behind the bar. Implemented via shared **StickyUnsavedBar** (`src/components/ui/StickyUnsavedBar.tsx`). Dirty state is derived by comparing current `data` to `savedSnapshot` (set on load and after successful save).
+- **Save UX**: When there are unsaved changes, a **sticky top bar** (frosted, at top) shows “You have unsaved changes” with **Discard** and **Save Changes** buttons. The header Save button was removed; save/discard are only in the bar. Layout: header with title, subtitle, and user profile card (name, email, Pro/Free from `/api/user/me`); tab bar (Schedule | Preferences | Harvey's Notes with count); tab content. Dirty state is derived by comparing current `data` to `savedSnapshot` (set on load and after successful save).
 
 1. **Work Schedule** – User life constraints (stored on **User**)
    - **Per-block days and times**: each “work block” has its own **days** (Mon–Sun checkboxes) and **start/end time**. Example: Block 1 = Mon 9–12 and 15–17, Block 2 = Thu 8–13. “Add work block” adds a new row (default Mon–Fri 9–5); each block has Remove.
@@ -52,7 +52,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 
 - **Page**: `src/app/dashboard/settings/page.tsx`
 - **API**: `src/app/api/settings/route.ts` (GET), `src/app/api/settings/update/route.ts` (POST)
-- **Components**: `src/components/ui/StickyUnsavedBar.tsx`, `src/components/settings/WorkScheduleSection.tsx`, `AvailabilitySection.tsx`, `PreferencesSection.tsx`
+- **Components**: `src/components/settings/WorkScheduleSection.tsx`, `AvailabilitySection.tsx`, `PreferencesSection.tsx` (each supports an optional `variant` for the card/grid layout). Settings page does not use StickyUnsavedBar (save/discard in top bar).
 - **Types**: `src/types/settings.types.ts`
 
 ## Validation
@@ -78,7 +78,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 
 ## Persistence and logging
 
-- **Save**: “Save Changes” in the sticky unsaved bar sends the full payload. `available_time` is sorted by day then start time before writing. `preferences` (including `energy_peak`) is merged with existing contextData.preferences.
+- **Save**: “Save Changes” in the sticky top bar sends the full payload. `available_time` is sorted by day then start time before writing. `preferences` (including `energy_peak`) is merged with existing contextData.preferences.
 - **API logging** (for debugging): `POST /api/settings/update` logs received body (has_available_time, available_time_count, preferences, projectId) and, when updating project, logs saved available_time count and preferences. Settings page in development logs the payload before send.
 
 ## No project

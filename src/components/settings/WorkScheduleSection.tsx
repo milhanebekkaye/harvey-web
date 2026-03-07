@@ -1,5 +1,6 @@
 'use client'
 
+import { Briefcase } from 'lucide-react'
 import type { WorkScheduleShape, CommuteShape } from '@/types/settings.types'
 
 const DAYS = [
@@ -42,12 +43,14 @@ interface WorkScheduleSectionProps {
   workSchedule: WorkScheduleShape | null
   commute: CommuteShape | null
   onChange: (workSchedule: WorkScheduleShape | null, commute: CommuteShape | null) => void
+  variant?: 'default' | 'card'
 }
 
 export function WorkScheduleSection({
   workSchedule,
   commute,
   onChange,
+  variant = 'default',
 }: WorkScheduleSectionProps) {
   const blocks = getBlocks(workSchedule)
 
@@ -84,6 +87,154 @@ export function WorkScheduleSection({
     }
     if (!next.morning && !next.evening) onChange(workSchedule, null)
     else onChange(workSchedule, next)
+  }
+
+  const isCard = variant === 'card'
+
+  if (isCard) {
+    return (
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-[rgba(137,91,245,0.06)] flex items-center justify-center shrink-0">
+            <Briefcase className="w-5 h-5 text-[#895bf5]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Work Schedule</h2>
+            <p className="text-sm text-slate-500">When you work — Harvey won&apos;t schedule project tasks here</p>
+          </div>
+        </div>
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-3">Days</p>
+          <ul className="space-y-4">
+            {blocks.map((block, index) => (
+              <li
+                key={index}
+                className="p-4 rounded-xl bg-slate-50/80 border border-slate-100 space-y-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  {DAYS.map(({ value, label }) => {
+                    const selected = block.days.includes(value)
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => toggleBlockDay(index, value)}
+                        className={`w-10 h-10 rounded-full text-sm font-medium transition-colors shrink-0 ${
+                          selected
+                            ? 'bg-gradient-to-r from-[#895af6] to-[#7849d9] text-white'
+                            : 'bg-white border border-slate-200 text-slate-500 hover:border-slate-300'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="time"
+                    value={block.startTime}
+                    onChange={(e) => setBlock(index, { startTime: e.target.value })}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm w-[120px] focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                  />
+                  <span className="text-slate-400 text-sm">to</span>
+                  <input
+                    type="time"
+                    value={block.endTime}
+                    onChange={(e) => setBlock(index, { endTime: e.target.value })}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm w-[120px] focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                  />
+                  {blocks.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeBlock(index)}
+                      className="text-red-400 hover:text-red-600 text-sm font-medium"
+                      aria-label="Remove block"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            onClick={addBlock}
+            className="mt-2 text-sm font-medium text-violet-600 hover:text-violet-700"
+          >
+            + Add another work block
+          </button>
+        </div>
+        <div className="border-t border-slate-100 pt-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-3">Commute (optional)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Morning: start time</label>
+              <input
+                type="time"
+                value={commute?.morning?.startTime ?? '08:30'}
+                onChange={(e) =>
+                  setCommute({
+                    morning: { durationMinutes: commute?.morning?.durationMinutes ?? 0, startTime: e.target.value },
+                  })
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+              />
+              <label className="block text-xs text-slate-500 mt-1 mb-1">Duration (minutes)</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={commute?.morning?.durationMinutes ?? ''}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10)
+                    setCommute({
+                      morning: isNaN(n) ? undefined : { durationMinutes: n, startTime: commute?.morning?.startTime ?? '08:30' },
+                    })
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                />
+                <span className="text-slate-400 text-sm shrink-0">min</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Evening: start time</label>
+              <input
+                type="time"
+                value={commute?.evening?.startTime ?? '17:00'}
+                onChange={(e) =>
+                  setCommute({
+                    evening: { durationMinutes: commute?.evening?.durationMinutes ?? 0, startTime: e.target.value },
+                  })
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+              />
+              <label className="block text-xs text-slate-500 mt-1 mb-1">Duration (minutes)</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={commute?.evening?.durationMinutes ?? ''}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10)
+                    setCommute({
+                      evening: isNaN(n) ? undefined : { durationMinutes: n, startTime: commute?.evening?.startTime ?? '17:00' },
+                    })
+                  }}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                />
+                <span className="text-slate-400 text-sm shrink-0">min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   return (
