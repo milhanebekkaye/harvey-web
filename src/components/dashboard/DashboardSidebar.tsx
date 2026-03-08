@@ -233,7 +233,7 @@ export function DashboardSidebar({
                   role="menuitem"
                 >
                   <Settings className="w-4 h-4 text-slate-600" />
-                  Settings
+                  User Settings
                 </Link>
                 <Link
                   href="/dashboard/roadmap"
