@@ -175,6 +175,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
             "availabilityWindows", "workSchedule", "commute",
             "preferred_session_length", "communication_style", "userNotes", "energy_peak",
             "rest_days", "oneOffBlocks",
+            "rest_days", "oneOffBlocks",
             "onboarding_reason", "current_work", "work_style", "biggest_challenge",
             "coaching_style", "experience_level", "has_completed_tour", "payment_status"
      FROM "users" WHERE "id" = $1`,
@@ -189,7 +190,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     timezone: row.timezone,
     createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
-    availabilityWindows: row.availabilityWindows ?? null,
+    availabilityWindows: Array.isArray(row.availabilityWindows) ? row.availabilityWindows : (row.availabilityWindows ? null : undefined),
     workSchedule: row.workSchedule ?? null,
     commute: row.commute ?? null,
     preferred_session_length: row.preferred_session_length ?? undefined,
@@ -197,7 +198,7 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     userNotes: row.userNotes ?? undefined,
     energy_peak: row.energy_peak ?? undefined,
     rest_days: Array.isArray(row.rest_days) ? row.rest_days : [],
-    oneOffBlocks: row.oneOffBlocks ?? null,
+    oneOffBlocks: Array.isArray(row.oneOffBlocks) ? row.oneOffBlocks : (row.oneOffBlocks ? null : undefined),
     onboarding_reason: row.onboarding_reason ?? undefined,
     current_work: row.current_work ?? undefined,
     work_style: (() => {
@@ -286,6 +287,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
               "availabilityWindows", "workSchedule", "commute",
               "preferred_session_length", "communication_style", "userNotes", "energy_peak",
               "rest_days", "oneOffBlocks",
+              "rest_days", "oneOffBlocks",
               "onboarding_reason", "current_work", "work_style", "biggest_challenge",
               "coaching_style", "experience_level", "has_completed_tour", "payment_status"
        FROM "users" WHERE "email" = $1`,
@@ -310,7 +312,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       userNotes: row.userNotes ?? undefined,
       energy_peak: row.energy_peak ?? undefined,
       rest_days: Array.isArray(row.rest_days) ? row.rest_days : [],
-      oneOffBlocks: row.oneOffBlocks ?? null,
+      oneOffBlocks: Array.isArray(row.oneOffBlocks) ? row.oneOffBlocks : (row.oneOffBlocks ? null : undefined),
       onboarding_reason: row.onboarding_reason ?? undefined,
       current_work: row.current_work ?? undefined,
       work_style: (() => {
