@@ -457,6 +457,11 @@ export async function updateUser(
       values.push(data.payment_status)
       paramIndex++
     }
+    if (data.subscription_start_date !== undefined) {
+      updates.push(`"subscription_start_date" = $${paramIndex}`)
+      values.push(data.subscription_start_date)
+      paramIndex++
+    }
 
     if (updates.length === 0) {
       const user = await getUserByIdRaw(userId)

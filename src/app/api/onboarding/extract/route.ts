@@ -82,7 +82,8 @@ Output format — return this exact structure:
     "motivation": string | null,
     "phases": { "phases": [{ "id": number, "title": string, "goal": string, "status": "active"|"future"|"completed", "deadline": string | null }], "active_phase_id": number | null } | null,
     "projectNotes": string | null,
-    "schedule_start_date": string (ISO date YYYY-MM-DD) | null
+    "schedule_start_date": string (ISO date YYYY-MM-DD) | null,
+    "schedule_duration_days": number | null
   },
   "completion_confidence": number
 }
@@ -103,6 +104,9 @@ Field-Specific Guidance:
   id (1-based), title, goal, status, deadline (ISO or null)
 - schedule_start_date: When they want to start. Parse natural language to 
   YYYY-MM-DD. "today", "tomorrow", "next Monday" etc.
+- schedule_duration_days: How many days to plan the schedule for. "1 week" -> 7, 
+  "2 weeks" -> 14, "3 weeks" -> 21. "Full timeline" or "until deadline" -> 0 
+  (system will use deadline). Non-negative integer.
 - target_deadline: Specific calendar day as YYYY-MM-DD. Never just a year.
 
 completion_confidence rules:
@@ -152,6 +156,23 @@ function parseIfString(value: unknown): unknown {
     }
   }
   return value
+}
+
+/** Normalize LLM output to availabilityWindows array. Handles single object, nested { windows } or { availabilityWindows }, or existing array. */
+function normalizeAvailabilityWindows(raw: unknown): unknown[] | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'object' && raw !== null) {
+    const o = raw as Record<string, unknown>
+    if (Array.isArray(o.availabilityWindows)) return o.availabilityWindows as unknown[]
+    if (Array.isArray(o.windows)) return o.windows as unknown[]
+    if (Array.isArray(o.window)) return o.window as unknown[]
+    // Single window object (has days or start_time/end_time)
+    if (Array.isArray(o.days) || typeof o.start_time === 'string' || typeof o.end_time === 'string') {
+      return [raw]
+    }
+  }
+  return null
 }
 
 function parseTimeToMinutes(timeStr: string): number | null {
@@ -403,6 +424,7 @@ export async function POST(request: Request) {
         phases: project.phases,
         projectNotes: project.projectNotes,
         schedule_start_date: project.schedule_start_date,
+        schedule_duration_days: project.schedule_duration_days,
       },
     }
     console.log('[OnboardingExtract] Running extraction | projectId:', projectId, '| messages:', messages.length, '| previousConfidence:', previousConfidence)
@@ -478,7 +500,12 @@ export async function POST(request: Request) {
 
     // Defensive parsing: handle stringified arrays/objects
     if (extracted.user.availabilityWindows != null) {
-      extracted.user.availabilityWindows = parseIfString(extracted.user.availabilityWindows)
+      const parsed = parseIfString(extracted.user.availabilityWindows)
+      const normalized = normalizeAvailabilityWindows(parsed)
+      extracted.user.availabilityWindows = normalized != null ? normalized : null
+      if (normalized === null && parsed != null) {
+        console.warn('[OnboardingExtract] availabilityWindows was not an array; skipping persistence for this field')
+      }
     }
     if (extracted.user.workSchedule != null) {
       extracted.user.workSchedule = parseIfString(extracted.user.workSchedule)
@@ -495,14 +522,8 @@ export async function POST(request: Request) {
       if (canonicalPhases != null) extracted.project.phases = canonicalPhases
     }
 
-    // Validate array fields are actually arrays
-    if (extracted.user.availabilityWindows != null && !Array.isArray(extracted.user.availabilityWindows)) {
-      console.error('[OnboardingExtract] availabilityWindows is not an array')
-      return NextResponse.json(
-        { error: 'availabilityWindows must be an array' },
-        { status: 500 }
-      )
-    }
+    // availabilityWindows is already normalized above (array or null)
+    // Validate other array fields
     if (extracted.project.tools_and_stack != null && !Array.isArray(extracted.project.tools_and_stack)) {
       console.error('[OnboardingExtract] tools_and_stack is not an array')
       return NextResponse.json(
@@ -519,6 +540,10 @@ export async function POST(request: Request) {
     if (extracted.project.weekly_hours_commitment != null && typeof extracted.project.weekly_hours_commitment !== 'number') {
       const n = parseInt(String(extracted.project.weekly_hours_commitment), 10)
       extracted.project.weekly_hours_commitment = Number.isNaN(n) ? null : n
+    }
+    if (extracted.project.schedule_duration_days != null && typeof extracted.project.schedule_duration_days !== 'number') {
+      const n = parseInt(String(extracted.project.schedule_duration_days), 10)
+      extracted.project.schedule_duration_days = Number.isNaN(n) || n < 0 ? null : n
     }
 
     // 7. Build update payloads (merge logic: only non-null from extraction)
@@ -548,6 +573,9 @@ export async function POST(request: Request) {
     if (extracted.project.projectNotes !== undefined && extracted.project.projectNotes !== null) projectUpdates.projectNotes = extracted.project.projectNotes
     const scheduleStartDateParsed = parseScheduleStartDate(extracted.project.schedule_start_date)
     if (scheduleStartDateParsed !== null) projectUpdates.schedule_start_date = scheduleStartDateParsed
+    if (typeof extracted.project.schedule_duration_days === 'number' && extracted.project.schedule_duration_days >= 0) {
+      projectUpdates.schedule_duration_days = extracted.project.schedule_duration_days
+    }
 
     // If weekly_hours_commitment was not extracted, derive from availabilityWindows
     const hasWeeklyHours = extracted.project.weekly_hours_commitment !== undefined && extracted.project.weekly_hours_commitment !== null

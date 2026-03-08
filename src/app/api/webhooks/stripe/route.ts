@@ -48,7 +48,10 @@ export async function POST(request: Request) {
     }
 
     try {
-      const result = await updateUser(userId, { payment_status: 'paid' })
+      const result = await updateUser(userId, {
+        payment_status: 'paid',
+        subscription_start_date: new Date(),
+      })
       if (!result.success) {
         console.error('[Stripe Webhook] DB update failed:', result.error?.message)
         return NextResponse.json(

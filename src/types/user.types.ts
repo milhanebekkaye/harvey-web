@@ -62,6 +62,7 @@ export interface User {
 
   // Billing
   payment_status?: string // "free" | "paid"
+  subscription_start_date?: Date | null
 }
 
 /**
@@ -122,6 +123,7 @@ export interface UpdateUserData {
   experience_level?: string | null
   has_completed_tour?: boolean
   payment_status?: string // "free" | "paid"
+  subscription_start_date?: Date | null
 }
 
 /**

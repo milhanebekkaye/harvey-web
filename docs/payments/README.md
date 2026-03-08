@@ -5,15 +5,15 @@ Harvey uses **Stripe** for payments. This doc covers the backend and API surface
 ## Step 5a
 
 - **Package:** `stripe` npm package is installed.
-- **Schema:** `User.payment_status` — `String`, default `"free"`. Valid values: `"free"` | `"paid"`.
+- **Schema:** `User.payment_status` — `String`, default `"free"`. Valid values: `"free"` | `"paid"`. `User.subscription_start_date` — `DateTime?`, set when payment is validated (webhook).
 - **Migration:** `20260307120000_add_payment_status` adds the column to `users`. Run `npx prisma migrate dev --name add_payment_status` (or `migrate deploy`) to apply.
 - **API:** `GET /api/user/me` returns `payment_status` with the same pattern as `has_completed_tour`. Used by the frontend to know if the user has paid (e.g. to show or skip paywall).
-- **User service:** `getUserById` / `getUserByEmail` include `payment_status`; `updateUser` accepts `payment_status` for webhook use.
+- **User service:** `getUserById` / `getUserByEmail` include `payment_status` and `subscription_start_date`; `updateUser` accepts `payment_status` and `subscription_start_date` for webhook use.
 
 ## Step 5b
 
 - **Webhook:** `POST /api/webhooks/stripe` — Stripe calls this after events (e.g. successful checkout). No auth; request is verified using the `stripe-signature` header and `STRIPE_WEBHOOK_SECRET`. Raw body is read as text for signature verification.
-- **Event handled:** `checkout.session.completed`. The handler reads `client_reference_id` from the session (must be the Harvey user ID). If present, sets `User.payment_status = 'paid'` via Prisma. If `client_reference_id` is missing, returns 400. On DB error returns 500. Always returns 200 with `{ received: true }` to acknowledge receipt.
+- **Event handled:** `checkout.session.completed`. The handler reads `client_reference_id` from the session (must be the Harvey user ID). If present, sets `User.payment_status = 'paid'` and `User.subscription_start_date` (webhook processing time) via the user service. If `client_reference_id` is missing, returns 400. On DB error returns 500. Always returns 200 with `{ received: true }` to acknowledge receipt.
 - **Payment Link setup:** The dashboard opens the Payment Link with `?client_reference_id=<userId>` (Step 5c). Ensure the webhook receives this so it can attribute the payment.
 
 ## Step 5c (current)

@@ -12,7 +12,8 @@ import { getUserById } from '@/lib/users/user-service'
 export const BLOCKING_FIELDS = [
   'description',
   'availabilityWindows',
-  'goals'
+  'goals',
+  'schedule_duration_days',
 ] as const
 
 /** Fields Harvey should ask about if the conversation allows — nice to have. */
@@ -48,6 +49,8 @@ export const fieldToNaturalDescription: Record<string, string> = {
     'Whether they are most productive in the morning, afternoon, or evening',
   schedule_start_date:
     'When they want to start working on this schedule (today, tomorrow, or a specific date)',
+  schedule_duration_days:
+    'How long they want to plan the schedule for (e.g. 1 week, 2 weeks, or full timeline until deadline)',
 }
 
 
@@ -92,6 +95,12 @@ export async function computeMissingFields(
     | undefined
   if (!Array.isArray(windows) || windows.length === 0) {
     blocking.push('availabilityWindows')
+  }
+
+  // Blocking: schedule_duration_days (project) — user must say how long to plan (0 = full timeline)
+  const scheduleDurationDays = project && 'schedule_duration_days' in project ? (project as { schedule_duration_days?: number | null }).schedule_duration_days : undefined
+  if (scheduleDurationDays === undefined || scheduleDurationDays === null) {
+    blocking.push('schedule_duration_days')
   }
 
   // Enriching: preferred_session_length (user)
