@@ -19,7 +19,25 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getGroupedTasks } from '@/lib/tasks/task-service'
+import { getUserById } from '@/lib/users/user-service'
 import type { TaskGroups } from '@/types/task.types'
+
+/** Convert User.availabilityWindows to flat { day, start, end }[] for reorder window lookup. */
+function availabilityWindowsToAvailableTime(windows: unknown): Array<{ day: string; start: string; end: string }> {
+  if (!Array.isArray(windows) || windows.length === 0) return []
+  const out: Array<{ day: string; start: string; end: string }> = []
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  for (const w of windows) {
+    const days = Array.isArray((w as { days?: string[] }).days) ? (w as { days: string[] }).days : []
+    const start = typeof (w as { start_time?: string }).start_time === 'string' ? (w as { start_time: string }).start_time : '09:00'
+    const end = typeof (w as { end_time?: string }).end_time === 'string' ? (w as { end_time: string }).end_time : '17:00'
+    for (const d of days) {
+      const day = String(d).toLowerCase()
+      if (dayNames.includes(day)) out.push({ day, start, end })
+    }
+  }
+  return out
+}
 
 /**
  * Response type for GET /api/tasks
@@ -28,7 +46,7 @@ interface TasksApiResponse {
   tasks: TaskGroups
   projectId: string
   projectTitle: string
-  /** From project.contextData.available_time; used for drag reorder window lookup */
+  /** From user.availabilityWindows; used for drag reorder window lookup */
   availableTime?: Array<{ day: string; start: string; end: string }>
 }
 
@@ -88,8 +106,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { tasks, project } = result.data
-    const contextData = project.contextData as { available_time?: Array<{ day: string; start: string; end: string }> } | null
-    const availableTime = Array.isArray(contextData?.available_time) ? contextData.available_time : []
+    const dbUser = await getUserById(user.id)
+    const availableTime = dbUser ? availabilityWindowsToAvailableTime(dbUser.availabilityWindows) : []
 
     // ===== STEP 4: Return Response =====
     console.log('[TasksAPI] Returning tasks:', {

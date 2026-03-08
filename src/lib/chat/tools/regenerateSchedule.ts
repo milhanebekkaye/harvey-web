@@ -26,6 +26,8 @@ import {
   parseTasks,
   convertSuccessCriteriaToJson,
   calculateTotalAvailableHours,
+  buildContextDataFromProjectAndUser,
+  buildConstraintsFromProjectAndUser,
 } from '../../schedule/schedule-generation'
 import { assignTasksToSchedule, calculateStartDate, getTaskScheduleData } from '../../schedule/task-scheduler'
 import { localTimeInTimezoneToUTC } from '../../timezone'
@@ -212,11 +214,9 @@ export async function executeRegenerateSchedule(
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
     const userTimezone = user?.timezone || 'Europe/Paris'
-    const rawContext: ContextData = (project.contextData as unknown as ContextData) || {
-      available_time: [],
-      preferences: {},
-    }
-    // Blocked time is derived from User.workSchedule and User.commute; subtract from available_time for scheduling
+    const rawContext = user
+      ? buildContextDataFromProjectAndUser(project, user)
+      : ({ available_time: [], preferences: {} } as ContextData)
     const userBlocked = user
       ? {
           workSchedule: (user as { workSchedule?: import('@/types/api.types').WorkScheduleShape | null }).workSchedule ?? null,
@@ -363,20 +363,10 @@ export async function executeRegenerateSchedule(
         .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
         .join('\n\n')
 
-      const constraints = contextData.available_time?.length
-        ? {
-            schedule_duration_weeks: contextData.schedule_duration_weeks || 2,
-            blocked_time: [] as Array<{ day: string; start: string; end: string; label?: string }>,
-            available_time: contextData.available_time.map((a) => ({
-              day: a.day,
-              start: a.start,
-              end: a.end,
-              label: a.label,
-            })),
-            preferences: contextData.preferences as Record<string, string>,
-            exclusions: contextData.exclusions,
-          }
-        : await extractConstraints(conversationText, userId)
+      const constraints =
+        contextData.available_time?.length && user
+          ? buildConstraintsFromProjectAndUser(project, user)
+          : await extractConstraints(conversationText, userId)
 
       const taskText = await generateTasks(conversationText, constraints, userId)
       const { tasks: parsedTasks } = parseTasks(taskText)

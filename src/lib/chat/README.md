@@ -89,7 +89,7 @@ src/app/api/chat/project/
 | Tool | Trigger | Mutates DB? |
 |------|---------|-------------|
 | `modify_schedule` | "Move task to tomorrow" | Yes — updates Task |
-| `update_constraints` | "I can't work Fridays" | Yes — updates Project.contextData |
+| `update_constraints` | "I can't work Fridays" | Yes — updates User (availabilityWindows, oneOffBlocks, energy_peak, rest_days) and Project (exclusions) as needed |
 | `add_task` | "Add a 2h task for..." | Yes — creates Task |
 | `suggest_next_action` | "What should I do?" | No — read-only |
 | `get_progress_summary` | "How am I doing?" | No — read-only |

@@ -1,16 +1,16 @@
 /**
  * GET /api/settings
  *
- * Returns the current user's settings and active project context for the Settings page.
- * User: workSchedule, commute, preferred_session_length, communication_style, timezone.
- * Project: id, contextData (available_time, preferences only — no blocked_time).
+ * Returns the current user's settings and active project for the Settings page.
+ * User: workSchedule, commute, preferred_session_length, communication_style, timezone, availabilityWindows, energy_peak, rest_days.
+ * Project: id, schedule_duration_days, exclusions.
  */
 
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/auth/supabase-server'
 import { getUserById } from '@/lib/users/user-service'
 import { getActiveProject } from '@/lib/tasks/task-service'
-import type { SettingsGetResponse, AvailabilityBlock, SettingsPreferences, UserNoteEntry } from '@/types/settings.types'
+import type { SettingsGetResponse, UserNoteEntry } from '@/types/settings.types'
 import type { WorkScheduleShape } from '@/types/api.types'
 
 const DAY_NAME_TO_NUM: Record<string, number> = {
@@ -109,7 +109,6 @@ export async function GET() {
         ? (dbUser.commute as SettingsGetResponse['user']['commute'])
         : null
 
-    const rawContext = project?.contextData as { available_time?: AvailabilityBlock[]; preferences?: SettingsPreferences } | null
     const response: SettingsGetResponse = {
       user: {
         workSchedule,
@@ -118,14 +117,15 @@ export async function GET() {
         communication_style: dbUser.communication_style ?? null,
         timezone: dbUser.timezone ?? 'Europe/Paris',
         userNotes: normalizeUserNotes(dbUser.userNotes),
+        availabilityWindows: dbUser.availabilityWindows ?? null,
+        energy_peak: dbUser.energy_peak ?? null,
+        rest_days: Array.isArray(dbUser.rest_days) ? dbUser.rest_days : [],
       },
       project: project
         ? {
             id: project.id,
-            contextData: {
-              available_time: Array.isArray(rawContext?.available_time) ? rawContext.available_time : [],
-              preferences: rawContext?.preferences ?? {},
-            },
+            schedule_duration_days: project.schedule_duration_days ?? null,
+            exclusions: Array.isArray(project.exclusions) ? project.exclusions : [],
           }
         : null,
     }

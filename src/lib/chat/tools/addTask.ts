@@ -16,6 +16,7 @@ import {
   addDays,
   getEffectiveAvailableTimeBlocks,
 } from '../../schedule/task-scheduler'
+import { buildContextDataFromProjectAndUser } from '../../schedule/schedule-generation'
 import { localTimeInTimezoneToUTC, getHourDecimalInTimezone, formatTimeInTimezone } from '../../timezone'
 import { generateSuccessCriteria } from '../generateSuccessCriteria'
 
@@ -167,16 +168,12 @@ export async function executeAddTask(
       return { success: false, message: 'Project not found.' }
     }
 
-    // 2. Get user timezone and life constraints for effective availability
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { timezone: true, workSchedule: true, commute: true },
-    })
+    // 2. Get user and build context from User + Project (no contextData)
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     const userTimezone = user?.timezone || 'Europe/Paris'
-    const rawContext: ContextData = (project.contextData as unknown as ContextData) || {
-      available_time: [],
-      preferences: {},
-    }
+    const rawContext = user
+      ? buildContextDataFromProjectAndUser(project, user)
+      : ({ available_time: [], preferences: {} } as ContextData)
     const userBlocked = user
       ? { workSchedule: user.workSchedule as import('@/types/api.types').WorkScheduleShape | null, commute: user.commute as import('@/types/api.types').CommuteShape | null }
       : null

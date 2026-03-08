@@ -159,6 +159,8 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
       communication_style: string | null
       userNotes: unknown
       energy_peak: string | null
+      rest_days: string[]
+      oneOffBlocks: unknown
       onboarding_reason: string | null
       current_work: string | null
       work_style: unknown
@@ -172,6 +174,8 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
             "availabilityWindows", "workSchedule", "commute",
             "preferred_session_length", "communication_style", "userNotes", "energy_peak",
+            "rest_days", "oneOffBlocks",
+            "rest_days", "oneOffBlocks",
             "onboarding_reason", "current_work", "work_style", "biggest_challenge",
             "coaching_style", "experience_level", "has_completed_tour", "payment_status"
      FROM "users" WHERE "id" = $1`,
@@ -186,13 +190,15 @@ async function getUserByIdRaw(userId: string): Promise<User | null> {
     timezone: row.timezone,
     createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt : new Date(row.updatedAt),
-    availabilityWindows: row.availabilityWindows ?? null,
+    availabilityWindows: Array.isArray(row.availabilityWindows) ? row.availabilityWindows : (row.availabilityWindows ? null : undefined),
     workSchedule: row.workSchedule ?? null,
     commute: row.commute ?? null,
     preferred_session_length: row.preferred_session_length ?? undefined,
     communication_style: row.communication_style ?? undefined,
     userNotes: row.userNotes ?? undefined,
     energy_peak: row.energy_peak ?? undefined,
+    rest_days: Array.isArray(row.rest_days) ? row.rest_days : [],
+    oneOffBlocks: Array.isArray(row.oneOffBlocks) ? row.oneOffBlocks : (row.oneOffBlocks ? null : undefined),
     onboarding_reason: row.onboarding_reason ?? undefined,
     current_work: row.current_work ?? undefined,
     work_style: (() => {
@@ -265,6 +271,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
         communication_style: string | null
         userNotes: unknown
         energy_peak: string | null
+        rest_days: string[]
+        oneOffBlocks: unknown
         onboarding_reason: string | null
         current_work: string | null
         work_style: unknown
@@ -278,6 +286,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       `SELECT "id", "email", "name", "timezone", "createdAt", "updatedAt",
               "availabilityWindows", "workSchedule", "commute",
               "preferred_session_length", "communication_style", "userNotes", "energy_peak",
+              "rest_days", "oneOffBlocks",
+              "rest_days", "oneOffBlocks",
               "onboarding_reason", "current_work", "work_style", "biggest_challenge",
               "coaching_style", "experience_level", "has_completed_tour", "payment_status"
        FROM "users" WHERE "email" = $1`,
@@ -301,6 +311,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       communication_style: row.communication_style ?? undefined,
       userNotes: row.userNotes ?? undefined,
       energy_peak: row.energy_peak ?? undefined,
+      rest_days: Array.isArray(row.rest_days) ? row.rest_days : [],
+      oneOffBlocks: Array.isArray(row.oneOffBlocks) ? row.oneOffBlocks : (row.oneOffBlocks ? null : undefined),
       onboarding_reason: row.onboarding_reason ?? undefined,
       current_work: row.current_work ?? undefined,
       work_style: (() => {
@@ -369,8 +381,10 @@ export async function updateUser(
       paramIndex++
     }
     if (data.availabilityWindows !== undefined) {
+      const serialized = JSON.stringify(data.availabilityWindows)
+      console.log('[UserService] Updating availabilityWindows', { length: serialized.length, preview: serialized.slice(0, 200) })
       updates.push(`"availabilityWindows" = $${paramIndex}::jsonb`)
-      values.push(JSON.stringify(data.availabilityWindows))
+      values.push(serialized)
       paramIndex++
     }
     if (data.preferred_session_length !== undefined) {
@@ -391,6 +405,16 @@ export async function updateUser(
     if (data.energy_peak !== undefined) {
       updates.push(`"energy_peak" = $${paramIndex}`)
       values.push(data.energy_peak)
+      paramIndex++
+    }
+    if (data.rest_days !== undefined) {
+      updates.push(`"rest_days" = $${paramIndex}::text[]`)
+      values.push(data.rest_days)
+      paramIndex++
+    }
+    if (data.oneOffBlocks !== undefined) {
+      updates.push(`"oneOffBlocks" = $${paramIndex}::jsonb`)
+      values.push(JSON.stringify(data.oneOffBlocks))
       paramIndex++
     }
     if (data.onboarding_reason !== undefined) {
@@ -445,14 +469,21 @@ export async function updateUser(
     values.push(userId)
 
     const sql = `UPDATE "users" SET ${updates.join(', ')} WHERE "id" = $${paramIndex}`
-    await prisma.$executeRawUnsafe(sql, ...values)
+    console.log('[UserService] Executing update', { sql: sql.slice(0, 120), paramCount: values.length })
+    const updateResult = await prisma.$executeRawUnsafe(sql, ...values)
+    console.log('[UserService] Update result (row count)', updateResult)
 
     const user = await getUserByIdRaw(userId)
     if (!user) {
       return { success: false, error: { message: 'User not found after update' } }
     }
 
-    console.log('[UserService] User updated successfully')
+    if (data.availabilityWindows !== undefined) {
+      const aw = user.availabilityWindows
+      console.log('[UserService] User updated successfully; availabilityWindows after read', Array.isArray(aw) ? { count: aw.length, sample: JSON.stringify((aw as unknown[]).slice(0, 1)) } : aw)
+    } else {
+      console.log('[UserService] User updated successfully')
+    }
     return { success: true, user }
   } catch (error: unknown) {
     console.error('[UserService] Error updating user:', error)

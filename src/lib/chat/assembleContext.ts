@@ -10,6 +10,7 @@
 
 import { prisma } from '../db/prisma'
 import { getDateStringInTimezone } from '../timezone'
+import { buildContextDataFromProjectAndUser } from '../schedule/schedule-generation'
 import type { Task, Project, TaskStats, ContextData } from './types'
 import type { User } from '@prisma/client'
 
@@ -62,6 +63,10 @@ export async function assembleProjectChatContext(
       timezone: true,
       workSchedule: true,
       commute: true,
+      availabilityWindows: true,
+      oneOffBlocks: true,
+      rest_days: true,
+      energy_peak: true,
     },
   })
 
@@ -73,6 +78,10 @@ export async function assembleProjectChatContext(
       timezone: 'Europe/Paris',
       workSchedule: null,
       commute: null,
+      availabilityWindows: null,
+      oneOffBlocks: null,
+      rest_days: [],
+      energy_peak: null,
     }
   }
   // userNotes not selected above (may not exist in DB); buildSystemPrompt treats undefined as no notes
@@ -218,10 +227,7 @@ function buildSystemPrompt(
   tasksBeyondWindow: number,
   userTimezone: string
 ): string {
-  const contextData = (project.contextData as unknown as ContextData) || {
-    available_time: [],
-    preferences: {},
-  }
+  const contextData = buildContextDataFromProjectAndUser(project, user)
 
   // Format current time in user's timezone
   const now = new Date()

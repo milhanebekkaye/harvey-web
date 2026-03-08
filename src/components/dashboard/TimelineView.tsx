@@ -167,7 +167,7 @@ interface TimelineViewProps {
   ) => Promise<void>
 
   /**
-   * Availability windows from project.contextData.available_time (for flexible window on drop)
+   * Availability windows from user.availabilityWindows (via API)
    */
   availableWindows?: TimeBlock[]
 

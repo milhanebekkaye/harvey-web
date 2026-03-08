@@ -40,7 +40,7 @@ All fields are on the **Project** model (Prisma): `title`, `description`, `goals
 
 ## Relationship to Settings
 
-- **Settings page**: User life constraints (work schedule, commute, availability windows, preferences). Stored on **User** and **Project.contextData** (available_time, preferences).
+- **Settings page**: User life constraints (work schedule, commute, availability windows, preferences). Stored on **User** (availabilityWindows, energy_peak, rest_days) and **Project** (schedule_duration_days, exclusions).
 - **Project Details page**: What the project is and how the user relates to it (goals, deadline, type, skill level, stack, weekly commitment, motivation). Stored on **Project** scalar/enum fields.
 
 The Settings page has a “View Project Details” link; the Project Details page has a “User Settings” link. Both have “Back to Dashboard”.

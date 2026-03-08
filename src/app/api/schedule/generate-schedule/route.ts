@@ -12,14 +12,13 @@
  * 2. Get projectId from request body
  * 3. Load Discussion and full Project + User from database
  * 4. Convert messages to conversation text
- * 5. Build constraints from last extracted data (Project + User) — no second extraction
+ * 5. Build constraints from Project + User (no contextData)
  * 6. Generate tasks using Claude
  * 7. Parse tasks
- * 8. Save contextData from built constraints (so Settings/tools have available_time)
- * 9. Schedule tasks to specific dates/times using Claude + validation + fallback
- * 10. Create Task records in database with scheduled dates
- * 10.5. Append Harvey's post-schedule message to Discussion (so user sees it in chat sidebar)
- * 11. Return success with task count
+ * 8. Schedule tasks to specific dates/times using Claude + validation + fallback
+ * 9. Create Task records in database with scheduled dates
+ * 9.5. Append Harvey's post-schedule message to Discussion (so user sees it in chat sidebar)
+ * 10. Return success with task count
  *
  * Request Body:
  * - projectId: string (required) - Project to generate schedule for
@@ -183,33 +182,12 @@ export async function POST(request: NextRequest) {
 
     // ===== STEP 5: Load constraints from DB only (no re-extraction) =====
     console.log('[GenerateScheduleAPI] Step 5: Loading constraints from DB (no re-extraction) ✅')
-    // project from getProjectById is full Prisma Project (contextData, target_deadline, etc.)
     type ProjectForConstraints = Parameters<typeof buildConstraintsFromProjectAndUser>[0]
     const constraints = buildConstraintsFromProjectAndUser(project as ProjectForConstraints, dbUser)
     const windowsCount = Array.isArray(constraints.available_time) ? constraints.available_time.length : 0
     console.log(
       `[GenerateScheduleAPI] Loaded: energy_peak=${constraints.energy_peak ?? '—'}, skill_level=${constraints.skill_level ?? '—'}, weekly_hours=${constraints.weekly_hours_commitment ?? '—'}, windows=${windowsCount}`
     )
-
-    // ===== STEP 5.5: Save contextData from built constraints (Settings and chat tools read available_time from here) =====
-    const existingContext = (project.contextData ?? {}) as Record<string, unknown>
-    const contextDataSubset = {
-      schedule_duration_weeks: constraints.schedule_duration_weeks,
-      available_time: constraints.available_time,
-      preferences: constraints.preferences,
-      exclusions: constraints.exclusions,
-      ...(existingContext.one_off_blocks != null && { one_off_blocks: existingContext.one_off_blocks }),
-    }
-
-    await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        contextData: contextDataSubset as unknown as Parameters<typeof prisma.project.update>[0]['data']['contextData'],
-        updatedAt: new Date(),
-      },
-    })
-    console.log('[GenerateScheduleAPI] ✅ Saved project contextData (available_time, preferences; no blocked_time)')
-    // Project/User enrichment is not rewritten here — it already comes from the last onboarding extraction.
 
     // ===== STEP 6: Generate Tasks =====
     console.log('[GenerateScheduleAPI] Step 6: 🎯 Generating tasks...')

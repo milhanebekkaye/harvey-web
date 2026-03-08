@@ -23,6 +23,7 @@ import type {
 } from '../../types/api.types'
 import { normalizeTaskLabel } from '../../types/task.types'
 import type { AvailabilityWindow } from '../../types/user.types'
+import type { ContextData } from '../chat/types'
 import { normalizeAvailabilityBlocks, parseTimeToHours } from './task-scheduler'
 
 // ============================================
@@ -474,17 +475,15 @@ const DAY_NAME_TO_NUM: Record<string, number> = {
 }
 
 /**
- * Build ExtractedConstraints from Project and User records (last extracted data from onboarding).
- * Used when the user clicks "Build Schedule" so we use the same data as the Shadow Panel
- * (no second extraction). Prefers Project.contextData when present (e.g. from Settings).
+ * Build ExtractedConstraints from Project and User records only (no contextData).
+ * Used when the user clicks "Build Schedule" and by chat tools for scheduling.
  *
- * @param project - Project from DB (contextData, enrichment fields)
- * @param user - User from DB (availabilityWindows, workSchedule, commute, enrichment)
+ * @param project - Project from DB (schedule_duration_days, exclusions, enrichment)
+ * @param user - User from DB (availabilityWindows, workSchedule, commute, rest_days, oneOffBlocks, enrichment)
  * @returns ExtractedConstraints for generateTasks and assignTasksToSchedule
  */
 export function buildConstraintsFromProjectAndUser(
   project: {
-    contextData?: unknown
     target_deadline?: Date | string | null
     skill_level?: string | null
     tools_and_stack?: string[] | null
@@ -493,6 +492,8 @@ export function buildConstraintsFromProjectAndUser(
     motivation?: string | null
     phases?: unknown
     projectNotes?: unknown
+    schedule_duration_days?: number | null
+    exclusions?: string[]
   },
   user: {
     availabilityWindows?: unknown
@@ -502,13 +503,15 @@ export function buildConstraintsFromProjectAndUser(
     communication_style?: string | null
     userNotes?: unknown
     energy_peak?: string | null
+    rest_days?: string[] | null
+    oneOffBlocks?: unknown
   }
 ): ExtractedConstraints {
-  const contextData = (project.contextData ?? {}) as Record<string, unknown>
-  const prefs = (contextData.preferences ?? {}) as UserPreferences
-  const preferences: UserPreferences = { ...prefs }
+  const preferences: UserPreferences = {}
+  if (user.energy_peak != null && user.energy_peak !== '') preferences.energy_peak = user.energy_peak
+  if (Array.isArray(user.rest_days) && user.rest_days.length > 0) preferences.rest_days = user.rest_days
 
-  // available_time: prefer User.availabilityWindows when present so flexible_hours from extraction is used (Session 2); else contextData
+  // available_time: from User.availabilityWindows only
   let available_time: TimeBlock[] = []
   const windows = user.availabilityWindows as AvailabilityWindow[] | undefined
   if (Array.isArray(windows) && windows.length > 0) {
@@ -530,33 +533,15 @@ export function buildConstraintsFromProjectAndUser(
       }
     }
   }
-  if (available_time.length === 0 && Array.isArray(contextData.available_time) && contextData.available_time.length > 0) {
-    available_time = contextData.available_time as TimeBlock[]
-    // Session 2: normalize flexible blocks missing flexible_hours (legacy data) so scheduler uses boundary for capacity
-    available_time = available_time.map((b) => {
-      const block = { ...b }
-      const wt = (block as TimeBlock & { window_type?: string }).window_type
-      if (wt === 'flexible') {
-        const flex = (block as TimeBlock & { flexible_hours?: number }).flexible_hours
-        if (typeof flex !== 'number' || flex <= 0) {
-          const startH = parseTimeToHours(block.start)
-          const endH = parseTimeToHours(block.end)
-          const boundaryHours = endH > startH ? endH - startH : 24 - startH + endH
-          ;(block as TimeBlock & { flexible_hours: number }).flexible_hours = boundaryHours > 0 ? boundaryHours : 1
-        }
-      }
-      return block
-    })
-  }
   if (available_time.length === 0) {
     console.warn('[ScheduleGeneration] User.availabilityWindows missing or empty; using default weekday evenings')
     available_time = [...DEFAULT_AVAILABLE_TIME]
   }
 
-  // schedule_duration_weeks: prefer contextData; else from target_deadline; else 2
+  // schedule_duration_weeks: from Project.schedule_duration_days when present; else target_deadline; else 2
   let schedule_duration_weeks = 2
-  if (typeof contextData.schedule_duration_weeks === 'number' && contextData.schedule_duration_weeks >= 1) {
-    schedule_duration_weeks = contextData.schedule_duration_weeks
+  if (typeof project.schedule_duration_days === 'number' && project.schedule_duration_days >= 1) {
+    schedule_duration_weeks = Math.max(1, Math.ceil(project.schedule_duration_days / 7))
   } else if (project.target_deadline) {
     const deadline = typeof project.target_deadline === 'string' ? new Date(project.target_deadline) : project.target_deadline
     if (!Number.isNaN(deadline.getTime())) {
@@ -656,12 +641,15 @@ export function buildConstraintsFromProjectAndUser(
         : project.target_deadline.toISOString()
       : null
 
+  const one_off_blocks = Array.isArray(user.oneOffBlocks) ? user.oneOffBlocks as Array<{ date: string; date_start?: string; date_end?: string; start_time?: string; end_time?: string; all_day: boolean; reason?: string }> : []
+
   const constraints: ExtractedConstraints = {
     schedule_duration_weeks,
     blocked_time: [],
     available_time,
+    one_off_blocks: one_off_blocks.length > 0 ? one_off_blocks : undefined,
     preferences,
-    exclusions: Array.isArray(contextData.exclusions) ? (contextData.exclusions as string[]) : [],
+    exclusions: Array.isArray(project.exclusions) ? project.exclusions : [],
     work_schedule: work_schedule ?? undefined,
     commute: commute ?? undefined,
     target_deadline: target_deadline ?? undefined,
@@ -679,6 +667,30 @@ export function buildConstraintsFromProjectAndUser(
   }
 
   return constraints
+}
+
+/**
+ * Build ContextData (in-memory shape for tools) from User + Project.
+ * Use this instead of reading project.contextData.
+ */
+export function buildContextDataFromProjectAndUser(
+  project: Parameters<typeof buildConstraintsFromProjectAndUser>[0],
+  user: Parameters<typeof buildConstraintsFromProjectAndUser>[1]
+): ContextData {
+  const constraints = buildConstraintsFromProjectAndUser(project, user)
+  const available_time = (constraints.available_time || []).map((b) => ({
+    day: b.day,
+    start: b.start,
+    end: b.end,
+    ...(b.label != null && { label: b.label }),
+  }))
+  return {
+    schedule_duration_weeks: constraints.schedule_duration_weeks,
+    available_time,
+    one_off_blocks: constraints.one_off_blocks?.length ? constraints.one_off_blocks : undefined,
+    preferences: (constraints.preferences ?? {}) as Record<string, unknown>,
+    exclusions: constraints.exclusions?.length ? constraints.exclusions : undefined,
+  }
 }
 
 /**

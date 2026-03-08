@@ -17,7 +17,7 @@ The Settings page lets users view and edit all constraints and preferences that 
    - Commute morning: duration (minutes) + start time (optional)
    - Commute evening: duration (minutes) + start time (optional)
 
-2. **Availability Windows** – Project allocations (stored on **Project.contextData**)
+2. **Availability Windows** – User availability (stored on **User**.availabilityWindows)
    - Week-view grid: work hours (grey), commute (lighter grey), availability blocks (green/blue by type). When overlapping blocks share a cell, personal is preferred for the displayed color. Cells where both work schedule and a project block overlap show a diagonal stripe overlay (sky-blue).
    - **Click-to-select** (only in add mode): Click "+ Add block" (or "Add your first availability block") to enter add mode; then click an empty cell to set start, another cell in the same day to set end; type popover (Project / Personal) adds the block. Cancel link on the hint banner or Escape exits add mode. Single-cell click creates a 1-hour block. Form-based add remains available in add mode.
    - List of blocks: day, start, end, type (work | personal); add / edit / delete; displayed newest first. Form-based “+ Add block” remains available.
@@ -25,8 +25,8 @@ The Settings page lets users view and edit all constraints and preferences that 
    - Empty state when no blocks
 
 3. **Preferences**
-   - **Energy pattern** (Project.contextData.preferences.energy_peak): Morning / Afternoon / Evening
-   - **Rest days** (Project.contextData.preferences.rest_days): Days the user doesn’t want to work on the project
+   - **Energy pattern** (User.energy_peak): Morning / Afternoon / Evening
+   - **Rest days** (User.rest_days): Days the user doesn’t want to work on the project
    - **Preferred session length** (User.preferred_session_length): 15 / 30 / 60 / 90 / 120 min or Custom
    - **Communication style** (User.communication_style): Direct & Brief / Encouraging / Detailed
 
@@ -35,17 +35,18 @@ The Settings page lets users view and edit all constraints and preferences that 
 
 ## Data flow
 
-- **On load**: `GET /api/settings` returns `{ user, project }`. User includes workSchedule, commute, preferred_session_length, communication_style, timezone. Project (if any) includes contextData.available_time and contextData.preferences. No blocked_time is stored or returned. Response is stored in `data` and `savedSnapshot` (used for unsaved-changes detection).
-- **On save**: “Save Changes” in the sticky bar sends `POST /api/settings/update` with the full form payload. Backend updates **User** (workSchedule, commute, preferred_session_length, communication_style) and **Project.contextData** (available_time, preferences only). After success, a background refetch updates `data` and `savedSnapshot`. No schedule rebuild; changes apply to the next generation or rescheduling.
+- **On load**: `GET /api/settings` returns `{ user, project }`. User includes workSchedule, commute, preferred_session_length, communication_style, timezone. Project (if any) includes schedule_duration_days, exclusions. User includes availabilityWindows, energy_peak, rest_days. No blocked_time is stored or returned. Response is stored in `data` and `savedSnapshot` (used for unsaved-changes detection).
+- **On save**: “Save Changes” in the sticky bar sends `POST /api/settings/update` with the full form payload. Backend updates **User** (workSchedule, commute, preferred_session_length, communication_style, availabilityWindows, energy_peak, rest_days) and **Project** (schedule_duration_days, exclusions only). After success, a background refetch updates `data` and `savedSnapshot`. No schedule rebuild; changes apply to the next generation or rescheduling.
 
 ## Where data is stored
 
 | Section / Field              | Stored in                    |
 |------------------------------|------------------------------|
 | Work schedule, commute       | **User**.workSchedule, **User**.commute |
-| Availability blocks           | **Project**.contextData.available_time |
-| Energy peak, rest days       | **Project**.contextData.preferences (Settings UI). **User**.energy_peak is an **enriching field** Harvey asks about during onboarding (Session 4); when set, the scheduler uses it to place high-focus tasks in the user's peak time window. |
+| Availability windows         | **User**.availabilityWindows |
+| Energy peak, rest days       | **User**.energy_peak, **User**.rest_days |
 | Session length, communication style | **User**.preferred_session_length, **User**.communication_style |
+| Schedule duration, exclusions | **Project**.schedule_duration_days, **Project**.exclusions |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constraints, Project = project allocations” split.
 
@@ -66,7 +67,7 @@ See [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall “User = life constra
 ## Availability blocks data model (including overnight)
 
 - Each block is stored as a single object: `{ day, start, end, type? }`. `day` is the **start** day (e.g. `"friday"`).
-- **Onboarding / User.availabilityWindows**: Windows can be **fixed** (exact time block every day) or **flexible** (X hours somewhere within a boundary); extraction uses `window_type: 'fixed' | 'flexible'` and optional `flexible_hours` (e.g. 3 for "3 hours during 9–5"). Settings availability blocks are currently fixed only; flexible windows from onboarding are used by the scheduler, where **slot capacity = flexible_hours** (not the boundary length). When building constraints for schedule generation, **User.availabilityWindows** is preferred over **contextData.available_time** when present (Session 2) so extracted **flexible_hours** is always used.
+- **User.availabilityWindows**: Single source for scheduling. Windows can be **fixed** or **flexible** (extraction uses `window_type` and `flexible_hours`). Settings availability blocks are fixed only; flexible windows from onboarding are used by the scheduler (slot capacity = flexible_hours). Schedule generation and tools build constraints from User + Project only; contextData is no longer used.
 - **Same-day**: `end` &gt; `start` (e.g. Monday 14:00–16:00). Renders as one segment on that day.
 - **Overnight**: `end` ≤ `start` (e.g. Friday 23:00 – 02:00). Stored as one block; in the week grid it is shown split across two days: `[day] start–24:00` and `nextDay(day) 00:00–end`. Day order is Monday → Tuesday → … → Sunday → Monday.
 - Edge cases: 22:00–00:00 is treated as overnight (segment until 24:00 on start day; next-day segment 0–0 is effectively empty). Full overnight (e.g. 00:00–23:59) is valid and spans the whole next day.
