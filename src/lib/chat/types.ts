@@ -39,8 +39,8 @@ export interface OneOffBlock {
 }
 
 /**
- * Full contextData structure stored on Project.contextData (JSON).
- * Blocked time (work, commute) lives on User; contextData holds only project allocations.
+ * In-memory context shape for scheduling tools.
+ * Built from User + Project (not stored on Project.contextData).
  */
 export interface ContextData {
   schedule_duration_weeks?: number

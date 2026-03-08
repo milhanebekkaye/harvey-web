@@ -2,6 +2,17 @@
  * User Type Definitions
  */
 
+/** One-off block (specific date unavailability). */
+export interface OneOffBlock {
+  date: string
+  date_start?: string
+  date_end?: string
+  start_time?: string
+  end_time?: string
+  all_day: boolean
+  reason?: string
+}
+
 /**
  * Shape of each availability window (User.availabilityWindows is an array of these).
  * fixed = exact time block; flexible = X hours within a boundary.
@@ -37,6 +48,8 @@ export interface User {
   communication_style?: string | null
   userNotes?: unknown
   energy_peak?: string | null // "morning" | "afternoon" | "evening"
+  rest_days?: string[] | null // e.g. ["saturday", "sunday"]
+  oneOffBlocks?: OneOffBlock[] | null // date-specific unavailability
 
   // Onboarding questions
   onboarding_reason?: string | null
@@ -99,6 +112,8 @@ export interface UpdateUserData {
   communication_style?: string       // "direct", "encouraging", "detailed"
   userNotes?: unknown          // [{ note, extracted_at }] — append-only array
   energy_peak?: string | null  // "morning" | "afternoon" | "evening"
+  rest_days?: string[] | null   // days user doesn't want to work
+  oneOffBlocks?: OneOffBlock[] | null
   onboarding_reason?: string | null
   current_work?: string | null
   work_style?: string[] | null

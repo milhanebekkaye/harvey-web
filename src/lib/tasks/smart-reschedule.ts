@@ -7,6 +7,7 @@
 import { prisma } from '../db/prisma'
 import type { ContextData } from '../chat/types'
 import { addDays, parseTimeToHours, getEffectiveAvailableTimeBlocks } from '../schedule/task-scheduler'
+import { buildContextDataFromProjectAndUser } from '../schedule/schedule-generation'
 import {
   localTimeInTimezoneToUTC,
   getHourDecimalInTimezone,
@@ -46,10 +47,7 @@ export async function getSmartRescheduleSuggestion(
   })
   if (!task?.projectId) return null
 
-  const user = await prisma.user.findUnique({
-    where: { id: task.userId },
-    select: { timezone: true, workSchedule: true, commute: true },
-  })
+  const user = await prisma.user.findUnique({ where: { id: task.userId } })
   const userTimezone = user?.timezone || 'Europe/Paris'
 
   const project = await prisma.project.findFirst({
@@ -58,10 +56,9 @@ export async function getSmartRescheduleSuggestion(
   })
   if (!project) return null
 
-  const rawContext: ContextData = (project.contextData as unknown as ContextData) || {
-    available_time: [],
-    preferences: {},
-  }
+  const rawContext = user
+    ? buildContextDataFromProjectAndUser(project, user)
+    : ({ available_time: [], preferences: {} } as ContextData)
   const userBlocked = user
     ? { workSchedule: user.workSchedule as import('@/types/api.types').WorkScheduleShape | null, commute: user.commute as import('@/types/api.types').CommuteShape | null }
     : null

@@ -541,7 +541,7 @@ export function normalizeAvailabilityBlocks(blocks: TimeBlock[]): TimeBlock[] {
  * Flexible blocks (flexible_hours set) use that as slot capacity and are not subtracted (already the user's capacity within the boundary).
  * Session 4: when energyPeak is provided, each slot gets a slotType for smart matching.
  *
- * @param constraints - Extracted constraints (available_time from Project.contextData)
+ * @param constraints - Extracted constraints (available_time from buildConstraintsFromProjectAndUser / User.availabilityWindows)
  * @param userBlocked - Optional User life constraints; blocked time is derived from these
  * @param energyPeak - Optional "morning"|"afternoon"|"evening" for slot type classification
  * @returns Map of day → array of time slots (free to schedule)
@@ -667,7 +667,7 @@ function buildAvailabilityMap(
  * Build effective available_time (available_time minus User work/commute) for tools that need it.
  * Returns array of { day, start, end } suitable for contextData.available_time shape.
  *
- * @param availableTime - From Project.contextData.available_time
+ * @param availableTime - From User.availabilityWindows (via buildContextDataFromProjectAndUser)
  * @param userBlocked - From User.workSchedule and User.commute
  * @returns Effective available time blocks (work/commute subtracted)
  */
@@ -1840,7 +1840,7 @@ export async function assignTasksWithClaude(
  * Session 4: respects slot types (peak_energy/normal/flexible/emergency), task preferred_slot, 15 min breathing room, min 30 min fragment, day-1 ramp-up, emergency slots last.
  *
  * @param tasks - Array of parsed tasks with hours, priority, energy_required, preferred_slot
- * @param constraints - Project constraints (available_time from contextData)
+ * @param constraints - Constraints from buildConstraintsFromProjectAndUser (User + Project)
  * @param startDate - When to start scheduling
  * @param durationWeeks - How many weeks to schedule
  * @param userTimezone - User's IANA timezone (e.g. Europe/Paris) so times are stored in UTC

@@ -25,6 +25,8 @@ model User {
   communication_style      String? // "direct", "encouraging", "detailed"
   userNotes                Json?   // append-only array: [{ "note": string, "extracted_at": string }]
   energy_peak              String? // "morning" | "afternoon" | "evening" — when user is most productive
+  rest_days                String[] @default([]) // days user doesn't want to work, e.g. ["saturday", "sunday"]
+  oneOffBlocks             Json?   // array of { date, date_start?, date_end?, start_time?, end_time?, all_day, reason? }
 
   // Onboarding questions (Screen 2)
   onboarding_reason  String?
@@ -61,9 +63,11 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Extracted constraints from onboarding conversation
-  // Stores: schedule_duration_weeks, blocked_time, available_time, preferences, exclusions
+  // Deprecated: no longer used for scheduling; data lives on User and Project first-class fields
   contextData Json?
+
+  // Feature exclusions for task generation (e.g. ["messaging", "payment integration"])
+  exclusions String[] @default([])
 
   // Enrichment (from onboarding extraction)
   target_deadline         DateTime? // extracted from conversation

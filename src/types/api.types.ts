@@ -234,6 +234,7 @@ export interface UserPreferences {
   start_preference?: string // e.g., "tomorrow", "next_monday", "2024-02-05"
   gym?: string // e.g., "1 hour daily, flexible timing"
   energy_peak?: string // e.g., "evenings", "mornings"
+  rest_days?: string[] // e.g., ["saturday", "sunday"]
   skill_level?: string // e.g., "beginner", "intermediate", "advanced"
   break_preference?: string // e.g., "self-managed", "pomodoro"
 }
@@ -268,14 +269,13 @@ export interface ExtractedNote {
 /**
  * Extracted Constraints
  *
- * Structured constraints extracted from onboarding conversation.
- * Scheduling subset stored in Project.contextData; enrichment fields
- * written to Project and User models.
+ * Built from User + Project only (buildConstraintsFromProjectAndUser).
+ * schedule_duration_weeks is computed from Project.schedule_duration_days when present.
  */
 export interface ExtractedConstraints {
   /**
    * How many weeks to plan the schedule for
-   * Default: 2 weeks
+   * Default: 2 weeks (computed from Project.schedule_duration_days when present)
    */
   schedule_duration_weeks: number
 
@@ -286,17 +286,30 @@ export interface ExtractedConstraints {
   blocked_time: TimeBlock[]
 
   /**
-   * Time blocks when user CAN work on project
+   * Time blocks when user CAN work on project (from User.availabilityWindows)
    */
   available_time: TimeBlock[]
 
   /**
-   * User preferences for scheduling
+   * One-off date blocks (from User.oneOffBlocks)
+   */
+  one_off_blocks?: Array<{
+    date: string
+    date_start?: string
+    date_end?: string
+    start_time?: string
+    end_time?: string
+    all_day: boolean
+    reason?: string
+  }>
+
+  /**
+   * User preferences for scheduling (energy_peak, rest_days from User)
    */
   preferences: UserPreferences
 
   /**
-   * Features user explicitly doesn't want
+   * Features user explicitly doesn't want (from Project.exclusions)
    * e.g., ["messaging", "payment integration"]
    */
   exclusions?: string[]

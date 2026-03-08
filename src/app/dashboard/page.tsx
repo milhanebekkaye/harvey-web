@@ -120,7 +120,7 @@ export default function DashboardPage() {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [projectTitle, setProjectTitle] = useState<string>('')
   /**
-   * Availability windows from project.contextData.available_time (for drag reorder)
+   * Availability windows from user.availabilityWindows (via /api/tasks)
    */
   const [availableTime, setAvailableTime] = useState<Array<{ day: string; start: string; end: string }>>([])
 

@@ -1,12 +1,11 @@
 /**
  * POST /api/settings/update
  *
- * Persists Settings page changes: User (workSchedule, commute, preferred_session_length, communication_style)
- * and Project.contextData (available_time, preferences only). No blocked_time.
+ * Persists Settings page changes: User (workSchedule, commute, preferred_session_length, communication_style, availabilityWindows, energy_peak, rest_days)
+ * and Project (schedule_duration_days, exclusions only).
  */
 
 import { NextResponse } from 'next/server'
-import type { Prisma } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import { updateUser } from '@/lib/users/user-service'
 import { getActiveProject } from '@/lib/tasks/task-service'
@@ -208,9 +207,11 @@ export async function POST(request: Request) {
 
     console.log('[SettingsAPI] POST body received', {
       has_workSchedule: body.workSchedule != null,
-      has_available_time: body.available_time != null,
-      available_time_count: Array.isArray(body.available_time) ? body.available_time.length : 0,
-      preferences: body.preferences,
+      has_availabilityWindows: body.availabilityWindows != null,
+      availabilityWindows_count: Array.isArray(body.availabilityWindows) ? body.availabilityWindows.length : 0,
+      availabilityWindows_sample: Array.isArray(body.availabilityWindows) ? JSON.stringify(body.availabilityWindows.slice(0, 2)) : undefined,
+      energy_peak: body.energy_peak,
+      rest_days: body.rest_days,
       projectId: body.projectId,
     })
 
@@ -230,25 +231,59 @@ export async function POST(request: Request) {
       }
     }
 
-    if (body.available_time != null) {
-      const err = validateAvailabilityBlocks(body.available_time)
+    const VALID_ENERGY_PEAK = ['mornings', 'afternoons', 'evenings'] as const
+    if (body.energy_peak != null) {
+      const v = typeof body.energy_peak === 'string' ? body.energy_peak.trim().toLowerCase() : ''
+      const normalized = v === 'morning' ? 'mornings' : v === 'afternoon' ? 'afternoons' : v === 'evening' ? 'evenings' : v
+      if (!VALID_ENERGY_PEAK.includes(normalized as (typeof VALID_ENERGY_PEAK)[number])) {
+        return NextResponse.json(
+          { error: 'energy_peak must be one of: mornings, afternoons, evenings (or morning, afternoon, evening)', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        )
+      }
+      body.energy_peak = normalized as (typeof VALID_ENERGY_PEAK)[number]
+    }
+
+    if (body.availabilityWindows != null) {
+      const windows = Array.isArray(body.availabilityWindows) ? body.availabilityWindows : []
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+      // Validate fixed windows (start_time/end_time) by expanding to blocks; skip flexible (null times)
+      const blocksToValidate: { day: string; start: string; end: string }[] = []
+      for (const w of windows) {
+        const win = w as { days?: string[]; start_time?: string | null; end_time?: string | null; window_type?: string }
+        const days = Array.isArray(win.days) ? win.days : []
+        const startTime = win.start_time
+        const endTime = win.end_time
+        const isFlexible = win.window_type === 'flexible' || (startTime == null && endTime == null)
+        for (const d of days) {
+          const day = String(d).toLowerCase()
+          if (!dayNames.includes(day)) {
+            return NextResponse.json(
+              { error: `Invalid day in availability window: ${d}`, code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            )
+          }
+          if (!isFlexible && typeof startTime === 'string' && typeof endTime === 'string') {
+            blocksToValidate.push({ day, start: startTime, end: endTime })
+          }
+        }
+      }
+      const err = validateAvailabilityBlocks(blocksToValidate)
       if (err) {
+        console.log('[SettingsAPI] availabilityWindows validation failed', err)
         return NextResponse.json(
           { error: err, code: 'VALIDATION_ERROR' },
           { status: 400 }
         )
       }
+      console.log('[SettingsAPI] availabilityWindows validated', { count: windows.length, blocksValidated: blocksToValidate.length })
     }
 
-    const VALID_ENERGY_PEAK = ['mornings', 'afternoons', 'evenings'] as const
-    if (body.preferences != null && body.preferences.energy_peak != null) {
-      const v = body.preferences.energy_peak
-      if (typeof v !== 'string' || !VALID_ENERGY_PEAK.includes(v as (typeof VALID_ENERGY_PEAK)[number])) {
-        return NextResponse.json(
-          { error: 'preferences.energy_peak must be one of: mornings, afternoons, evenings', code: 'VALIDATION_ERROR' },
-          { status: 400 }
-        )
-      }
+    if (body.rest_days != null && !Array.isArray(body.rest_days)) {
+      return NextResponse.json(
+        { error: 'rest_days must be an array of day names', code: 'VALIDATION_ERROR' },
+        { status: 400 }
+      )
     }
 
     if (body.userNotes !== undefined) {
@@ -267,15 +302,29 @@ export async function POST(request: Request) {
       body.projectId ??
       (await getActiveProject(user.id).then((r) => (r.success && r.data ? r.data.id : null)))
 
-    if (body.workSchedule !== undefined || body.commute !== undefined || body.preferred_session_length !== undefined || body.communication_style !== undefined || body.userNotes !== undefined) {
+    if (
+      body.workSchedule !== undefined ||
+      body.commute !== undefined ||
+      body.preferred_session_length !== undefined ||
+      body.communication_style !== undefined ||
+      body.userNotes !== undefined ||
+      body.availabilityWindows !== undefined ||
+      body.energy_peak !== undefined ||
+      body.rest_days !== undefined
+    ) {
       const userUpdate: Parameters<typeof updateUser>[1] = {}
       if (body.workSchedule !== undefined) userUpdate.workSchedule = body.workSchedule
       if (body.commute !== undefined) userUpdate.commute = body.commute
       if (body.preferred_session_length !== undefined) userUpdate.preferred_session_length = body.preferred_session_length ?? undefined
       if (body.communication_style !== undefined) userUpdate.communication_style = body.communication_style ?? undefined
       if (body.userNotes !== undefined) userUpdate.userNotes = body.userNotes
+      if (body.availabilityWindows !== undefined) userUpdate.availabilityWindows = body.availabilityWindows
+      if (body.energy_peak !== undefined) userUpdate.energy_peak = body.energy_peak
+      if (body.rest_days !== undefined) userUpdate.rest_days = body.rest_days
+      console.log('[SettingsAPI] Calling updateUser', { userId: user.id, has_availabilityWindows: userUpdate.availabilityWindows !== undefined, availabilityWindows_count: Array.isArray(userUpdate.availabilityWindows) ? userUpdate.availabilityWindows.length : 0 })
       const result = await updateUser(user.id, userUpdate)
       if (!result.success) {
+        console.log('[SettingsAPI] updateUser failed', result.error)
         return NextResponse.json(
           { error: result.error?.message ?? 'Failed to update user' },
           { status: 500 }
@@ -283,8 +332,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Persist available_time and preferences to Project.contextData (same place GET /api/settings reads from)
-    if (projectId && (body.available_time !== undefined || body.preferences !== undefined)) {
+    if (projectId && (body.schedule_duration_days !== undefined || body.exclusions !== undefined)) {
       const project = await prisma.project.findFirst({
         where: { id: projectId, userId: user.id },
       })
@@ -294,44 +342,14 @@ export async function POST(request: Request) {
           { status: 404 }
         )
       }
-      const raw = project.contextData
-      const existing: Record<string, unknown> =
-        raw != null && typeof raw === 'object' && !Array.isArray(raw)
-          ? { ...(raw as Record<string, unknown>) }
-          : {}
-
-      const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-      const sortedAvailableTime: unknown[] =
-        body.available_time !== undefined
-          ? [...body.available_time].sort((a, b) => {
-              const ai = dayOrder.indexOf(a.day.toLowerCase())
-              const bi = dayOrder.indexOf(b.day.toLowerCase())
-              if (ai !== bi) return ai - bi
-              return a.start.localeCompare(b.start)
-            })
-          : Array.isArray(existing.available_time) ? existing.available_time : []
-
-      const mergedPreferences =
-        body.preferences !== undefined
-          ? { ...(typeof existing.preferences === 'object' && existing.preferences && !Array.isArray(existing.preferences) ? (existing.preferences as object) : {}), ...body.preferences }
-          : existing.preferences
-
-      const newContextData = {
-        ...existing,
-        available_time: sortedAvailableTime,
-        preferences: mergedPreferences,
-      }
-
-      console.log('[SettingsAPI] Saving project contextData', {
-        projectId,
-        available_time_count: sortedAvailableTime.length,
-        available_time: sortedAvailableTime,
-      })
-
+      const projectData: { schedule_duration_days?: number | null; exclusions?: string[]; updatedAt: Date } = { updatedAt: new Date() }
+      if (body.schedule_duration_days !== undefined) projectData.schedule_duration_days = body.schedule_duration_days
+      if (body.exclusions !== undefined) projectData.exclusions = body.exclusions
       await prisma.project.update({
         where: { id: projectId },
-        data: { contextData: newContextData as Prisma.InputJsonValue, updatedAt: new Date() },
+        data: projectData,
       })
+      console.log('[SettingsAPI] Saved project', { projectId, schedule_duration_days: projectData.schedule_duration_days, exclusions_count: projectData.exclusions?.length })
     }
 
     return NextResponse.json({ success: true })

@@ -27,6 +27,61 @@ function formatNoteDate(iso: string | undefined): string {
   }
 }
 
+/** Convert User.availabilityWindows (window shape) to flat AvailabilityBlock[] for display. */
+function availabilityWindowsToBlocks(windows: unknown): AvailabilityBlock[] {
+  if (!Array.isArray(windows) || windows.length === 0) return []
+  const blocks: AvailabilityBlock[] = []
+  for (const w of windows) {
+    const days = Array.isArray((w as { days?: string[] }).days) ? (w as { days: string[] }).days : []
+    const start = typeof (w as { start_time?: string }).start_time === 'string' ? (w as { start_time: string }).start_time : '09:00'
+    const end = typeof (w as { end_time?: string }).end_time === 'string' ? (w as { end_time: string }).end_time : '17:00'
+    const label = typeof (w as { type?: string }).type === 'string' ? (w as { type: string }).type : undefined
+    for (const day of days) {
+      const d = String(day).toLowerCase()
+      if (['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].includes(d)) {
+        blocks.push({ day: d, start, end, ...(label ? { label } : {}) })
+      }
+    }
+  }
+  return blocks
+}
+
+/** Convert flat AvailabilityBlock[] to User.availabilityWindows shape for save (fixed windows only). */
+function blocksToAvailabilityWindows(blocks: AvailabilityBlock[]): Array<{ days: string[]; start_time: string; end_time: string; type: string; window_type: 'fixed'; flexible_hours?: null }> {
+  if (!blocks.length) return []
+  const byKey = new Map<string, string[]>()
+  for (const b of blocks) {
+    const key = `${b.start}-${b.end}`
+    const day = b.day.toLowerCase()
+    if (!byKey.has(key)) byKey.set(key, [])
+    const days = byKey.get(key)!
+    if (!days.includes(day)) days.push(day)
+  }
+  return Array.from(byKey.entries()).map(([key, days]) => {
+    const [start_time, end_time] = key.split('-')
+    return { days: days.sort(), start_time, end_time, type: 'work_on_project', window_type: 'fixed' as const, flexible_hours: null }
+  })
+}
+
+/** Merge fixed windows from current state with flexible windows from last saved, so we don't drop flexible when saving. */
+function mergeAvailabilityWindowsForSave(currentWindows: unknown, previousWindows: unknown): unknown[] {
+  const fixed: unknown[] = []
+  if (Array.isArray(currentWindows)) {
+    for (const w of currentWindows) {
+      const win = w as { window_type?: string; flexible_hours?: number | null }
+      if (win.window_type !== 'flexible' && win.flexible_hours == null) fixed.push(w)
+    }
+  }
+  const flexible: unknown[] = []
+  if (Array.isArray(previousWindows)) {
+    for (const w of previousWindows) {
+      const win = w as { window_type?: string; flexible_hours?: number | null }
+      if (win.window_type === 'flexible' || win.flexible_hours != null) flexible.push(w)
+    }
+  }
+  return [...fixed, ...flexible]
+}
+
 interface UserProfile {
   name: string | null
   payment_status: string
@@ -98,24 +153,25 @@ export default function SettingsPage() {
     setSaveStatus('saving')
     setError(null)
     try {
-      const availableTime = data.project?.contextData?.available_time ?? []
+      const mergedWindows = mergeAvailabilityWindowsForSave(data.user.availabilityWindows, savedSnapshot?.user?.availabilityWindows)
       const body: SettingsUpdateBody = {
         workSchedule: data.user.workSchedule,
         commute: data.user.commute,
         preferred_session_length: data.user.preferred_session_length,
         communication_style: data.user.communication_style,
         userNotes: data.user.userNotes ?? null,
-        available_time: availableTime,
-        preferences: data.project?.contextData?.preferences ?? {},
+        availabilityWindows: mergedWindows.length ? mergedWindows : (savedSnapshot?.user?.availabilityWindows ?? data.user.availabilityWindows ?? undefined),
+        energy_peak: data.user.energy_peak ?? undefined,
+        rest_days: data.user.rest_days?.length ? data.user.rest_days : undefined,
+        schedule_duration_days: data.project?.schedule_duration_days ?? undefined,
+        exclusions: data.project?.exclusions?.length ? data.project.exclusions : undefined,
         projectId: data.project?.id ?? undefined,
       }
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Settings] Saving payload', {
-          available_time_count: body.available_time?.length ?? 0,
-          available_time: body.available_time,
-          projectId: body.projectId,
-        })
-      }
+      console.log('[Settings] Saving payload', {
+        availabilityWindows_count: Array.isArray(body.availabilityWindows) ? body.availabilityWindows.length : 0,
+        availabilityWindows: Array.isArray(body.availabilityWindows) ? body.availabilityWindows : undefined,
+        projectId: body.projectId,
+      })
       const res = await fetch('/api/settings/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,16 +211,13 @@ export default function SettingsPage() {
     []
   )
 
-  const updateProjectContext = useCallback(
-    (updates: { available_time?: AvailabilityBlock[]; preferences?: Record<string, unknown> }) => {
+  const updateProject = useCallback(
+    (updates: { schedule_duration_days?: number | null; exclusions?: string[] }) => {
       setData((prev) => {
         if (!prev?.project) return prev
         return {
           ...prev,
-          project: {
-            ...prev.project,
-            contextData: { ...prev.project.contextData, ...updates },
-          },
+          project: { ...prev.project, ...updates },
         }
       })
     },
@@ -365,10 +418,10 @@ export default function SettingsPage() {
                 />
                 {data.project ? (
                   <AvailabilitySection
-                    availableTime={data.project.contextData.available_time ?? []}
+                    availableTime={availabilityWindowsToBlocks(data.user.availabilityWindows)}
                     workSchedule={data.user.workSchedule}
                     commute={data.user.commute}
-                    onChange={(available_time) => updateProjectContext({ available_time })}
+                    onChange={(blocks) => updateUser({ availabilityWindows: blocksToAvailabilityWindows(blocks) })}
                     variant="card"
                   />
                 ) : (
@@ -389,16 +442,17 @@ export default function SettingsPage() {
 
             {activeSection === 'preferences' && (
               <PreferencesSection
-                energyPeak={data.project?.contextData.preferences?.energy_peak}
-                restDays={data.project?.contextData.preferences?.rest_days ?? []}
+                energyPeak={data.user.energy_peak ?? undefined}
+                restDays={data.user.rest_days ?? []}
                 preferredSessionLength={data.user.preferred_session_length}
                 communicationStyle={data.user.communication_style}
                 onChangeUser={(preferred_session_length, communication_style) =>
                   updateUser({ preferred_session_length, communication_style })
                 }
                 onChangePreferences={(preferences) =>
-                  updateProjectContext({
-                    preferences: { ...(data.project?.contextData.preferences ?? {}), ...preferences },
+                  updateUser({
+                    ...(preferences.energy_peak !== undefined && { energy_peak: preferences.energy_peak }),
+                    ...(preferences.rest_days !== undefined && { rest_days: preferences.rest_days }),
                   })
                 }
                 variant="grid"
