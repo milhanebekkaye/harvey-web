@@ -418,7 +418,7 @@ export function AvailabilitySection({
                 let bg = 'bg-white'
                 if (isPending) bg = 'bg-violet-200/80'
                 else if (isSelectionStart) bg = 'bg-violet-200'
-                else if (isHoverPreview) bg = 'bg-violet-100/60'
+                else if (isHoverPreview) bg = 'bg-[#895bf5]/35'
                 else if (work) bg = 'bg-slate-300'
                 else if (comm) bg = 'bg-slate-200'
                 else if (avail.length) bg = type === 'personal' ? 'bg-sky-400/40' : 'bg-emerald-400/40'
