@@ -122,9 +122,14 @@ export default function OnboardingCloserPage() {
               marginTop: 20,
             }}
           >
-            Harvey is being built right now. What you do with it, what breaks,
-            what you love — that directly shapes what it becomes. You&apos;re
-            not just a user. You&apos;re a co-builder.
+            Harvey is being built right now. 
+                        <br />
+
+            The entrepreneur OS we just showed you — that future gets built based on what you use, what breaks, what you ask for. 
+            You're not beta testing someone else's product. 
+            You're shaping the tool you're going to build your projects with.
+            <br />
+            You're not just a user. You're a co-builder.
           </p>
           <div
             style={{

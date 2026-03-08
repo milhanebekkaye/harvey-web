@@ -7,10 +7,11 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
+import { getSession } from '@/lib/auth/auth-service'
 
 const PURPLE = '#425ff0'
 
@@ -52,6 +53,7 @@ const Q6_OPTIONS = [
 
 export default function OnboardingQuestionsPage() {
   const router = useRouter()
+  const [displayName, setDisplayName] = useState<string>('')
   const [step, setStep] = useState(1)
   const [onboarding_reason, setOnboarding_reason] = useState<string | null>(null)
   const [current_work, setCurrent_work] = useState('')
@@ -61,6 +63,39 @@ export default function OnboardingQuestionsPage() {
   const [experience_level, setExperience_level] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadName() {
+      const cached = sessionStorage.getItem('harvey_user_name')
+      if (cached != null && cached.trim()) {
+        setDisplayName(cached.trim())
+        return
+      }
+      try {
+        const res = await fetch('/api/user/me')
+        if (cancelled || !res.ok) return
+        const data = await res.json().catch(() => ({}))
+        if (data.name && typeof data.name === 'string' && data.name.trim()) {
+          setDisplayName(data.name.trim())
+          return
+        }
+      } catch {
+        // fallback below
+      }
+      const session = await getSession()
+      if (cancelled || !session?.user) return
+      const name =
+        (session.user.user_metadata?.name as string) ||
+        (session.user.user_metadata?.full_name as string) ||
+        ''
+      setDisplayName(name)
+    }
+    loadName()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const canContinue =
     step === 1 ? onboarding_reason != null :
@@ -159,7 +194,9 @@ export default function OnboardingQuestionsPage() {
                 className="space-y-6"
               >
                 <h1 className="text-[#0d101b] tracking-tight text-2xl font-bold leading-tight text-center">
-                  What brings you to Harvey?
+                  {displayName
+                    ? `What's the real reason you're here, ${displayName}?`
+                    : "What's the real reason you're here?"}
                 </h1>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {Q1_OPTIONS.map((opt) => (

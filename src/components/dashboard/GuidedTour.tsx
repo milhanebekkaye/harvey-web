@@ -36,29 +36,29 @@ interface GuidedTourProps {
 const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-tour="active-task"]',
-    title: 'Your first task is ready',
-    body: "Harvey broke down your project into clear, executable tasks. This is your current task — with everything you need to get started: description, success criteria, and Harvey's coaching tip.",
+    title: 'Your first task is ready.',
+    body: "Harvey built this specifically for your project. Description, success criteria, coaching tip — everything you need to start right now. No figuring out where to begin.",
     tooltipPosition: 'left',
     scrollBlock: 'start',
   },
   {
     target: '[data-tour="task-actions"]',
-    title: 'Track your progress',
-    body: "Complete tasks when you're done, or skip them if you can't get to it — Harvey will adapt. The more you use it, the better Harvey understands your rhythm and builds smarter schedules.",
+    title: 'Every action teaches Harvey.',
+    body: "Complete tasks when you're done, skip when you can't. The more honest you are, the smarter Harvey gets — until your schedule fits your real life, not the one you planned.",
     tooltipPosition: 'top',
     scrollBlock: 'center',
   },
   {
     target: '[data-tour="chat-sidebar"]',
-    title: 'Harvey is always here',
-    body: 'This is your direct line to Harvey. Ask him to reschedule tasks, change your availability, get a progress summary, or figure out what to work on next.',
+    title: 'Harvey is always one message away.',
+    body: 'Reschedule a task, update your availability, ask what to do next, get a progress check. Just type it. Harvey handles the rest.',
     tooltipPosition: 'right',
     scrollBlock: 'center',
   },
   {
     target: '[data-tour="ask-harvey-button"]',
-    title: 'A personal coach for every task',
-    body: 'Every task has its own conversation with Harvey. Click here to get specific guidance, ask questions, or break a task into smaller steps — without losing context.',
+    title: 'Stuck on a task? Harvey already knows everything about it.',
+    body: 'Click Ask Harvey on any task to get specific guidance, break it into smaller steps, or figure out how to start. No re-explaining your project. Ever.',
     tooltipPosition: 'top',
     scrollBlock: 'center',
   },
@@ -173,19 +173,22 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
         })
       }
 
+      // Step 1 target (active-task) is in the timeline, which loads via a separate API call.
+      // On reload the tour can mount before the timeline has rendered; use more retries for step 1.
+      const maxRetries = stepIndex === 1 ? 12 : 3
+
       const attempt = (retryCount: number) => {
         if (cancelled) return
 
         const el = document.querySelector(step.target)
 
         if (!el) {
-          if (retryCount < 3) {
-            // Element not yet in DOM — retry after 500ms, up to 3 times
+          if (retryCount < maxRetries) {
             const t = setTimeout(() => attempt(retryCount + 1), 500)
             timeouts.push(t)
             return
           }
-          // Still not found after 3 retries — skip or complete
+          // Still not found after retries — skip or complete
           if (stepIndex < TOUR_STEPS.length) {
             setCurrentStep(stepIndex + 1)
           } else {
@@ -373,7 +376,7 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
               lineHeight: 1.3,
             }}
           >
-            Harvey is ready to coach you
+            You're in the founding cohort.
           </p>
 
           {/* Subheadline */}
@@ -385,7 +388,7 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
               lineHeight: 1.6,
             }}
           >
-            Get full access to your AI project coach for 3 months.
+            $20 for 3 months — founding member price, locked in forever. The people who join now shape what Harvey becomes.
           </p>
 
           {/* Price block */}
@@ -425,9 +428,9 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
               }}
             />
             {[
-              '✦ Unlimited AI coaching & scheduling',
-              '✦ Per-task conversations with Harvey',
-              '✦ Smart rescheduling that adapts to you',
+              '✦ Unlimited coaching, scheduling & rescheduling',
+              '✦ Harvey learns your patterns over time',
+              '✦ Per-task conversations — no context lost, ever',
             ].map((line) => (
               <p
                 key={line}
@@ -471,7 +474,7 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
               el.style.boxShadow = 'none'
             }}
           >
-            Unlock Harvey
+            Become a Founding Member
           </button>
 
           {/* Skip link */}
@@ -490,7 +493,7 @@ export default function GuidedTour({ onComplete, userId }: GuidedTourProps) {
               ;(e.currentTarget as HTMLParagraphElement).style.color = '#94a3b8'
             }}
           >
-            Maybe later
+            I'll join later
           </p>
         </div>
       </div>

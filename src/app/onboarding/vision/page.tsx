@@ -34,6 +34,15 @@ const EYEBROW_STYLE: React.CSSProperties = {
   marginBottom: 10,
 }
 
+const HEADLINE_STYLE: React.CSSProperties = {
+  fontSize: 20,
+  fontWeight: 800,
+  color: '#0d101b',
+  lineHeight: 1.2,
+  marginBottom: 10,
+  marginTop: 2,
+}
+
 const BODY_STYLE: React.CSSProperties = {
   fontSize: 15,
   color: '#374151',
@@ -90,19 +99,6 @@ export default function OnboardingVisionPage() {
         <div className="absolute -bottom-20 -left-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Harvey logo at top */}
-      <div className="relative z-20 flex-shrink-0 pt-6 flex flex-col items-center mb-6">
-        <div
-          className="size-12 rounded-xl flex items-center justify-center text-white shadow-lg"
-          style={{ backgroundColor: PURPLE, boxShadow: `0 10px 15px -3px ${PURPLE}33` }}
-        >
-          <Sparkles className="w-8 h-8" />
-        </div>
-        <span className="text-xl font-bold tracking-tight text-slate-900 mt-2">
-          Harvey
-        </span>
-      </div>
-
       {/* Main content: three cards + CTA */}
       <div
         className="relative z-10 flex flex-col"
@@ -116,31 +112,25 @@ export default function OnboardingVisionPage() {
       >
         <div style={{ ...CARD_STYLE, alignSelf: 'flex-start' }}>
           <p style={EYEBROW_STYLE}>TODAY</p>
+          <p style={HEADLINE_STYLE}>No more blank screen.</p>
           <p style={BODY_STYLE}>
-            You open Harvey, you have 30 minutes. You ask what to do. Harvey
-            knows your entire project — every task, every dependency, every
-            deadline. It tells you exactly where to start. You execute.
+            Every time you open Harvey, you know exactly what to do next. Not a vague to-do list, a precise next step. Built around your project and your day. You stop planning. You start shipping.
           </p>
         </div>
 
         <div style={{ ...CARD_STYLE, alignSelf: 'flex-end' }}>
           <p style={EYEBROW_STYLE}>TOMORROW</p>
+          <p style={HEADLINE_STYLE}>Harvey learns how you actually work.</p>
           <p style={BODY_STYLE}>
-            Harvey tracks your energy patterns, your productive hours, your
-            workout schedule. It knows you skip Fridays, that you code better at
-            night, that you need 20 minutes to warm up. Your schedule adapts to
-            you — not the other way around.
+            You say mornings. You skip mornings. Harvey notices. It adapts. It learns your real productive windows, how long your tasks actually take, what patterns make you ship. Every week, your schedule gets sharper.
           </p>
         </div>
 
         <div style={{ ...CARD_STYLE, alignSelf: 'flex-start' }}>
           <p style={EYEBROW_STYLE}>THE VISION</p>
+          <p style={HEADLINE_STYLE}>The AI co-founder you never had.</p>
           <p style={BODY_STYLE}>
-            One AI that knows your projects, your health, your goals, your life.
-            Not just a productivity tool — your personal entrepreneur OS. The
-            unfair advantage that top founders will have in 5 years. You&apos;re
-            getting it now.
-          </p>
+An AI that knows your projects, your goals, your constraints, your patterns. It tells you what to build next, warns you when you're off track, helps you think through hard decisions. Not a productivity app. A real partner for your entrepreneurial life. That's where Harvey is going.          </p>
         </div>
 
         <div className="flex justify-center" style={{ marginTop: 8 }}>

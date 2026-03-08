@@ -45,6 +45,7 @@ const SLIDE_TRANSITION = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
 function SlideContent({
   eyebrow,
   headline,
+  subheadline,
   body,
   imageSrc,
   imageAlt,
@@ -53,6 +54,7 @@ function SlideContent({
 }: {
   eyebrow: string
   headline: string
+  subheadline?: string
   body: string
   imageSrc: string
   imageAlt: string
@@ -67,6 +69,11 @@ function SlideContent({
       <h2 className="text-[28px] font-bold leading-tight text-[#0d101b] mb-3">
         {headline}
       </h2>
+      {subheadline && (
+        <p className="text-[17px] font-semibold text-[#0d101b] leading-snug mb-3">
+          {subheadline}
+        </p>
+      )}
       <p className="text-[15px] text-slate-500 leading-relaxed">
         {body}
       </p>
@@ -194,7 +201,8 @@ export default function OnboardingIntroPage() {
               <SlideContent
                 eyebrow="THE PROBLEM"
                 headline={mounted ? `Sound familiar, ${displayName}?` : 'Sound familiar?'}
-                body="You open your laptop. You want to work. But you don't know where to start. 45 minutes later — nothing done."
+                subheadline="You know exactly what you want to build. So why aren't you building it?"
+                body="Too many ideas. Too many things on your mind. But when it's time to sit down and work — you freeze. You don't know where to start, so you lose an hour just thinking about it. Or worse, you do nothing at all."
                 imageSrc="/onboarding/illustration-problem.png"
                 imageAlt="Illustration of the problem"
                 imageContain
@@ -230,9 +238,19 @@ export default function OnboardingIntroPage() {
                   <h2 className="text-[24px] font-bold leading-tight text-[#0d101b] mb-3">
                     Just ask. Harvey tells you exactly what to do.
                   </h2>
-                  <p className="text-[14px] text-slate-500 leading-relaxed">
-                    Harvey knows your full project. You ask, he answers. No more paralysis.
-                  </p>
+                  <div className="text-[14px] text-slate-500 leading-relaxed space-y-3">
+                    <p>
+                      Harvey doesn't just tell you what to do. It tells you how to think about it.
+                    </p>
+
+                    <p>
+                      30 minutes free? Harvey knows your full project, your schedule, and what matters most right now.
+                    </p>
+
+                    <p>
+                      It doesn't give you a generic answer — it gives you the right move, explained.
+                    </p>
+                  </div>
                 </div>
                 {/* Right (45%): image card */}
                 <div
@@ -350,41 +368,19 @@ export default function OnboardingIntroPage() {
                     >
                       Every Task
                       <br />
-                      Fully Broken Down.
+                      Everything's already figured out.
                     </h2>
                   </div>
                   <p
                     style={{
-                      fontSize: 13,
+                      fontSize: 14,
                       color: '#9CA3AF',
                       marginTop: 14,
                       lineHeight: 1.6,
                     }}
                   >
-                    Success criteria, dependencies, Harvey&apos;s tip. Everything you need to execute.
+                    Description, success criteria, dependencies, Harvey&apos;s coaching tip. Every task arrives ready to execute — no planning required on your end.
                   </p>
-                </div>
-                {/* Penguin: left, vertically centered */}
-                <div
-                  className="absolute"
-                  style={{
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    left: 48,
-                    width: 140,
-                    height: 140,
-                  }}
-                >
-                  <Image
-                    src="/harvey/penguin-scarf.png"
-                    alt=""
-                    width={140}
-                    height={140}
-                    className="w-full h-full object-contain"
-                    style={{
-                      filter: 'drop-shadow(0 8px 20px rgba(0,0,0,0.12))',
-                    }}
-                  />
                 </div>
               </div>
             )}

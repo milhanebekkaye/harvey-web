@@ -2,6 +2,51 @@
 
 ---
 
+### [2026-03-08] GuidedTour paywall: founding-cohort copy and CTA text
+
+**Goal:** Text-only updates to the paywall step (step 5) in the dashboard guided tour: headline, subheadline, feature lines, CTA button, and skip link.
+
+**Changes:**
+- **`src/components/dashboard/GuidedTour.tsx`** (paywall `if (isPaywall)` block only): (1) Headline: "Harvey is ready to coach you" → "You're in the founding cohort." (2) Subheadline: "Get full access to your AI project coach for 3 months." → "$20 for 3 months — founding member price, locked in forever. The people who join now shape what Harvey becomes." (3) Feature lines: "✦ Unlimited AI coaching & scheduling" → "✦ Unlimited coaching, scheduling & rescheduling"; "✦ Per-task conversations with Harvey" → "✦ Harvey learns your patterns over time"; "✦ Smart rescheduling that adapts to you" → "✦ Per-task conversations — no context lost, ever". (4) CTA button: "Unlock Harvey" → "Become a Founding Member". (5) Skip link: "Maybe later" → "I'll join later".
+
+**Unchanged:** Layout, styles, logic, routing, and all other parts of the component.
+
+**Docs:** Updated `ARCHITECTURE.md` (GuidedTour paywall description).
+
+**Risk:** Low. Copy only; build passes.
+
+---
+
+### [2026-03-08] Onboarding vision page: card headlines and updated copy
+
+**Goal:** Add a headline to each vision card (between eyebrow and body) and replace card copy with the new TODAY / TOMORROW / THE VISION content.
+
+**Changes:**
+- **`src/app/onboarding/vision/page.tsx`**: (1) Added `HEADLINE_STYLE` (fontSize: 20, fontWeight: 800, color: '#0d101b', lineHeight: 1.2, marginBottom: 10, marginTop: 2). (2) Rendered a headline element between the eyebrow `<p>` and the body `<p>` in each of the three cards. (3) Card 1 (TODAY): headline "No more blank screen.", body about knowing what to do next and shipping. (4) Card 2 (TOMORROW): headline "Harvey learns how you actually work.", body about Harvey adapting and learning patterns. (5) Card 3 (THE VISION): headline "The AI co-founder you never had.", body about an AI partner for entrepreneurial life.
+
+**Unchanged:** Layout, other styles, routing, and all other logic.
+
+**Docs:** Updated `ARCHITECTURE.md` and `docs/onboarding/README.md` (vision cards description).
+
+**Risk:** Low. Copy and one new styled element per card; build passes.
+
+---
+
+### [2026-03-08] Onboarding intro Slide 0: optional subheadline and updated copy
+
+**Goal:** Add an optional subheadline to the intro SlideContent and refresh Slide 0 copy (problem slide) with new headline/subheadline/body.
+
+**Changes:**
+- **`src/app/onboarding/intro/page.tsx`**: (1) Added optional `subheadline?: string` to the SlideContent props interface. (2) In SlideContent JSX, render the subheadline between the h2 and the body paragraph only when present; styled as `text-[17px] font-semibold text-[#0d101b] leading-snug mb-3`. (3) Slide 0: headline unchanged (`Sound familiar, ${displayName}?`); added subheadline "You know exactly what you want to build. So why aren't you building it?"; body replaced with "Too many ideas. Too many things on your mind. But when it's time to sit down and work — you freeze. You don't know where to start, so you lose an hour just thinking about it. Or worse, you do nothing at all."
+
+**Unchanged:** Slides 1 and 2, layout, styles, and all other logic.
+
+**Docs:** Updated `ARCHITECTURE.md` (intro Slide 0 description) and `docs/onboarding/README.md` (intro slide 0 copy/subheadline).
+
+**Risk:** Low. Copy and optional UI only; build passes.
+
+---
+
 ### [2026-03-07] Grid selection pre-fills form (save via Add)
 
 **Goal:** When the user selects a time range on the grid (two clicks), pre-fill the add form with that range so they can confirm, change type (Project/Personal), and save by clicking Add.
