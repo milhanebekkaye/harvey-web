@@ -2,6 +2,34 @@
 
 ---
 
+### [2026-03-08] Dashboard right-header: List-view tip as clickable bulb
+
+**Goal:** Make the right-header tip a small yellow card with only a bulb (💡); clicking it shows a popover with the message "Switch to List view to reorder tasks by drag & drop".
+
+**Changes:**
+- **`src/app/dashboard/page.tsx`**: (1) Replaced the always-visible tip chip with a compact button: `size-9` rounded-lg, `bg-amber-50 border-amber-200 text-amber-700`, only 💡 inside. (2) Added `isTipOpen` state and `tipRef`; button toggles tip visibility. (3) When open, a small popover (absolute, below button, white card, z-30) shows the text "Switch to List view to reorder tasks by drag & drop". (4) useEffect closes popover on outside click or Escape.
+
+**Unchanged:** View selector, layout, and other logic.
+
+**Risk:** Low. UI only; build passes.
+
+---
+
+### [2026-03-08] Dashboard right-header: replace Filter button with List-view tip chip
+
+**Goal:** Remove the Filter button from the dashboard right header and replace it with a non-interactive tip chip that tells users to switch to List view to reorder tasks by drag & drop.
+
+**Changes:**
+- **`src/app/dashboard/page.tsx`**: (1) In the right-header `div.flex.items-center.gap-2.shrink-0`, removed the Filter button (SlidersHorizontal + "Filter"). (2) Replaced it with a tip chip: amber styling (`bg-amber-50 border-amber-200 text-amber-700`), 💡 icon, text "Switch to List view to reorder tasks by drag & drop". (3) Removed `SlidersHorizontal` from the `lucide-react` import.
+
+**Unchanged:** Layout, logic, state, and all other parts of the file.
+
+**Docs:** Updated `docs/dashboard/README.md` (dashboard page right-header description).
+
+**Risk:** Low. UI swap only; build passes.
+
+---
+
 ### [2026-03-08] GuidedTour paywall: founding-cohort copy and CTA text
 
 **Goal:** Text-only updates to the paywall step (step 5) in the dashboard guided tour: headline, subheadline, feature lines, CTA button, and skip link.

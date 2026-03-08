@@ -7,7 +7,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 
 ## Files involved (and where to find them)
 - `src/app/dashboard/page.tsx`
-  - Dashboard page: fetches tasks and discussions, handles actions, and renders views. On mount, `checkTourStatus()` calls `GET /api/user/me` and sets tour visibility; the same response populates `userName` and `userPlan` (from `name` and `payment_status`) for use by the sidebar (e.g. user row). `userId` is resolved separately via Supabase `auth.getUser()` for GuidedTour.
+  - Dashboard page: fetches tasks and discussions, handles actions, and renders views. Right header (Project Timeline title + actions): clickable tip bulb (💡, small yellow card) that opens a popover with "Switch to List view to reorder tasks by drag & drop"; View popover (List/Timeline switch). On mount, `checkTourStatus()` calls `GET /api/user/me` and sets tour visibility; the same response populates `userName` and `userPlan` (from `name` and `payment_status`) for use by the sidebar (e.g. user row). `userId` is resolved separately via Supabase `auth.getUser()` for GuidedTour.
 - `src/components/dashboard/DashboardSidebar.tsx`
   - Collapsible left sidebar (Claude/Notion-style): closed strip (w-12) with hamburger; open panel (w-64) with header (Harvey penguin image + "Harvey AI"), Dashboard nav pill, "Recent chats" (Project Chat with pin icon + task list), Project Details and "Vote for next features" links, user row with menu (Settings, Vote for next features, feedback, Upgrade Plan → Stripe payment link when free, Log out). Pro Plan = active/pro/paid. Integrated as the leftmost column; conversation switching and logout live here.
 - `src/components/dashboard/ChatSidebar.tsx`

@@ -29,7 +29,6 @@ import {
   ChevronDown,
   GanttChart,
   List,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
@@ -149,6 +148,10 @@ export default function DashboardPage() {
   /** Floating "View" selector (List/Timeline) visibility. */
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
   const viewMenuRef = useRef<HTMLDivElement>(null)
+
+  /** List-view tip popover (click bulb to show message). */
+  const [isTipOpen, setIsTipOpen] = useState(false)
+  const tipRef = useRef<HTMLDivElement>(null)
 
   /** Only auto-expand first task once on initial load; avoids refetch when expandedTaskId changes */
   const hasAutoExpandedRef = useRef(false)
@@ -553,6 +556,23 @@ export default function DashboardPage() {
       document.removeEventListener('keydown', handleEscape)
     }
   }, [isViewMenuOpen])
+
+  /** Close tip popover on outside click or Escape. */
+  useEffect(() => {
+    if (!isTipOpen) return
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!tipRef.current?.contains(event.target as Node)) setIsTipOpen(false)
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsTipOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [isTipOpen])
 
   // ===== HANDLERS =====
 
@@ -1208,14 +1228,25 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
-                aria-label="Filter tasks"
-              >
-                <SlidersHorizontal className="w-5 h-5" />
-                Filter
-              </button>
+              <div className="relative" ref={tipRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsTipOpen((open) => !open)}
+                  className="flex items-center justify-center size-9 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors shadow-sm"
+                  aria-label="View tip"
+                  aria-expanded={isTipOpen}
+                >
+                  <span className="text-base">💡</span>
+                </button>
+                {isTipOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-1.5 z-30 w-64 px-3 py-2.5 rounded-lg bg-white border border-slate-200 shadow-lg text-sm text-slate-600"
+                    role="tooltip"
+                  >
+                    Switch to List view to reorder tasks by drag & drop
+                  </div>
+                )}
+              </div>
 
               <div className="relative" ref={viewMenuRef}>
                 <button
