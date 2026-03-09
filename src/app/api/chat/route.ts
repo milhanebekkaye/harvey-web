@@ -72,6 +72,39 @@ function getLastUserMessage(messages: UIMessage[]): string | null {
   return null
 }
 
+/** Anthropic requires non-empty text content. Placeholder for stored/API messages that are empty. */
+const EMPTY_CONTENT_PLACEHOLDER = '(No message content.)'
+
+/**
+ * When the assistant responds with only a tool call (e.g. show_date_picker), there is no text part.
+ * We must never save or send empty content (Anthropic rejects it). Return a short placeholder
+ * so the discussion continues and history stays valid.
+ */
+function getPlaceholderForEmptyAssistantMessage(message: UIMessage): string {
+  const parts = message.parts ?? []
+  const hasTool = parts.some(
+    (p: { type?: string; toolName?: string; toolInvocation?: { toolName?: string } }) =>
+      (typeof p.type === 'string' && p.type.includes('tool')) ||
+      p.toolName === 'show_date_picker' ||
+      p.toolInvocation?.toolName === 'show_date_picker'
+  )
+  const hasDatePicker = parts.some(
+    (p: { type?: string; toolName?: string; toolInvocation?: { toolName?: string } }) =>
+      p.type === 'tool-show_date_picker' ||
+      p.toolName === 'show_date_picker' ||
+      p.toolInvocation?.toolName === 'show_date_picker'
+  )
+  if (hasDatePicker) return '(Calendar shown for date selection.)'
+  if (hasTool) return '(Tool used.)'
+  return EMPTY_CONTENT_PLACEHOLDER
+}
+
+/** Ensure content is never empty (Anthropic API requirement). Preserves message order. */
+function sanitizeContent(content: string): string {
+  const t = (content ?? '').trim()
+  return t.length > 0 ? t : EMPTY_CONTENT_PLACEHOLDER
+}
+
 export async function POST(request: NextRequest) {
   console.log('[ChatAPI] ========== New streaming chat request ==========')
 
@@ -189,9 +222,10 @@ export async function POST(request: NextRequest) {
     }
     const allMessagesForClaude = [...existingMessages, userMessage]
 
+    // Anthropic rejects empty text content. Sanitize so existing bad data (e.g. tool-only turns) never breaks the API.
     const modelMessages = allMessagesForClaude.map((m) => ({
       role: m.role as 'user' | 'assistant' | 'system',
-      content: m.content,
+      content: sanitizeContent(m.content),
     }))
 
     // ===== STEP 4b: Build onboarding system prompt with date + known info (when onboarding) =====
@@ -307,6 +341,10 @@ export async function POST(request: NextRequest) {
       originalMessages: uiMessages,
       onFinish: async ({ responseMessage }) => {
         const fullText = getMessageText(responseMessage as UIMessage)
+        const contentToSave =
+          fullText.trim().length > 0
+            ? fullText.trim()
+            : getPlaceholderForEmptyAssistantMessage(responseMessage as UIMessage)
         if (context === 'onboarding') {
           const parts = (responseMessage as UIMessage).parts ?? []
           console.log('[chat/route] onFinish - response message parts:', JSON.stringify(parts, null, 2))
@@ -317,7 +355,7 @@ export async function POST(request: NextRequest) {
         }
         const assistantMessage: StoredMessage = {
           role: 'assistant',
-          content: fullText,
+          content: contentToSave,
           timestamp: new Date().toISOString(),
         }
 

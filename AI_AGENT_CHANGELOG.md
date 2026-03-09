@@ -2,6 +2,19 @@
 
 ---
 
+### [2026-03-09] Onboarding chat: prevent empty assistant messages (tool-only / Anthropic 400)
+
+**Goal:** Fix `AI_APICallError: messages: text content blocks must be non-empty` during onboarding when Harvey responds with only a tool call (e.g. `show_date_picker`) and no text. Anthropic rejects empty content; we were saving and re-sending it, breaking the next request.
+
+**Changes:**
+- **`src/app/api/chat/route.ts`**: (1) Added `getPlaceholderForEmptyAssistantMessage(message)` to detect tool invocations in response parts and return a short placeholder: "(Calendar shown for date selection.)" for `show_date_picker`, "(Tool used.)" for other tools, "(No message content.)" otherwise. (2) Added `sanitizeContent(content)` so we never send empty content to the API. (3) When building `modelMessages`, sanitize every message's content so existing discussions with empty stored messages no longer cause 400s. (4) In `onFinish`, when saving the assistant message: if `fullText` is empty, use `getPlaceholderForEmptyAssistantMessage(responseMessage)` instead of saving `""`. Discussion history stays valid and the conversation continues after date picker (or other tool-only) turns.
+
+**Docs:** Updated `docs/streaming-chat/README.md` (Empty content and tool-only responses).
+
+**Risk:** Low. Defensive handling only; no change to happy path when Harvey sends text. Build passes.
+
+---
+
 ### [2026-03-08] Dashboard right-header: List-view tip as clickable bulb
 
 **Goal:** Make the right-header tip a small yellow card with only a bulb (💡); clicking it shows a popover with the message "Switch to List view to reorder tasks by drag & drop".

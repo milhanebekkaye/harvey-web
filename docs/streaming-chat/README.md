@@ -43,6 +43,13 @@ The API uses `smoothStream()` with `chunking: 'word'` and `delayInMs: null` to:
 6. Client receives `projectId` via transient `data-onboarding-meta` (for continuation)
 7. Client derives `isComplete` when last message contains `PROJECT_INTAKE_COMPLETE`
 
+## Empty content and tool-only responses
+
+Anthropic requires every message's text content to be non-empty. When Harvey responds with **only** a tool call (e.g. `show_date_picker` for deadline/start date) and no text, the streamed message has no text part. To avoid saving or sending empty content:
+
+- **When saving:** If the assistant response has no text, the API detects tool invocations in the message parts. It saves a short placeholder instead of empty string: "(Calendar shown for date selection.)" for the date picker, "(Tool used.)" for other tools. The discussion continues and the next request works.
+- **When sending to Claude:** All messages passed to the model have their content sanitized: empty or whitespace-only content is replaced with "(No message content.)" so existing discussions that already contain empty assistant messages (e.g. from before this fix) never cause a 400.
+
 ## Custom Data in Stream
 
 The API sends transient metadata for the client:
