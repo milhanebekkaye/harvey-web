@@ -1,5 +1,53 @@
 ## AI Agent Change Log
 
+**What this file is**
+
+- **Purpose**: This file is a **running log of all non-trivial code changes made by AI agents** working on this repository.
+- **Audience**: Future AI agents and human maintainers who need to understand **what changed, why, and where to look if something broke**.
+- **Scope**: Any change that affects behavior, data structures, or architecture should be recorded here (features, refactors, schema changes, important bug fixes).
+
+Always use `ARCHITECTURE.md` to understand **how the codebase is structured**, and use this `AI_AGENT_CHANGELOG.md` to understand **how it has evolved over time**.
+
+---
+
+## How AI agents should use this file
+
+When you (an AI agent) make a significant change:
+
+1. **Add a new entry at the top** of the “Change log” section (most recent first).
+2. **Be concise but precise**:
+   - What you changed.
+   - Why you changed it.
+   - Which files/directories were touched.
+   - Any potential risks or follow-up work.
+3. **Link to relevant sections** in `ARCHITECTURE.md` if you changed or added documented modules.
+4. If you **revert** or significantly modify a previous change, reference the earlier entry by date and short title.
+
+Think of this file as your **debug breadcrumb trail**: future agents (or humans) should be able to answer “What changed recently that might explain this behavior?” by scanning this log.
+
+---
+
+## Recommended entry format
+
+When adding a new entry, follow this structure:
+
+```markdown
+### YYYY-MM-DD – Short, descriptive title
+
+- **Agent / context**: (e.g. “Cursor AI assistant”, “Model Used”, brief description of the request or task)
+- **Summary**: 1–3 bullet points of what changed at a high level.
+- **Files touched**: Key files or directories, not every single file if many were affected.
+- **Motivation**: Why this change was made (bug fix, feature request, refactor, performance, etc.).
+- **Risks / notes**: Anything that might break, areas to watch, or TODOs for follow-up.
+- **Related docs**: References to sections in `ARCHITECTURE.md` or external design docs if applicable.
+```
+
+You don’t need to paste large code snippets here—this file is about **narrative and intent**, not implementation details.
+
+---
+
+## Change log
+
 ---
 
 ### [2026-03-09] Onboarding chat: prevent empty assistant messages (tool-only / Anthropic 400)
@@ -588,54 +636,6 @@ All timeouts (retries + the existing scroll-settle delay) are now tracked in a s
 **Risk:** None — `data-*` attributes are inert to browsers and React. No rendering change.
 
 ---
-
-**What this file is**
-
-- **Purpose**: This file is a **running log of all non-trivial code changes made by AI agents** working on this repository.
-- **Audience**: Future AI agents and human maintainers who need to understand **what changed, why, and where to look if something broke**.
-- **Scope**: Any change that affects behavior, data structures, or architecture should be recorded here (features, refactors, schema changes, important bug fixes).
-
-Always use `ARCHITECTURE.md` to understand **how the codebase is structured**, and use this `AI_AGENT_CHANGELOG.md` to understand **how it has evolved over time**.
-
----
-
-## How AI agents should use this file
-
-When you (an AI agent) make a significant change:
-
-1. **Add a new entry at the top** of the “Change log” section (most recent first).
-2. **Be concise but precise**:
-   - What you changed.
-   - Why you changed it.
-   - Which files/directories were touched.
-   - Any potential risks or follow-up work.
-3. **Link to relevant sections** in `ARCHITECTURE.md` if you changed or added documented modules.
-4. If you **revert** or significantly modify a previous change, reference the earlier entry by date and short title.
-
-Think of this file as your **debug breadcrumb trail**: future agents (or humans) should be able to answer “What changed recently that might explain this behavior?” by scanning this log.
-
----
-
-## Recommended entry format
-
-When adding a new entry, follow this structure:
-
-```markdown
-### YYYY-MM-DD – Short, descriptive title
-
-- **Agent / context**: (e.g. “Cursor AI assistant”, “Model Used”, brief description of the request or task)
-- **Summary**: 1–3 bullet points of what changed at a high level.
-- **Files touched**: Key files or directories, not every single file if many were affected.
-- **Motivation**: Why this change was made (bug fix, feature request, refactor, performance, etc.).
-- **Risks / notes**: Anything that might break, areas to watch, or TODOs for follow-up.
-- **Related docs**: References to sections in `ARCHITECTURE.md` or external design docs if applicable.
-```
-
-You don’t need to paste large code snippets here—this file is about **narrative and intent**, not implementation details.
-
----
-
-## Change log
 
 ### 2026-03-06 – Add persisted dashboard tour completion flag
 
