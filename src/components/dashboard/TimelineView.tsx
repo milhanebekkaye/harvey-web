@@ -115,9 +115,9 @@ interface TimelineViewProps {
   expandedTaskId: string | null
 
   /**
-   * Callback when a task is clicked
+   * Callback when a task is clicked (null = clear selection, e.g. after delete)
    */
-  onTaskClick: (taskId: string) => void
+  onTaskClick: (taskId: string | null) => void
 
   /**
    * Callback when Complete button is clicked
@@ -220,7 +220,7 @@ interface SortableTaskItemProps {
   task: DashboardTask
   sectionDateStr: string | null
   isExpanded: boolean
-  onTaskClick: (taskId: string) => void
+  onTaskClick: (taskId: string | null) => void
   variant: 'default' | 'compact'
   gridLayout: boolean
   isOverdue: boolean

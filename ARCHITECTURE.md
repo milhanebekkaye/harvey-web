@@ -151,7 +151,7 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
   - **Post-onboarding project chat**: streaming endpoint with 7 AI tools for schedule management. Uses **Claude Haiku** (`claude-haiku-4-5-20251001`) during MVP testing to reduce cost; can be switched back to Sonnet for paid users (see `AI_AGENT_CHANGELOG.md`).
   - Sends only the last **10 messages** as conversation history (reduced from 15 for cost).
   - Uses `assembleProjectChatContext()` to build a dynamic system prompt with live DB data (tasks, constraints, stats, notes). Schedule in the prompt is limited to today + next 7 days with a compact task format to reduce tokens.
-  - Tools: `modify_schedule`, `update_constraints`, `add_task`, `suggest_next_action`, `get_progress_summary`, `regenerate_schedule`, `update_project_notes`.
+  - Tools: `modify_schedule`, `update_constraints`, `add_task`, `suggest_next_action`, `get_progress_summary`, `regenerate_schedule`, `update_project_notes`, `delete_task`.
   - Claude decides whether to call a tool (Category A) or respond conversationally (Category B).
   - Persists messages to Discussion (type: "project") on stream finish.
   - See `docs/chat-router/README.md` for full architecture docs.

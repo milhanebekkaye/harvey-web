@@ -113,6 +113,18 @@ export async function assembleProjectChatContext(
     const taskDateStr = getDateStringInTimezone(t.scheduledDate, userTimezone)
     return taskDateStr >= todayStr && taskDateStr <= endDateStr
   })
+
+  const overdueTasks = project.tasks.filter((t) => {
+    if (!t.scheduledDate) return false
+    const taskDateStr = getDateStringInTimezone(t.scheduledDate, userTimezone)
+    return taskDateStr < todayStr && (t.status === 'pending' || t.status === 'skipped')
+  })
+
+  console.log(
+    `[assembleContext] Overdue tasks included in context: ${overdueTasks.length}`,
+    overdueTasks.map((t) => `"${t.title}" (${t.id})`)
+  )
+
   const tasksBeyondWindow = project.tasks.filter((t) => {
     if (!t.scheduledDate) return false
     const taskDateStr = getDateStringInTimezone(t.scheduledDate, userTimezone)
@@ -120,7 +132,15 @@ export async function assembleProjectChatContext(
   })
 
   // 5. Build and return system prompt string
-  const systemPrompt = buildSystemPrompt(project, user, stats, scheduleTasks, tasksBeyondWindow.length, userTimezone)
+  const systemPrompt = buildSystemPrompt(
+    project,
+    user,
+    stats,
+    scheduleTasks,
+    tasksBeyondWindow.length,
+    userTimezone,
+    overdueTasks
+  )
   console.log('[assembleContext] assembleContext.ts returning systemPrompt length', systemPrompt.length)
   return systemPrompt
 }
@@ -216,6 +236,7 @@ export function computeTaskStats(tasks: Task[], userTimezone?: string): TaskStat
  * @param scheduleTasks - Tasks in window (today + 7 days) or unscheduled
  * @param tasksBeyondWindow - Count of tasks after the 7-day window
  * @param userTimezone - User's IANA timezone
+ * @param overdueTasks - Tasks scheduled before today, pending or skipped (so Harvey can see them for delete_task etc.)
  * @returns The full system prompt string
  */
 /** Minimal user shape needed for the system prompt (we only select a subset in the query). */
@@ -225,7 +246,8 @@ function buildSystemPrompt(
   stats: TaskStats,
   scheduleTasks: Task[],
   tasksBeyondWindow: number,
-  userTimezone: string
+  userTimezone: string,
+  overdueTasks: Task[]
 ): string {
   const contextData = buildContextDataFromProjectAndUser(project, user)
 
@@ -298,7 +320,7 @@ ${userNotesSection}
 ## User constraints
 ${formatConstraints(contextData, user as unknown as UserLifeConstraints)}
 
-## Current schedule (today + next 7 days; all times ${userTimezone})
+${overdueTasks.length > 0 ? `## Overdue tasks (scheduled before today, not yet completed)\n${formatAllTasks(overdueTasks, userTimezone)}\n\n` : ''}## Current schedule (today + next 7 days; all times ${userTimezone})
 ${formatTasks(stats.todayTasks, 'today', userTimezone)}
 ${formatAllTasks(scheduleTasks, userTimezone)}${beyondLine}
 
@@ -325,6 +347,10 @@ IMPORTANT: After regenerate_schedule, use the tool result message to give a brie
 IMPORTANT: After updating constraints, ask the user if they want you to rebuild the schedule with the new constraints.
 
 IMPORTANT: When calling update_project_notes, only do so when you learn something genuinely new and important about the user's preferences, patterns, or project direction. Do NOT call it on every message.
+
+IMPORTANT: delete_task — Permanently delete a task. BEHAVIOR RULES: (1) Never call delete_task without first identifying the exact task and confirming with the user. (2) If the task has dependents (other tasks that depend on it), warn the user by listing those task titles before confirming. (3) Only call the tool after the user explicitly confirms (e.g. "yes", "go ahead", "delete it"). (4) After deletion, narrate clearly: which task was deleted and which dependent tasks (if any) had their dependency removed.
+
+RULE: Never say a task was deleted without calling delete_task in the same turn. A confirmation from the user is a trigger to call the tool, not to describe the action in text.
 `.trim()
 }
 

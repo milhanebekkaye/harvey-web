@@ -50,6 +50,82 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ---
 
+### [2026-03-16] delete_task prompt + task refresh: call tool on confirm, fix multi-step onFinish
+
+- **Agent / context**: Cursor AI assistant; ensure Harvey actually calls delete_task when user confirms (no narration-only) and that the dashboard refreshes after deletion even when onFinish runs multiple times per turn.
+- **Summary**:
+  - **route.ts** `delete_task` tool description: Replaced with explicit text that Harvey MUST call the tool to delete; saying "done"/"deleted" without calling does nothing; on user confirmation (yes / go ahead / do it, etc.) call the tool immediately in the same response; do not narrate deletion without a tool call result.
+  - **assembleContext.ts** system prompt (tools section): Added RULE: "Never say a task was deleted without calling delete_task in the same turn. A confirmation from the user is a trigger to call the tool, not to describe the action in text."
+  - **ProjectChatView.tsx**: (1) In `handleSubmit`, before `sendMessage`, set `prevMessageCountRef.current = messages.length` so "current turn" is anchored at send time. (2) In `onFinish`, removed `prevMessageCountRef.current = finishedMessages.length` so we do not overwrite the ref on each step. Result: every `onFinish` in a multi-step turn sees the same "new messages" slice (user message + all assistant messages this turn), so a tool call in an earlier step is always detected and `onTasksChanged()` runs; we still avoid refreshing on every message (ref only advances when the user sends the next message).
+- **Files touched**: `src/app/api/chat/project/route.ts`, `src/lib/chat/assembleContext.ts`, `src/components/dashboard/ProjectChatView.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/dashboard/README.md`, `docs/chat-router/README.md`.
+- **Motivation**: Harvey was sometimes narrating deletion without calling delete_task; when he did call it, multi-step onFinish could make the last slice narration-only and skip refresh. Prompt changes force tool use on confirm; ref-at-send-time fixes refresh for multi-step responses.
+- **Risks / notes**: None.
+
+---
+
+### [2026-03-16] Project chat: refresh tasks when any step of the current turn has a tool call
+
+- **Agent / context**: Cursor AI assistant; fix for dashboard not refreshing after a tool call (e.g. delete_task) because the last assistant message was the narration step (no tool parts); the tool call lived in a previous step of the same turn.
+- **Summary**:
+  - **ProjectChatView.tsx**: Added `prevMessageCountRef = useRef(0)` to track message count before each turn. In `onFinish`, we now slice only messages added in the current turn (`finishedMessages.slice(prevMessageCountRef.current)`), update the ref to `finishedMessages.length`, then check whether any of those new messages is an assistant message with a tool call (`newMessages.some(m => m.role === 'assistant' && hasToolCall(m))`). If so, we call `onTasksChanged()`. Kept console.logs for "[onFinish] New messages this turn" and "[onFinish] Tool call detected in this turn, refreshing tasks" to help debug if issues recur.
+  - This fixes both: (1) original bug where any past tool call triggered refresh on every message, (2) over-narrow fix where only the last assistant message was checked, missing tool call in multi-step responses.
+- **Files touched**: `src/components/dashboard/ProjectChatView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: After tool call response, dashboard must refresh; tool call can be in an earlier step of the same turn, not the final narration message.
+- **Risks / notes**: None. Ref-based turn slicing is robust and does not depend on router or API changes.
+
+---
+
+### [2026-03-16] Project chat: temporary debug log in onFinish (delete_task investigation)
+
+- **Agent / context**: Cursor AI assistant; user requested debug logging to inspect why Harvey narrates task deletion but the task remains in the DB and dashboard (tool call vs. refetch).
+- **Summary**:
+  - **ProjectChatView.tsx** `onFinish`: Added temporary `console.log('[DEBUG onFinish] Total messages:', finishedMessages.length)` and a `forEach` that logs each message index, role, and `parts` types (`m.parts?.map((p) => p.type)`). Existing logic (last assistant message + `hasToolCall` → `onTasksChanged`) unchanged.
+  - Purpose: After reproducing (ask Harvey to delete a task, confirm with "yes"), console output shows how many messages exist, which message has tool parts, and whether the last assistant message has tool parts — to determine if refetch is not firing because the last message lacks tool invocation.
+- **Files touched**: `src/components/dashboard/ProjectChatView.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Debug only; remove this log once delete_task/onFinish behavior is confirmed and fixed.
+- **Risks / notes**: None. Remove debug logs after investigation.
+
+---
+
+### [2026-03-16] Project chat: only refresh task list when the latest response had a tool call
+
+- **Agent / context**: Cursor AI assistant; task list was refreshing after every Harvey message in a conversation that had previously had a tool call, because the check used the full message history.
+- **Summary**:
+  - **ProjectChatView.tsx** `onFinish`: Replaced `anyAssistantMessageHasToolCall(finishedMessages)` with checking only the **last** assistant message. We now get the last assistant message with `[...finishedMessages].reverse().find((m) => m.role === 'assistant')` and call `hasToolCall(lastAssistantMessage)`; only then do we call `onTasksChanged()`. So refetch runs only when the **current** response contained a tool invocation, not when any prior message in the thread did.
+  - Left `hasToolCall` and `anyAssistantMessageHasToolCall` unchanged (the latter is unused by onFinish now but remains in the file).
+- **Files touched**: `src/components/dashboard/ProjectChatView.tsx`, `AI_AGENT_CHANGELOG.md`, `docs/chat-router/README.md`, `docs/dashboard/README.md`.
+- **Motivation**: Avoid unnecessary task list refetches and UI flicker when the user sends a follow-up and Harvey replies with plain text.
+- **Risks / notes**: None.
+
+---
+
+### [2026-03-16] Chat context: include overdue tasks in system prompt (fix delete_task visibility)
+
+- **Agent / context**: Cursor AI assistant; Harvey's delete_task tool could not find overdue tasks because they were filtered out of the schedule window. User requested adding overdue tasks as a dedicated section in the system prompt.
+- **Summary**:
+  - **assembleContext.ts**: After computing `scheduleTasks`, added **`overdueTasks`**: tasks with `scheduledDate` before today (user TZ) and status `pending` or `skipped`. Log: `[assembleContext] Overdue tasks included in context: N` with titles and ids.
+  - **buildSystemPrompt**: New parameter **`overdueTasks: Task[]`**. When `overdueTasks.length > 0`, the prompt now includes a section **"## Overdue tasks (scheduled before today, not yet completed)"** immediately before **"## Current schedule (today + next 7 days)"**, using existing **`formatAllTasks(overdueTasks, userTimezone)`**. No change to scheduleTasks or todayTasks computation.
+  - Harvey can now see overdue tasks (with ids) in context, so delete_task and other tools can resolve them.
+- **Files touched**: `src/lib/chat/assembleContext.ts`, `AI_AGENT_CHANGELOG.md`, `docs/chat-router/README.md`.
+- **Motivation**: Overdue tasks were excluded by the `taskDateStr >= todayStr` filter for scheduleTasks; adding them in a dedicated section fixes delete_task (and any tool) that needs to reference overdue tasks.
+- **Risks / notes**: None. Same formatting as full schedule; no new formatter.
+
+---
+
+### [2026-03-16] Chat router: add delete_task tool (project chat)
+
+- **Agent / context**: Cursor AI assistant; user requested adding a `delete_task` tool to the project chat router, following the same pattern as `add_task`. No client-side changes.
+- **Summary**:
+  - **New executor**: `src/lib/chat/tools/deleteTask.ts`. `executeDeleteTask(params, projectId, userId)` calls `task-service.deleteTask(params.task_id, userId)`; on success returns `{ success: true, message, deletedTaskId, deletedTaskTitle, cleanedDependents }`; on catch returns `{ success: false, message }` (user-friendly message for "not found or unauthorized"). Same structure as addTask.
+  - **Route**: `src/app/api/chat/project/route.ts` — imported `executeDeleteTask`, added `delete_task` to `chatTools` with description (confirm task, warn dependents, only after user confirms), `inputSchema: z.object({ task_id: z.string() })`, and `execute` calling `executeDeleteTask(params, projectId, user.id)`.
+  - **System prompt**: `src/lib/chat/assembleContext.ts` — added IMPORTANT block for `delete_task`: (1) never call without identifying task and confirming with user; (2) warn about dependents by listing titles before confirming; (3) only call after explicit user confirmation; (4) after deletion narrate what was deleted and which dependents had dependency removed.
+  - Task list refresh after delete_task uses the existing `onFinish` → `anyAssistantMessageHasToolCall` → `onTasksChanged()` → `fetchTasks()` path; no client changes.
+- **Files touched**: `src/lib/chat/tools/deleteTask.ts` (new), `src/app/api/chat/project/route.ts`, `src/lib/chat/assembleContext.ts`, `ARCHITECTURE.md`, `docs/chat-router/README.md`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Allow users to delete a task via project chat (e.g. "Delete the 'Review PR' task" after confirming); same UX as other mutating tools, with guardrails in the prompt.
+- **Risks / notes**: None. deleteTask service already cleans dependents and DB cascade handles task discussions.
+
+---
+
 ### [2026-03-16] Task deletion: refresh chat panel when deleted task had a task chat
 
 - **Agent / context**: Cursor AI assistant; user requested that when a task with an open task chat (discussion) is deleted, the chat panel should refresh so that chat is no longer visible.

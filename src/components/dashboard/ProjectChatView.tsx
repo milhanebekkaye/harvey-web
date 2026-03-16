@@ -101,6 +101,7 @@ export function ProjectChatView({
 }: ProjectChatViewProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const prevMessageCountRef = useRef(0)
 
   const [appendedFeedbackMessages, setAppendedFeedbackMessages] = useState<
     DisplayMessage[]
@@ -140,7 +141,17 @@ export function ProjectChatView({
       }),
     }),
     onFinish: ({ messages: finishedMessages }) => {
-      if (anyAssistantMessageHasToolCall(finishedMessages)) {
+      const newMessages = finishedMessages.slice(prevMessageCountRef.current)
+      console.log(
+        '[onFinish] New messages this turn:',
+        newMessages.length,
+        newMessages.map((m) => ({ role: m.role, parts: m.parts?.map((p: { type?: string }) => p.type) }))
+      )
+      const newTurnHasToolCall = newMessages.some(
+        (m) => m.role === 'assistant' && hasToolCall(m)
+      )
+      if (newTurnHasToolCall) {
+        console.log('[onFinish] Tool call detected in this turn, refreshing tasks')
         onTasksChanged?.()
       }
     },
@@ -211,6 +222,7 @@ export function ProjectChatView({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim() || isTyping || !projectId) return
+    prevMessageCountRef.current = messages.length
     sendMessage({ text: inputValue })
     setInputValue('')
     if (textareaRef.current) {

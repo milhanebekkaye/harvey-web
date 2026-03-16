@@ -13,7 +13,7 @@ API Route authenticates, loads Discussion
     ↓
 assembleProjectChatContext() → dynamic system prompt with live DB data
     ↓
-streamText() with 7 tools → Claude
+streamText() with 8 tools → Claude
     ↓
 Claude decides: conversational response OR tool call
     ↓
@@ -44,7 +44,8 @@ src/lib/chat/
     ├── suggestNextAction.ts # "What should I do?" data
     ├── getProgressSummary.ts # Progress stats
     ├── regenerateSchedule.ts # Rebuild schedule
-    └── updateProjectNotes.ts # Harvey's memory
+    ├── updateProjectNotes.ts # Harvey's memory
+    └── deleteTask.ts         # Permanently delete a task (confirm first)
 
 src/app/api/chat/project/
 └── route.ts                # Streaming API endpoint
@@ -60,11 +61,13 @@ Assembly steps:
 2. Fetches the User (for name, timezone)
 3. Computes task statistics in the **user's timezone** (completion rate, today's tasks by local date, skip patterns) via `computeTaskStats(tasks, userTimezone)`
 4. Limits the schedule to **today + next 7 days** (plus unscheduled) for the system prompt; tasks beyond that window are omitted, with a note “(N tasks beyond this window)” when N > 0
-5. Builds a system prompt with:
+5. Computes **overdue tasks** (scheduled before today, status pending or skipped) so Harvey can see them (e.g. for delete_task).
+6. Builds a system prompt with:
    - Harvey's personality instructions
    - Current date/time in user's timezone, plus explicit "Today's date in user's timezone: YYYY-MM-DD" and "Current time in user's timezone: HH:MM"
    - Project info (title, description, goals, status)
    - User constraints (available time, blocked time, one-off blocks)
+   - **Overdue tasks** (if any): same compact format with task ids so tools can resolve them
    - **Tasks today** and **Full schedule** (today + 7 days only) with **compact task lines** (e.g. `Feb 9 20:00–22:00 | id:abc | Title | 2h | pending | →dep1`) and short date headers (e.g. "Mon Feb 9") to reduce tokens
    - Progress statistics
    - Harvey's accumulated notes about the user
@@ -100,6 +103,7 @@ Dates and "today" are derived using `getDateStringInTimezone` from `src/lib/time
 | `get_progress_summary` | "How am I doing?" | No — read-only |
 | `regenerate_schedule` | "Rebuild my schedule" | Yes — updates Tasks. Respects dependencies (part 1 before part 2); returns clear recap (moved count, completion date). |
 | `update_project_notes` | (Harvey decides internally) | Yes — updates Project.projectNotes |
+| `delete_task` | "Delete that task" (after user confirms) | Yes — deletes Task; cleans dependents' depends_on; task discussion cascade-deleted. Harvey must confirm task and warn about dependents before calling. |
 
 ### regenerate_schedule behavior
 
@@ -109,7 +113,7 @@ Dates and "today" are derived using `getDateStringInTimezone` from `src/lib/time
 
 ## Frontend Integration
 
-The `ChatSidebar` component uses `useChat` from `@ai-sdk/react` with `DefaultChatTransport` pointed at `/api/chat/project`. Messages are merged from three sources: useChat (initial + streamed), dashboard-appended (e.g. after Complete/Skip), and widget-appended (feedback buttons). Each message has a `createdAt` (ISO string); the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Auto-scroll runs when messages or appended lists change. In `onFinish`, the sidebar checks if any assistant message contains a tool invocation (AI SDK v6: `part.type.startsWith('tool-')` or `part.type === 'dynamic-tool'`). If so, it calls `onTasksChanged`, which triggers a task list refetch in the dashboard. Timeline and calendar views update immediately after tools like `add_task`, `modify_schedule`, or `regenerate_schedule` complete—no manual page reload needed. Completion/skip and reschedule-prompt widgets are rendered only when their source message is not marked `answered`.
+The `ChatSidebar` component uses `useChat` from `@ai-sdk/react` with `DefaultChatTransport` pointed at `/api/chat/project`. Messages are merged from three sources: useChat (initial + streamed), dashboard-appended (e.g. after Complete/Skip), and widget-appended (feedback buttons). Each message has a `createdAt` (ISO string); the merged list is sorted by `createdAt` ascending so the newest message is always at the bottom. Auto-scroll runs when messages or appended lists change. **Task list refresh**: In `handleSubmit`, before `sendMessage`, the component sets `prevMessageCountRef.current = messages.length`. In `onFinish`, it slices only messages added this turn (`finishedMessages.slice(prevMessageCountRef.current)`) and checks whether any of those is an assistant message with a tool invocation (AI SDK: `part.type.startsWith('tool-')` or `part.type === 'dynamic-tool'`). If so, it calls `onTasksChanged`, which triggers a task list refetch. The ref is not updated in `onFinish`, so multi-step responses (e.g. tool call then narration) still see the full turn and trigger one refresh; ref only advances when the user sends the next message, so plain-text follow-ups do not refetch. Timeline and calendar views update immediately after tools like `add_task`, `modify_schedule`, `delete_task`, or `regenerate_schedule` complete—no manual page reload needed. Completion/skip and reschedule-prompt widgets are rendered only when their source message is not marked `answered`.
 
 Assistant bubbles in `ProjectChatView` render markdown with shared `src/components/ui/MarkdownMessage.tsx` (`react-markdown` + `remark-gfm`) so bold/italic/lists/code blocks/links display correctly; user bubbles stay plain text.
 

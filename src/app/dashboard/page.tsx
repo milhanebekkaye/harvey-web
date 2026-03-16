@@ -569,8 +569,8 @@ export default function DashboardPage() {
   /**
    * Toggle task expansion in timeline view
    */
-  const handleTaskClick = (taskId: string) => {
-    setExpandedTaskId(expandedTaskId === taskId ? null : taskId)
+  const handleTaskClick = (taskId: string | null) => {
+    setExpandedTaskId(taskId === null ? null : (expandedTaskId === taskId ? null : taskId))
   }
 
   /**

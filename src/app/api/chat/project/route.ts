@@ -4,15 +4,15 @@
  * POST /api/chat/project
  *
  * Streaming chat endpoint for the post-onboarding project coach.
- * Uses Vercel AI SDK with Claude and 7 tools for schedule management.
+ * Uses Vercel AI SDK with Claude and 8 tools for schedule management.
  *
  * Architecture:
  * 1. Authenticate user via Supabase
  * 2. Load or create the "project" Discussion
  * 3. Assemble dynamic system prompt with live DB context
- * 4. Define 7 tools (modify_schedule, update_constraints, add_task,
+ * 4. Define 8 tools (modify_schedule, update_constraints, add_task,
  *    suggest_next_action, get_progress_summary, regenerate_schedule,
- *    update_project_notes)
+ *    update_project_notes, delete_task)
  * 5. Stream response via streamText() with maxSteps: 3
  * 6. Persist messages to Discussion on completion
  *
@@ -39,6 +39,7 @@ import { executeSuggestNextAction } from '@/lib/chat/tools/suggestNextAction'
 import { executeGetProgressSummary } from '@/lib/chat/tools/getProgressSummary'
 import { executeRegenerateSchedule } from '@/lib/chat/tools/regenerateSchedule'
 import { executeUpdateProjectNotes } from '@/lib/chat/tools/updateProjectNotes'
+import { executeDeleteTask } from '@/lib/chat/tools/deleteTask'
 
 // Discussion persistence
 import {
@@ -333,6 +334,28 @@ export async function POST(request: NextRequest) {
         execute: async (params) => {
           console.log('[ProjectChat] route.ts tool execute: update_project_notes', { action: (params as { action?: string }).action })
           return executeUpdateProjectNotes(params, projectId, user.id)
+        },
+      }),
+
+      delete_task: tool({
+        description:
+          'Delete a task permanently. ' +
+          'IMPORTANT: You MUST call this tool to actually delete the task. ' +
+          'Saying "done" or "deleted" without calling this tool does nothing. ' +
+          'When the user confirms deletion (yes / go ahead / do it / any affirmative): ' +
+          'call this tool immediately in the same response. ' +
+          'Do not narrate deletion without a tool call result.',
+        inputSchema: z.object({
+          task_id: z
+            .string()
+            .describe(
+              'The exact ID of the task to delete. ' +
+                'You must resolve this from the task list in context before calling.'
+            ),
+        }),
+        execute: async (params) => {
+          console.log('[ProjectChat] route.ts tool execute: delete_task', params)
+          return executeDeleteTask(params, projectId, user.id)
         },
       }),
     }
