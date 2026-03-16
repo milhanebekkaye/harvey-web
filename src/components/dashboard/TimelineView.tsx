@@ -50,6 +50,7 @@ import type { DashboardTask, TaskGroups } from '@/types/task.types'
 import type { TimeBlock } from '@/types/api.types'
 import { TaskTile } from './TaskTile'
 import { TaskDetails } from './TaskDetails'
+import { DeleteTaskModal } from './DeleteTaskModal'
 
 function flattenTasks(tasks: TaskGroups | null): DashboardTask[] {
   if (!tasks) return []
@@ -154,6 +155,11 @@ interface TimelineViewProps {
   onAskHarvey?: (taskId: string, title: string, label: string) => void
 
   /**
+   * Callback after a task is deleted (so parent can refresh list). Used with delete button in task detail.
+   */
+  onTaskDeleted?: (taskId: string) => void
+
+  /**
    * Callback when task order changes after drag-and-drop. When provided with availableWindows and allTasks, drag handle is shown and reorder is enabled.
    */
   onReorder?: (
@@ -224,6 +230,7 @@ interface SortableTaskItemProps {
   onSkip?: (taskId: string) => void
   onChecklistToggle?: (taskId: string, itemId: string, done: boolean) => void
   onAskHarvey?: (taskId: string, title: string, label: string) => void
+  onDelete?: (taskId: string) => void
   isActionLoading?: boolean
   allTasks: DashboardTask[]
 }
@@ -291,6 +298,7 @@ function SortableTaskItem(props: SortableTaskItemProps) {
             onSkip={rest.onSkip}
             onChecklistToggle={rest.onChecklistToggle}
             onAskHarvey={rest.onAskHarvey}
+            onDelete={rest.onDelete}
             isLoading={rest.isActionLoading}
             showHeader={false}
             allTasks={rest.allTasks}
@@ -326,6 +334,7 @@ export function TimelineView({
   isLoading = false,
   activeConversationTaskId = null,
   onAskHarvey,
+  onTaskDeleted,
   onReorder,
   availableWindows = [],
   allTasks: allTasksProp,
@@ -333,6 +342,9 @@ export function TimelineView({
   const [showPast, setShowPast] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [deleteModalTask, setDeleteModalTask] = useState<DashboardTask | null>(null)
+  const [deleteModalDependents, setDeleteModalDependents] = useState<Array<{ id: string; title: string }>>([])
+  const [isDeleting, setIsDeleting] = useState(false)
   const [overInfo, setOverInfo] = useState<{
     draggedId: string
     overId: string
@@ -541,6 +553,41 @@ export function TimelineView({
     [onReorder, allTasks, tasks, availableWindows]
   )
 
+  const handleDeleteClick = useCallback(
+    async (taskId: string) => {
+      const task = allTasks.find((t) => t.id === taskId)
+      if (!task) return
+      setDeleteModalTask(task)
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/dependents`)
+        const json = (await res.json()) as { dependents?: Array<{ id: string; title: string }> }
+        setDeleteModalDependents(json.dependents ?? [])
+      } catch {
+        setDeleteModalDependents([])
+      }
+    },
+    [allTasks]
+  )
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteModalTask) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/tasks/${deleteModalTask.id}`, { method: 'DELETE' })
+      const data = (await res.json()) as { success?: boolean; error?: string }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete task')
+      }
+      onTaskDeleted?.(deleteModalTask.id)
+      onTaskClick(null)
+      setDeleteModalTask(null)
+    } catch (err) {
+      console.error('[TimelineView] Delete task failed:', err)
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [deleteModalTask, onTaskDeleted, onTaskClick])
+
   /**
    * Render a section of tasks
    *
@@ -630,6 +677,7 @@ export function TimelineView({
                     onSkip={onSkip}
                     onChecklistToggle={onChecklistToggle}
                     onAskHarvey={onAskHarvey}
+                    onDelete={handleDeleteClick}
                     isActionLoading={isActionLoading}
                     allTasks={allTasks}
                   />
@@ -703,6 +751,7 @@ export function TimelineView({
                         onSkip={onSkip}
                         onChecklistToggle={onChecklistToggle}
                         onAskHarvey={onAskHarvey}
+                        onDelete={handleDeleteClick}
                         isLoading={isActionLoading}
                         showHeader={false}
                         allTasks={allTasks}
@@ -824,26 +873,45 @@ export function TimelineView({
 
   const draggedTask = activeDragId ? allTasks.find((t) => t.id === activeDragId) : null
 
+  const deleteModal = (
+    <DeleteTaskModal
+      isOpen={deleteModalTask !== null}
+      onClose={() => !isDeleting && setDeleteModalTask(null)}
+      onConfirm={handleDeleteConfirm}
+      taskTitle={deleteModalTask?.title ?? ''}
+      dependentTasks={deleteModalDependents}
+      isDeleting={isDeleting}
+    />
+  )
+
   if (onReorder) {
     return (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={({ active }) => setActiveDragId(String(active.id))}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        {content}
-        <DragOverlay>
-          {draggedTask ? (
-            <div className="rounded-xl overflow-hidden shadow-xl border border-slate-200 bg-white opacity-90 cursor-grabbing">
-              <TaskTile task={draggedTask} variant="default" isDragging={false} />
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      <>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }) => setActiveDragId(String(active.id))}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          {content}
+          <DragOverlay>
+            {draggedTask ? (
+              <div className="rounded-xl overflow-hidden shadow-xl border border-slate-200 bg-white opacity-90 cursor-grabbing">
+                <TaskTile task={draggedTask} variant="default" isDragging={false} />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+        {deleteModal}
+      </>
     )
   }
 
-  return content
+  return (
+    <>
+      {content}
+      {deleteModal}
+    </>
+  )
 }

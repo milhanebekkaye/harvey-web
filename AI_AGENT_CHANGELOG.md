@@ -50,6 +50,44 @@ You don’t need to paste large code snippets here—this file is about **narrat
 
 ---
 
+### [2026-03-16] Task deletion: refresh chat panel when deleted task had a task chat
+
+- **Agent / context**: Cursor AI assistant; user requested that when a task with an open task chat (discussion) is deleted, the chat panel should refresh so that chat is no longer visible.
+- **Summary**:
+  - **Dashboard `handleTaskDeleted`** now accepts the deleted task id: `handleTaskDeleted(deletedTaskId: string)`. After a task is deleted it: (1) calls **`fetchTaskChatsList(projectId)`** so the task chats list in the sidebar is refreshed from the server (GET `/api/discussions/task/list` returns only discussions whose task still exists, so the deleted task’s chat disappears); (2) sets **`activeConversation`** to `'project'` when the deleted task was the active conversation, so the panel shows project chat instead of the removed task chat; (3) then runs the existing refresh (fetchTasks + timeline refresh trigger).
+  - Call sites (list view TimelineView and timeline ActiveTaskCard) already pass the task id into `onTaskDeleted(taskId)`, so no change there.
+- **Files touched**: `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Avoid leaving the user on a task chat that no longer exists after deletion; keep the sidebar task list in sync with the server.
+- **Risks / notes**: None.
+
+---
+
+### [2026-03-16] Task deletion via timeline three-dot menu
+
+- **Agent / context**: Cursor AI assistant; user requested surgical implementation of task deletion from the timeline active task card only (no calendar, no TaskDetails, no chat router).
+- **Summary**:
+  - **Service**: Added `deleteTask(taskId, userId)` in `task-service.ts`. Fetches task (id, title, depends_on, projectId); finds dependents via `depends_on: { has: taskId }`; updates each dependent to remove taskId from `depends_on`; deletes the task. Discussion rows linked to the task cascade-delete via existing DB relation. Returns `{ deletedTaskId, deletedTaskTitle, cleanedDependents }`.
+  - **API**: Added `DELETE /api/tasks/[taskId]` (same route file as PATCH). Auth check; calls `deleteTask`; returns 200 with result or 404 when task not found/unauthorized, 500 otherwise. Added `GET /api/tasks/[taskId]/dependents` to return tasks that depend on the given task (used by the modal to show a warning).
+  - **UI**: New `DeleteTaskModal.tsx` (title "Delete task?", body text, optional amber warning for dependents, Cancel / Delete buttons; Escape and backdrop close when not deleting). **ActiveTaskCard**: Three-dot (MoreHorizontal) opens a dropdown with "Delete task" (red); click fetches dependents, opens modal; on confirm calls DELETE, then `onTaskDeleted(taskId)` and closes modal. Parent chain: TimelineView → ProjectTimelineView → dashboard; dashboard passes `handleTaskDeleted` (fetchTasks + increment timelineRefreshTrigger) so list and timeline refresh after delete.
+- **Files touched**: `src/lib/tasks/task-service.ts`, `src/app/api/tasks/[taskId]/route.ts`, `src/app/api/tasks/[taskId]/dependents/route.ts` (new), `src/components/dashboard/DeleteTaskModal.tsx` (new), `src/components/dashboard/timeline/ActiveTaskCard.tsx`, `src/components/dashboard/timeline/TimelineView.tsx`, `src/components/dashboard/ProjectTimelineView.tsx`, `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`, `ARCHITECTURE.md`, `docs/dashboard/README.md`.
+- **Motivation**: Allow users to delete a task from the timeline view without touching rescheduling, calendar, or chat router.
+- **Risks / notes**: None. Discussion cascade is handled by DB; dependents are only cleaned (depends_on updated), not deleted. No changes to TaskDetails, TaskModal, calendar view, or chat tools.
+
+---
+
+### [2026-03-16] Dashboard: view selector as direct toggle (List / Timeline)
+
+- **Agent / context**: Cursor AI assistant; user requested replacing the view dropdown with a direct toggle so one click switches view.
+- **Summary**:
+  - Replaced the "View" button + dropdown menu (List View / Timeline View) with a **segmented toggle**: two side-by-side buttons "List" and "Timeline". Clicking either switches the view immediately.
+  - Removed `isViewMenuOpen`, `viewMenuRef`, and the useEffect that closed the menu on outside click/Escape. Dropped `ChevronDown` and `Check` from lucide-react imports.
+  - Toggle uses `aria-label="View toggle"`, `aria-pressed` on each option, and clear active state (purple background for selected segment) so it’s obvious it’s a view toggle.
+- **Files touched**: `src/app/dashboard/page.tsx`, `AI_AGENT_CHANGELOG.md`.
+- **Motivation**: Only two views exist; a single-click toggle is simpler and clearer than opening a menu.
+- **Risks / notes**: None. Same `view` state and rendering logic; only the control UI changed.
+
+---
+
 ### [2026-03-09] Onboarding chat: prevent empty assistant messages (tool-only / Anthropic 400)
 
 **Goal:** Fix `AI_APICallError: messages: text content blocks must be non-empty` during onboarding when Harvey responds with only a tool call (e.g. `show_date_picker`) and no text. Anthropic rejects empty content; we were saving and re-sending it, breaking the next request.

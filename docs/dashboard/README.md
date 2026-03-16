@@ -18,6 +18,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - Compact task card, clickable to expand. Optional drag handle (GripVertical) on the left when `dragHandleProps` is provided (list view drag-and-drop).
 - `src/components/dashboard/TaskDetails.tsx`
   - Expanded task details (description via MarkdownMessage, checklist, actions). Used in timeline/list expanded card and calendar modal.
+- `src/components/dashboard/DeleteTaskModal.tsx`
+  - Confirmation modal for task deletion ("Delete task?", optional dependents warning, Cancel / Delete). Used from the timeline **ActiveTaskCard** three-dot menu only.
 - `src/components/dashboard/chat/CompletionFeedbackWidget.tsx`
   - “How long did it take?” widget after task completion. Uses single PATCH with ?returnProgressToday=true (response includes progress; fallback GET if absent). Builds acknowledgment: same day/overdue/future. Compares the completed task’s scheduled date to today (user timezone): same day → “That’s X/Y tasks done today”; overdue → “You’re catching up — good job finishing that one”; future → “You’re ahead of schedule — nice work.” Always appends “Next up: [task]” or “You’re all clear for now.”
 - `src/components/dashboard/TaskChecklistItem.tsx`
@@ -31,7 +33,9 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 - `src/app/api/tasks/reorder/route.ts`
   - POST endpoint for list-view drag-and-drop reorder. Accepts `taskId`, `newDate`, `isFlexible`, `windowStart`, `windowEnd`, `destinationSiblingsOrder`, `sourceSiblingsOrder`; updates the dragged task and bulk-updates positions for destination and (when cross-day) source day.
 - `src/app/api/tasks/[taskId]/route.ts`
-  - Update a task’s status/title/description.
+  - PATCH: Update a task’s status/title/description. DELETE: Delete a task (cleans dependents’ depends_on; task discussions cascade-delete). Used by timeline active task card three-dot menu.
+- `src/app/api/tasks/[taskId]/dependents/route.ts`
+  - GET: Returns tasks that depend on the given task. Used by the delete confirmation modal.
 - `src/app/api/tasks/[taskId]/checklist/route.ts`
   - Update a task’s checklist state.
 - `src/app/api/progress/today/route.ts`
@@ -59,6 +63,7 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
   - `PATCH /api/tasks/[taskId]` for status updates.
   - `PATCH /api/tasks/[taskId]/checklist` for checklist updates.
   - `POST /api/tasks/reorder` for drag-and-drop reorder (list view).
+  - **Timeline only**: Three-dot menu on the active task card → "Delete task" → confirmation modal (shows dependents if any) → `DELETE /api/tasks/[taskId]`; then task list and timeline refresh.
 7. Chat sidebar shows onboarding messages and exposes a “Rebuild schedule” button.
 8. Rebuild calls `POST /api/schedule/reset-schedule` then redirects to `/loading?projectId=...`.
 9. **Auto-refresh after chat tools**: When Harvey executes a tool via chat (e.g. add task, modify schedule, regenerate schedule), `ChatSidebar` detects it in `onFinish` and calls `onTasksChanged`, which triggers `fetchTasks()`. Timeline (and future calendar) views update immediately without manual reload.
@@ -93,6 +98,8 @@ The dashboard is the main authenticated UI. It shows scheduled tasks (grouped by
 ### `src/app/api/tasks/[taskId]/route.ts`
 - `PATCH(request, { params })`
   - Validates ownership and updates task status/title/description. When `?returnProgressToday=true` is set, the response includes `progressToday` (same shape as GET `/api/progress/today`) so the completion feedback widget can avoid a separate GET.
+- `DELETE(_request, { params })`
+  - Authenticates user, calls `task-service.deleteTask(taskId, userId)`. Cleans dependents' `depends_on` then deletes the task (Discussion rows cascade-delete). Returns 200 with `{ success, deletedTaskId, deletedTaskTitle, cleanedDependents }`, 404 if task not found/unauthorized, 500 on error.
 
 ### `src/app/api/tasks/[taskId]/checklist/route.ts`
 - `PATCH(request, { params })`

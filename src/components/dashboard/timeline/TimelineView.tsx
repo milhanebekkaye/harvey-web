@@ -15,6 +15,8 @@ interface TimelineViewProps {
   onComplete?: (taskId: string) => void | Promise<void>
   onSkip?: (taskId: string) => void | Promise<void>
   onAskHarvey?: (taskId: string, title: string, label: string) => void | Promise<void>
+  /** Called after a task is deleted so the parent can refresh task list; timeline refetches after. */
+  onTaskDeleted?: (taskId: string) => void | Promise<void>
   /** Increment this value to trigger a silent background refetch of timeline data. */
   refreshTrigger?: number
 }
@@ -29,6 +31,7 @@ export function TimelineView({
   onComplete,
   onSkip,
   onAskHarvey,
+  onTaskDeleted,
   refreshTrigger,
 }: TimelineViewProps) {
   const [timelineData, setTimelineData] = useState<TimelineData | null>(null)
@@ -174,6 +177,11 @@ export function TimelineView({
     await onAskHarvey?.(taskId, title, label)
   }
 
+  const handleTaskDeleted = async (taskId: string) => {
+    await onTaskDeleted?.(taskId)
+    await fetchTimeline()
+  }
+
   return (
     <section className="relative bg-[#FAF9F6] px-8 pb-12">
       <div className="absolute -top-20 right-0 w-[500px] h-[500px] bg-[#895af6]/5 blur-[120px] rounded-full pointer-events-none" />
@@ -238,6 +246,7 @@ export function TimelineView({
               onSkip={handleSkip}
               onAskHarvey={handleAskHarvey}
               onCriteriaChange={handleCriteriaChange}
+              onTaskDeleted={handleTaskDeleted}
             />
 
             {timelineData.upcomingTasks.map((task) => (

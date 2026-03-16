@@ -227,8 +227,11 @@ These are server-side route handlers (Next.js Route Handlers). Each `route.ts` i
 
 - **`tasks/[taskId]/route.ts`**
   - Endpoint under `/api/tasks/[taskId]`.
-  - Handles single-task operations (fetch, update, delete) based on `taskId`. PATCH supports task field updates (including `status` and `successCriteria` checklist JSON), returns the updated task, and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
+  - **PATCH**: Task field updates (including `status` and `successCriteria` checklist JSON), returns the updated task, and optionally **progressToday** (same shape as GET `/api/progress/today`) when `?returnProgressToday=true`, so the completion feedback widget can avoid a separate GET.
+  - **DELETE**: Deletes the task. Uses `task-service.deleteTask` (cleans dependents' `depends_on`, then deletes task; Discussion rows for the task cascade-delete via DB). Returns `{ success, deletedTaskId, deletedTaskTitle, cleanedDependents }`. Used by the timeline active task card three-dot menu.
 
+- **`tasks/[taskId]/dependents/route.ts`**
+  - **GET** `/api/tasks/[taskId]/dependents`. Returns tasks that depend on the given task (`depends_on: { has: taskId }`). Used by the delete confirmation modal to show a warning list.
 - **`tasks/[taskId]/checklist/route.ts`**
   - Endpoint under `/api/tasks/[taskId]/checklist`.
   - Manages per-task checklist items (e.g. marking subtasks complete/incomplete).
@@ -301,7 +304,8 @@ See `docs/timeline-view.md` for feature-level behavior and API contracts.
 - **`TimelineView.tsx`**: Timeline shell for right-pane timeline mode. Fetches `/api/timeline`, handles edge states, wires optimistic success-criteria save (`PATCH /api/tasks/[taskId]`), and passes data to card components.
 - **`TimelineRail.tsx`**: Vertical rail wrapper (purple/grey gradient line with child card slots).
 - **`CompletedTaskCard.tsx`**: Completed slot card with green check marker.
-- **`ActiveTaskCard.tsx`**: Expanded active card (description via **MarkdownMessage**, success criteria, dependencies, Harvey tip slot, action buttons). Manages tip state and calls `POST /api/tasks/tip` on mount/refresh.
+- **`ActiveTaskCard.tsx`**: Expanded active card (description via **MarkdownMessage**, success criteria, dependencies, Harvey tip slot, action buttons). Manages tip state and calls `POST /api/tasks/tip` on mount/refresh. **Three-dot menu**: Opens dropdown with "Delete task"; fetches GET `/api/tasks/[taskId]/dependents`, opens **DeleteTaskModal**; on confirm calls DELETE `/api/tasks/[taskId]` then `onTaskDeleted(taskId)` so parent can refresh.
+- **`DeleteTaskModal.tsx`**: Confirmation modal for task deletion (title "Delete task?", optional dependent-tasks warning, Cancel / Delete). Used only from ActiveTaskCard.
 - **`SuccessCriteriaList.tsx`**: Interactive checklist list used inside ActiveTaskCard.
 - **`HarveysTip.tsx`**: Tip UI slot with Harvey avatar; shows in-content loading spinner while generating and disables refresh during requests.
 - **`UpcomingTaskCard.tsx`**: Collapsed upcoming task slot card.

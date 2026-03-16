@@ -25,6 +25,7 @@ import type { Task } from '@prisma/client'
 import { createClient } from '@/lib/auth/supabase-server'
 import {
   updateTask,
+  deleteTask,
   transformToDashboardTask,
   getTodayProgress,
   type TodayProgress,
@@ -201,6 +202,54 @@ export async function PATCH(
 
     return NextResponse.json(
       { success: false, error: errorMessage || 'Failed to update task', code: 'INTERNAL_ERROR' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * DELETE /api/tasks/[taskId]
+ *
+ * Deletes a task. Cleans dependents' depends_on. Task discussions cascade-delete via DB.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ taskId: string }> }
+) {
+  const { taskId } = await params
+
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      )
+    }
+
+    console.log(`[DELETE /api/tasks/${taskId}] Request from user ${user.id}`)
+
+    const result = await deleteTask(taskId, user.id)
+
+    console.log(`[DELETE /api/tasks/${taskId}] Success:`, result)
+    return NextResponse.json({ success: true, ...result }, { status: 200 })
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[DELETE /api/tasks/${taskId}] Error:`, errorMessage)
+
+    if (errorMessage.toLowerCase().includes('not found or unauthorized')) {
+      return NextResponse.json(
+        { error: errorMessage, code: 'TASK_NOT_FOUND' },
+        { status: 404 }
+      )
+    }
+    return NextResponse.json(
+      { error: errorMessage, code: 'INTERNAL_ERROR' },
       { status: 500 }
     )
   }

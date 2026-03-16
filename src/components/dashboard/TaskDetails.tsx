@@ -18,6 +18,7 @@ import {
   Lightbulb,
   MessageCircle,
   SkipForward,
+  Trash2,
 } from 'lucide-react'
 import type { DashboardTask } from '@/types/task.types'
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
@@ -53,6 +54,12 @@ interface TaskDetailsProps {
    * Callback when "Ask Harvey" is clicked (opens/focuses task chat in sidebar)
    */
   onAskHarvey?: (taskId: string, title: string, label: string) => void
+
+  /**
+   * Callback when Delete button is clicked (opens confirmation flow in parent).
+   * When provided, a Delete button is shown in the action row (list view).
+   */
+  onDelete?: (taskId: string) => void
 
   /**
    * Whether action buttons are disabled (e.g., during API call)
@@ -96,6 +103,7 @@ export function TaskDetails({
   onSkip,
   onChecklistToggle,
   onAskHarvey,
+  onDelete,
   isLoading = false,
   className = '',
   showHeader = false,
@@ -256,6 +264,29 @@ export function TaskDetails({
             >
               <MessageCircle className="w-4 h-4" />
               Ask Harvey
+            </button>
+          )}
+
+          {/* Delete Button — same row, bottom right (list view) */}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(task.id)}
+              disabled={isLoading}
+              className="
+                flex items-center gap-1.5 px-3 py-2
+                text-red-600 text-sm font-medium
+                rounded-lg border border-red-200 bg-transparent
+                hover:bg-red-50
+                active:scale-95
+                disabled:opacity-50 disabled:cursor-not-allowed
+                transition-all duration-150
+                ml-auto
+              "
+              aria-label="Delete task"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
             </button>
           )}
         </div>

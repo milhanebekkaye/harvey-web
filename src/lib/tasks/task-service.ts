@@ -797,6 +797,72 @@ export async function getDownstreamDependentTaskIds(
 }
 
 /**
+ * Result returned by deleteTask on success
+ */
+export interface DeleteTaskResult {
+  deletedTaskId: string
+  deletedTaskTitle: string
+  cleanedDependents: Array<{ id: string; title: string }>
+}
+
+/**
+ * Delete a task and clean dependents' depends_on.
+ * Discussion rows linked to the task are cascade-deleted by the DB.
+ *
+ * @param taskId - Task UUID to delete
+ * @param userId - User ID for ownership
+ * @returns Result with deleted task info and cleaned dependents
+ * @throws Error if task not found or unauthorized
+ */
+export async function deleteTask(
+  taskId: string,
+  userId: string
+): Promise<DeleteTaskResult> {
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, userId },
+    select: { id: true, title: true, depends_on: true, projectId: true },
+  })
+
+  if (!task) {
+    throw new Error('Task not found or unauthorized')
+  }
+
+  console.log(`[deleteTask] Deleting task "${task.title}" (${taskId}) for user ${userId}`)
+
+  const dependents = await prisma.task.findMany({
+    where: { userId, depends_on: { has: taskId } },
+    select: { id: true, title: true, depends_on: true },
+  })
+
+  if (dependents.length > 0) {
+    console.log(
+      `[deleteTask] Found ${dependents.length} dependent task(s):`,
+      dependents.map((d) => `"${d.title}" (${d.id})`)
+    )
+    for (const dependent of dependents) {
+      const newDependsOn = (dependent.depends_on ?? []).filter((id) => id !== taskId)
+      await prisma.task.update({
+        where: { id: dependent.id },
+        data: { depends_on: newDependsOn },
+      })
+      console.log(`[deleteTask] Removed dependency on ${taskId} from task "${dependent.title}" (${dependent.id})`)
+    }
+  }
+
+  await prisma.task.delete({ where: { id: taskId } })
+
+  console.log(
+    `[deleteTask] Task "${task.title}" (${taskId}) deleted. Dependent tasks cleaned: ${dependents.length}. Task discussion (if any) cascade-deleted by DB.`
+  )
+
+  return {
+    deletedTaskId: taskId,
+    deletedTaskTitle: task.title,
+    cleanedDependents: dependents.map((d) => ({ id: d.id, title: d.title })),
+  }
+}
+
+/**
  * Update a task
  *
  * Updates task fields like title, description, status.

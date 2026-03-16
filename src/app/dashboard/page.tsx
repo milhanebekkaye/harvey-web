@@ -12,7 +12,7 @@
  * - Real conversation history from /api/discussions/[projectId]
  * - Task status updates (complete, skip)
  * - Glass-morphism chat sidebar with Harvey AI
- * - Unified right-header with Filter + View popover (List/Timeline switch)
+ * - Unified right-header with View toggle (List / Timeline direct switch)
  *
  * Components Used:
  * - ChatSidebar: Left sidebar with conversation
@@ -25,8 +25,6 @@
 import {
   AlertCircle,
   AlertTriangle,
-  Check,
-  ChevronDown,
   GanttChart,
   List,
 } from 'lucide-react'
@@ -145,9 +143,6 @@ export default function DashboardPage() {
    */
   const [view, setView] = useState<ViewMode>('timeline')
 
-  /** Floating "View" selector (List/Timeline) visibility. */
-  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false)
-  const viewMenuRef = useRef<HTMLDivElement>(null)
 
   /** List-view tip popover (click bulb to show message). */
   const [isTipOpen, setIsTipOpen] = useState(false)
@@ -530,33 +525,6 @@ export default function DashboardPage() {
     void checkTourStatus()
   }, [])
 
-  /**
-   * Close the floating view selector when clicking outside or pressing Escape.
-   */
-  useEffect(() => {
-    if (!isViewMenuOpen) return
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (!viewMenuRef.current) return
-      if (viewMenuRef.current.contains(event.target as Node)) return
-      setIsViewMenuOpen(false)
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsViewMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleOutsideClick)
-    document.addEventListener('keydown', handleEscape)
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isViewMenuOpen])
-
   /** Close tip popover on outside click or Escape. */
   useEffect(() => {
     if (!isTipOpen) return
@@ -832,6 +800,23 @@ export default function DashboardPage() {
       alert(errorMessage)
     }
   }
+
+  /**
+   * Called after a task is deleted (e.g. from timeline three-dot menu or list view Delete).
+   * Refreshes task list and timeline; refreshes the task chat panel so the deleted task's
+   * chat disappears, and switches to project chat if that task was active.
+   */
+  const handleTaskDeleted = useCallback(
+    async (deletedTaskId: string) => {
+      if (projectId) {
+        await fetchTaskChatsList(projectId)
+      }
+      setActiveConversation((current) => (current === deletedTaskId ? 'project' : current))
+      await fetchTasks()
+      setTimelineRefreshTrigger((t) => t + 1)
+    },
+    [fetchTasks, fetchTaskChatsList, projectId]
+  )
 
   /**
    * Handle drag-and-drop reorder (list view). Calls reorder API then refreshes tasks.
@@ -1248,75 +1233,40 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
                 )}
               </div>
 
-              <div className="relative" ref={viewMenuRef}>
+              {/* View toggle: direct switch between Timeline (left) and List (right) */}
+              <div
+                className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm"
+                role="group"
+                aria-label="View toggle"
+              >
                 <button
                   type="button"
-                  onClick={() => setIsViewMenuOpen((open) => !open)}
-                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
-                  aria-haspopup="menu"
-                  aria-expanded={isViewMenuOpen}
-                  aria-label="Open view selector"
+                  onClick={() => setView('timeline')}
+                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    view === 'timeline'
+                      ? 'bg-[#895af6] text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={view === 'timeline'}
+                  aria-label="Timeline view"
                 >
-                  {view === 'timeline' ? (
-                    <GanttChart className="w-5 h-5" />
-                  ) : (
-                    <List className="w-5 h-5" />
-                  )}
-                  View
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <GanttChart className="w-5 h-5" />
+                  Timeline
                 </button>
-
-                {isViewMenuOpen && (
-                  <div
-                    className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-200/70"
-                    role="menu"
-                    aria-label="View selector"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setView('list')
-                        setIsViewMenuOpen(false)
-                      }}
-                      className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                        view === 'list'
-                          ? 'bg-[#895af6]/10 text-[#895af6] font-semibold'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                      role="menuitem"
-                    >
-                      <span className="flex items-center gap-2">
-                        <List className="w-5 h-5" />
-                        List View
-                      </span>
-                      {view === 'list' && (
-                        <Check className="w-5 h-5" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setView('timeline')
-                        setIsViewMenuOpen(false)
-                      }}
-                      className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                        view === 'timeline'
-                          ? 'bg-[#895af6]/10 text-[#895af6] font-semibold'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                      role="menuitem"
-                    >
-                      <span className="flex items-center gap-2">
-                        <GanttChart className="w-5 h-5" />
-                        Timeline View
-                      </span>
-                      {view === 'timeline' && (
-                        <Check className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setView('list')}
+                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                    view === 'list'
+                      ? 'bg-[#895af6] text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                  aria-pressed={view === 'list'}
+                  aria-label="List view"
+                >
+                  <List className="w-5 h-5" />
+                  List
+                </button>
               </div>
             </div>
           </div>
@@ -1335,6 +1285,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             isLoading={isLoadingTasks}
             activeConversationTaskId={activeConversation === 'project' ? null : activeConversation}
             onAskHarvey={handleAskHarvey}
+            onTaskDeleted={handleTaskDeleted}
             onReorder={handleReorder}
             availableWindows={availableTime}
             allTasks={
@@ -1360,6 +1311,7 @@ const handleChecklistToggle = async (taskId: string, itemId: string, done: boole
             onComplete={handleCompleteTask}
             onSkip={handleSkipTask}
             onAskHarvey={handleAskHarvey}
+            onTaskDeleted={handleTaskDeleted}
             refreshTrigger={timelineRefreshTrigger}
           />
         )}

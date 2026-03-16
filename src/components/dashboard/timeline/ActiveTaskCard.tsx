@@ -7,9 +7,11 @@ import {
   Circle,
   MoreHorizontal,
   PlayCircle,
+  Trash2,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCategoryIcon } from '@/components/dashboard/TaskCategoryBadge'
+import { DeleteTaskModal } from '@/components/dashboard/DeleteTaskModal'
 import { MarkdownMessage } from '@/components/ui/MarkdownMessage'
 import { stripWrappingBold } from '@/lib/utils'
 import type { ChecklistItem, TaskLabel } from '@/types/task.types'
@@ -26,6 +28,7 @@ interface ActiveTaskCardProps {
   onSkip: (taskId: string) => void | Promise<void>
   onAskHarvey: (taskId: string, title: string, label: string) => void | Promise<void>
   onCriteriaChange: (criteria: ChecklistItem[]) => void | Promise<void>
+  onTaskDeleted?: (taskId: string) => void
   timezone?: string
 }
 
@@ -78,6 +81,7 @@ export function ActiveTaskCard({
   onSkip,
   onAskHarvey,
   onCriteriaChange,
+  onTaskDeleted,
   timezone,
 }: ActiveTaskCardProps) {
   const dueDate = formatDueDate(task.scheduledDate, timezone)
@@ -86,6 +90,12 @@ export function ActiveTaskCard({
   const [tip, setTip] = useState('')
   const [tipLoading, setTipLoading] = useState(true)
   const latestTipRequestRef = useRef(0)
+
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteModalDependents, setDeleteModalDependents] = useState<Array<{ id: string; title: string }>>([])
+  const [isDeleting, setIsDeleting] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const loadTip = useCallback(async () => {
     const requestId = latestTipRequestRef.current + 1
@@ -123,9 +133,51 @@ export function ActiveTaskCard({
     void loadTip()
   }, [loadTip])
 
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    if (showDropdown) {
+      document.addEventListener('click', handleClickOutside)
+    }
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showDropdown])
+
   const handleRefresh = useCallback(() => {
     void loadTip()
   }, [loadTip])
+
+  const handleDeleteClick = useCallback(async () => {
+    setShowDropdown(false)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/dependents`)
+      const json = (await res.json()) as { dependents?: Array<{ id: string; title: string }> }
+      setDeleteModalDependents(json.dependents ?? [])
+    } catch {
+      setDeleteModalDependents([])
+    }
+    setShowDeleteModal(true)
+  }, [task.id])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    setIsDeleting(true)
+    console.log(`[ActiveTaskCard] Deleting task "${task.title}" (${task.id})`)
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' })
+      const json = (await res.json()) as { success?: boolean; error?: string }
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to delete task')
+      }
+      console.log('[ActiveTaskCard] Task deleted successfully')
+      setShowDeleteModal(false)
+      onTaskDeleted?.(task.id)
+    } catch (err) {
+      console.error('[ActiveTaskCard] Delete failed:', err)
+      setIsDeleting(false)
+    }
+  }, [task.id, task.title, onTaskDeleted])
 
   return (
     <div className="relative mb-6">
@@ -159,9 +211,28 @@ export function ActiveTaskCard({
               </p>
             </div>
           </div>
-          <button type="button" className="text-slate-400 hover:text-[#895af6] transition-colors">
-            <MoreHorizontal className="w-5 h-5" />
-          </button>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              type="button"
+              onClick={() => setShowDropdown((prev) => !prev)}
+              className="text-slate-400 hover:text-[#895af6] transition-colors p-1 rounded"
+              aria-label="Task options"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {showDropdown && (
+              <div className="absolute right-0 top-full mt-1 py-1 w-40 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete task
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="p-6 flex flex-col gap-6">
@@ -248,9 +319,6 @@ export function ActiveTaskCard({
           />
 
           <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-            <button type="button" className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors">
-              View Full Details
-            </button>
             <button
               data-tour="ask-harvey-button"
               type="button"
@@ -279,6 +347,15 @@ export function ActiveTaskCard({
           </div>
         </div>
       </div>
+
+      <DeleteTaskModal
+        isOpen={showDeleteModal}
+        onClose={() => !isDeleting && setShowDeleteModal(false)}
+        onConfirm={handleDeleteConfirm}
+        taskTitle={task.title}
+        dependentTasks={deleteModalDependents}
+        isDeleting={isDeleting}
+      />
     </div>
   )
 }
